@@ -202,7 +202,18 @@ function initZoom() {
     if (dom.timeRuler) {
       dom.timeRuler.style.transform = `translateX(-${dom.trackArea.scrollLeft}px)`;
     }
+    // Sync vertical scroll with track headers
+    if (dom.trackHeaders) {
+      dom.trackHeaders.scrollTop = dom.trackArea.scrollTop;
+    }
   });
+
+  // Also sync wheel event from headers to track area
+  dom.trackHeaders?.addEventListener('wheel', (e) => {
+    if (dom.trackArea) {
+      dom.trackArea.scrollTop += e.deltaY;
+    }
+  }, { passive: true });
 }
 
 // ── Timeline Resizer ──
