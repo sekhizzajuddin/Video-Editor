@@ -12,7 +12,8 @@ import {
 } from './engine.js';
 import { 
   buildRuler, deselectAll, initTrackDropZones, initTrackControls,
-  selectClip, addNewTrack, initPlayheadDrag, refreshTimelineLayout
+  selectClip, addNewTrack, initPlayheadDrag, refreshTimelineLayout,
+  initTransitionMenu
 } from './timeline.js';
 import { pxPerSec, pxToTimecode, formatTimecode, showToast, loadAutoSave } from './utils.js';
 import { 
@@ -45,8 +46,10 @@ function init() {
   initVolumeControl();
   initShortcutsModal();
   initContextMenu();
+  initTransitionMenu();
   initInspector();
   initProjectName();
+  initTimelineResizer();
   
   buildRuler();
   updateEmptyStates();
@@ -199,6 +202,35 @@ function initZoom() {
     if (dom.timeRuler) {
       dom.timeRuler.style.transform = `translateX(-${dom.trackArea.scrollLeft}px)`;
     }
+  });
+}
+
+// ── Timeline Resizer ──
+function initTimelineResizer() {
+  if (!dom.timelineResizer || !dom.timeline) return;
+  
+  let isResizing = false;
+  let startY = 0;
+  let startHeight = 0;
+  
+  dom.timelineResizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    startY = e.clientY;
+    startHeight = dom.timeline.getBoundingClientRect().height;
+    document.body.style.cursor = 'row-resize';
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const dy = startY - e.clientY; // drag up increases height
+    const newHeight = Math.max(120, Math.min(window.innerHeight * 0.7, startHeight + dy));
+    dom.timeline.style.height = `${newHeight}px`;
+    refreshTimelineLayout();
+  });
+  
+  document.addEventListener('mouseup', () => {
+    isResizing = false;
+    document.body.style.cursor = '';
   });
 }
 

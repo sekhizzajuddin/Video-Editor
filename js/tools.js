@@ -258,7 +258,7 @@ export function initTools() {
       showToast('Select a clip first', 'warning');
       return;
     }
-    activateTool('crop', null, dom.btnCrop);
+    activateTool('crop', dom.cropPanel, dom.btnCrop);
     showToast('Crop tool: Drag handles to adjust crop area', 'info');
     showCropOverlay();
   });
@@ -266,6 +266,17 @@ export function initTools() {
   dom.btnTrimClose?.addEventListener('click', () => activateTool('trim', dom.trimPanel, dom.btnTrim));
   dom.btnSpeedClose?.addEventListener('click', () => activateTool('speed', dom.speedPanel, dom.btnSpeed));
   dom.btnVolumeClose?.addEventListener('click', () => activateTool('volume', dom.volumePanel, dom.btnVolume));
+  
+  dom.btnCropClose?.addEventListener('click', () => {
+    activateTool('crop', dom.cropPanel, dom.btnCrop);
+    hideCropOverlay();
+  });
+  
+  dom.btnCropApply?.addEventListener('click', () => {
+    activateTool('crop', dom.cropPanel, dom.btnCrop);
+    hideCropOverlay();
+    showToast('Crop applied', 'success');
+  });
 
   dom.btnTrimApply?.addEventListener('click', () => {
     if (!selectedClip) {

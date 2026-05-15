@@ -306,6 +306,11 @@
       <span class="tool-panel__label" id="volumeValue">100%</span>
       <button class="tool-panel__close" id="btnVolumeClose">×</button>
     </div>
+    <div class="tool-panel" id="cropPanel">
+      <label class="tool-panel__label">Crop Mode Active</label>
+      <button class="tool-panel__apply" id="btnCropApply">Apply</button>
+      <button class="tool-panel__close" id="btnCropClose">×</button>
+    </div>
     <div class="toolbar__center">
       <button class="btn btn--ai" id="btnAISync" style="display:none;">
         ✨ Auto AI Sync
@@ -324,7 +329,9 @@
   </div>
 
   <!-- ═══════════════════════ TIMELINE ═══════════════════════ -->
-  <button id="mobileMediaToggle" class="fab-media-toggle">📁 Add Media</button>
+  <div class="timeline-resizer" id="timelineResizer">
+    <div class="timeline-resizer__handle"></div>
+  </div>
   
   <div class="timeline" id="timeline">
 
@@ -341,6 +348,7 @@
             <button class="track-ctrl-btn track-mute-btn" title="Mute">🔇</button>
             <button class="track-ctrl-btn track-visibility-btn track-ctrl-btn--active" title="Visible">👁</button>
             <button class="track-ctrl-btn track-lock-btn" title="Lock">🔓</button>
+            <button class="track-ctrl-btn track-delete-btn" title="Delete Track">🗑️</button>
           </div>
         </div>
       </div>
@@ -352,6 +360,29 @@
             <button class="track-ctrl-btn track-mute-btn" title="Mute">🔇</button>
             <button class="track-ctrl-btn track-visibility-btn track-ctrl-btn--active" title="Visible">👁</button>
             <button class="track-ctrl-btn track-lock-btn" title="Lock">🔓</button>
+            <button class="track-ctrl-btn track-delete-btn" title="Delete Track">🗑️</button>
+          </div>
+        </div>
+      </div>
+      <div class="track-header" data-track-id="text1">
+        <div class="track-header__icon">T</div>
+        <div class="track-header__info">
+          <p class="track-header__name">Text 1</p>
+          <div class="track-header__controls">
+            <button class="track-ctrl-btn track-visibility-btn track-ctrl-btn--active" title="Visible">👁</button>
+            <button class="track-ctrl-btn track-lock-btn" title="Lock">🔓</button>
+            <button class="track-ctrl-btn track-delete-btn" title="Delete Track">🗑️</button>
+          </div>
+        </div>
+      </div>
+      <div class="track-header" data-track-id="fx1">
+        <div class="track-header__icon">✨</div>
+        <div class="track-header__info">
+          <p class="track-header__name">FX 1</p>
+          <div class="track-header__controls">
+            <button class="track-ctrl-btn track-visibility-btn track-ctrl-btn--active" title="Visible">👁</button>
+            <button class="track-ctrl-btn track-lock-btn" title="Lock">🔓</button>
+            <button class="track-ctrl-btn track-delete-btn" title="Delete Track">🗑️</button>
           </div>
         </div>
       </div>
@@ -371,6 +402,12 @@
 
       <!-- Audio Track -->
       <div class="track track--audio" id="audioTrack" data-track="audio" data-track-id="audio1"></div>
+
+      <!-- Text Track -->
+      <div class="track track--text" data-track="text" data-track-id="text1"></div>
+
+      <!-- FX Track -->
+      <div class="track track--fx" data-track="fx" data-track-id="fx1"></div>
 
       <!-- Snap Indicator -->
       <div class="snap-indicator" id="snapIndicator"></div>
@@ -396,6 +433,15 @@
     <div class="context-menu__item" id="cmProperties">⚙️ Properties</div>
     <div class="context-menu__divider"></div>
     <div class="context-menu__item context-menu__item--danger" id="cmDelete">🗑️ Delete</div>
+  </div>
+
+  <!-- Transition Selector Menu -->
+  <div class="context-menu" id="transitionSelector">
+    <div class="context-menu__item" data-transition="fade">Crossfade</div>
+    <div class="context-menu__item" data-transition="wipe">Wipe</div>
+    <div class="context-menu__item" data-transition="dissolve">Dissolve</div>
+    <div class="context-menu__item" data-transition="zoom">Zoom</div>
+    <div class="context-menu__item" data-transition="none">None (Remove)</div>
   </div>
 
   <!-- Custom Confirm Modal -->

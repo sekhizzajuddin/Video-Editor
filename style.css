@@ -978,14 +978,34 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 }
 
 /* ── TIMELINE ── */
+.timeline-resizer {
+  height: 6px;
+  background: var(--bg-base);
+  cursor: row-resize;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.timeline-resizer__handle {
+  width: 40px;
+  height: 3px;
+  background: var(--border-light);
+  border-radius: 2px;
+  transition: var(--transition);
+}
+.timeline-resizer:hover .timeline-resizer__handle { background: var(--accent); }
+
 .timeline {
   display: flex;
-  height: 220px;
+  height: 250px;
+  min-height: 120px;
   background: var(--bg-base);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
-  overflow: hidden;
   position: relative;
+  overflow: hidden;
 }
 
 /* Track Headers */
@@ -996,6 +1016,9 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  overflow-y: hidden;
+  overflow-x: hidden;
+  z-index: 20;
 }
 .track-header {
   height: var(--track-height);
@@ -1045,27 +1068,34 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 .add-track-btn {
   font-size: 11px;
   color: var(--text-muted);
-  padding: 6px 10px;
-  border: 1px dashed var(--border);
+  background: transparent;
+  border: 1px dashed var(--border-light);
+  color: var(--text-muted);
   border-radius: var(--radius-sm);
-  transition: var(--transition);
-  width: 90%;
-  background: none;
+  padding: 6px 12px;
+  font-size: 11px;
   cursor: pointer;
+  transition: var(--transition);
+  width: 80%;
 }
-.add-track-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-subtle); }
+.add-track-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
 
 /* Track Area */
 .track-area {
   flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
   position: relative;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  cursor: text;
+  overflow-x: auto;
+  overflow-y: auto;
+  background: var(--bg-base);
+  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
+  background-size: 100px 100%;
 }
+.track-area::-webkit-scrollbar { width: 10px; height: 10px; }
+.track-area::-webkit-scrollbar-corner { background: var(--bg-panel); }
 .track-area::-webkit-scrollbar { height: 6px; }
 .track-area::-webkit-scrollbar-track { background: var(--bg-base); }
 .track-area::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
@@ -1298,6 +1328,27 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 .clip__resize--right { right: 0; }
 .clip__resize--right::after { right: 3px; }
 .clip__resize:hover::after { background: rgba(255,255,255,0.8); }
+
+/* Transition Button */
+.transition-btn {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 25;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  opacity: 0.8;
+}
+.transition-btn:hover { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
 
 /* Playhead */
 .playhead {

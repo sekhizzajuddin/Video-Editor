@@ -4,7 +4,7 @@
 import { 
   uploadedAssets, playbackState, dom, zoomFactor, selectedClip, setSelectedClip,
   selectedClips, clearSelectedClips, clipDrag, resizeDrag, TOTAL_SECONDS, TOTAL_DURATION,
-  isSpeedModeActive, setSpeedMode, videoElementCache, trackStates,
+  setTotalDuration, isSpeedModeActive, setSpeedMode, videoElementCache, trackStates,
   initTrackState, toggleTrackMute, toggleTrackVisibility, toggleTrackLock
 } from './state.js';
 import { pxPerSec, formatDuration, showToast, clamp, pxToSeconds, secondsToPx } from './utils.js';
@@ -266,6 +266,13 @@ export function addClipToTrack(asset, trackEl, leftPx, options = {}) {
     updateSpeedBadge(clip, options.speed);
   }
 
+  // Dynamic duration expansion
+  const clipEndSec = (leftPx + durationWidth) / pxPerSec();
+  if (clipEndSec > TOTAL_DURATION - 10) {
+    setTotalDuration(TOTAL_DURATION + 30);
+    buildRuler();
+  }
+
   showToast(`Added "${asset.name}" to timeline`, 'success');
   return clip;
 }
@@ -317,6 +324,13 @@ function handleDragMove(clientX) {
   
   clip.style.left = `${finalLeft}px`;
   clip.dataset.startTime = finalLeft / pxPerSec();
+  
+  // Dynamic duration expansion
+  const clipEndSec = (finalLeft + width) / pxPerSec();
+  if (clipEndSec > TOTAL_DURATION - 10) {
+    setTotalDuration(TOTAL_DURATION + 30);
+    buildRuler();
+  }
 }
 
 document.addEventListener('mousemove', (e) => {
@@ -385,8 +399,27 @@ export function initSingleTrackDropZone(trackEl) {
       showToast(`Drop ${asset.type} files onto a ${asset.type === 'audio' ? 'audio' : 'video'} track`, 'warning');
       return;
     }
-    const leftPx = dropPositionX(e, trackEl);
-    addClipToTrack(asset, trackEl, leftPx);
+    let leftPx = dropPositionX(e, trackEl);
+    let targetTrack = trackEl;
+    
+    // Overlap Protection
+    let duration = asset.duration || 5;
+    let durationPx = duration * pxPerSec();
+    let rightPx = leftPx + durationPx;
+    
+    const siblings = Array.from(trackEl.querySelectorAll('.clip'));
+    const isOverlap = siblings.some(c => {
+       const cLeft = getClipLeft(c);
+       const cRight = cLeft + getClipWidth(c);
+       return (leftPx < cRight && rightPx > cLeft);
+    });
+    
+    if (isOverlap) {
+       targetTrack = addNewTrack(trackEl.dataset.track || (asset.type === 'video' ? 'video' : 'audio'));
+       showToast(`Overlap detected: Moved to new track`, 'info');
+    }
+    
+    addClipToTrack(asset, targetTrack, leftPx);
     syncPlayerToTimeline(playbackState.currentTime);
     window.__currentDragId = null;
     window.__currentDragType = null;
@@ -571,6 +604,13 @@ function handleResizeMove(clientX) {
     
     clip.style.left = `${newLeft}px`;
     clip.style.width = `${newWidth}px`;
+    
+    // Dynamic duration expansion
+    const clipEndSec = (newLeft + newWidth) / pxPerSec();
+    if (clipEndSec > TOTAL_DURATION - 10) {
+      setTotalDuration(TOTAL_DURATION + 30);
+      buildRuler();
+    }
     
     const currentTrimWidthPx = (parseFloat(clip.dataset.trimEnd) - parseFloat(clip.dataset.trimStart)) * pxPerSec();
     const newSpeed = currentTrimWidthPx / newWidth;
@@ -786,6 +826,18 @@ export function initTrackControls() {
         showToast(`Track ${locked ? 'locked' : 'unlocked'}`, 'info');
       });
     }
+    
+    const deleteBtn = header.querySelector('.track-delete-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => {
+        if (confirm(`Are you sure you want to delete track ${trackId}?`)) {
+          const trackEl = document.querySelector(`.track[data-track-id="${trackId}"]`);
+          if (trackEl) trackEl.remove();
+          header.remove();
+          showToast(`Track deleted`, 'info');
+        }
+      });
+    }
   });
 }
 
@@ -797,13 +849,14 @@ export function addNewTrack(type = 'video') {
   header.className = 'track-header';
   header.dataset.trackId = trackId;
   header.innerHTML = `
-    <div class="track-header__icon">${type === 'video' ? '🎦' : '🎵'}</div>
+    <div class="track-header__icon">${type === 'video' ? '🎦' : (type === 'text' ? 'T' : (type === 'fx' ? '✨' : '🎵'))}</div>
     <div class="track-header__info">
-      <p class="track-header__name">${type === 'video' ? 'Video' : 'Audio'} ${document.querySelectorAll(`.track--${type}`).length + 1}</p>
+      <p class="track-header__name">${type.charAt(0).toUpperCase() + type.slice(1)} ${document.querySelectorAll(`.track--${type}`).length + 1}</p>
       <div class="track-header__controls">
-        <button class="track-ctrl-btn track-mute-btn" title="Mute">🔇</button>
+        ${type === 'video' || type === 'audio' ? '<button class="track-ctrl-btn track-mute-btn" title="Mute">🔇</button>' : ''}
         <button class="track-ctrl-btn track-visibility-btn track-ctrl-btn--active" title="Visible">👁</button>
         <button class="track-ctrl-btn track-lock-btn" title="Lock">🔓</button>
+        <button class="track-ctrl-btn track-delete-btn" title="Delete Track">🗑️</button>
       </div>
     </div>
   `;
@@ -848,6 +901,15 @@ export function addNewTrack(type = 'video') {
     lockBtn.classList.toggle('track-ctrl-btn--active', locked);
     showToast(`Track ${locked ? 'locked' : 'unlocked'}`, 'info');
   });
+  
+  const deleteBtn = header.querySelector('.track-delete-btn');
+  deleteBtn?.addEventListener('click', () => {
+    if (confirm(`Are you sure you want to delete this track?`)) {
+      track.remove();
+      header.remove();
+      showToast(`Track deleted`, 'info');
+    }
+  });
 
   showToast(`Added new ${type} track`, 'success');
   
@@ -876,6 +938,33 @@ export function refreshTimelineLayout() {
     if (durEl) durEl.textContent = formatDuration(duration);
   });
   
+  // Render transitions
+  document.querySelectorAll('.transition-btn').forEach(btn => btn.remove());
+  document.querySelectorAll('.track').forEach(track => {
+    const clips = Array.from(track.querySelectorAll('.clip'))
+      .sort((a, b) => getClipLeft(a) - getClipLeft(b));
+    
+    for (let i = 0; i < clips.length - 1; i++) {
+      const c1 = clips[i];
+      const c2 = clips[i+1];
+      const c1Right = getClipLeft(c1) + getClipWidth(c1);
+      const c2Left = getClipLeft(c2);
+      
+      if (Math.abs(c2Left - c1Right) < 5) {
+        const btn = document.createElement('div');
+        btn.className = 'transition-btn';
+        btn.innerHTML = '+';
+        btn.style.left = `${c1Right}px`;
+        
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showTransitionMenu(c1, c2, e.clientX, e.clientY);
+        });
+        track.appendChild(btn);
+      }
+    }
+  });
+
   // Rebuild ruler
   buildRuler();
   
@@ -883,6 +972,45 @@ export function refreshTimelineLayout() {
   if (dom.playheadEl) {
     dom.playheadEl.style.left = `${playbackState.currentTime * pps}px`;
   }
+}
+
+let activeTransitionClips = null;
+function showTransitionMenu(clip1, clip2, x, y) {
+  if (!dom.transitionSelector) return;
+  activeTransitionClips = { clip1, clip2 };
+  
+  dom.transitionSelector.style.display = 'block';
+  dom.transitionSelector.style.left = `${x}px`;
+  dom.transitionSelector.style.top = `${y}px`;
+}
+
+document.addEventListener('click', (e) => {
+  if (dom.transitionSelector && !e.target.closest('.transition-btn') && !e.target.closest('#transitionSelector')) {
+    dom.transitionSelector.style.display = 'none';
+  }
+});
+
+// Setup transition menu click listeners
+export function initTransitionMenu() {
+  if (!dom.transitionSelector) return;
+  dom.transitionSelector.querySelectorAll('.context-menu__item').forEach(item => {
+    item.addEventListener('click', () => {
+      const type = item.dataset.transition;
+      if (activeTransitionClips) {
+        const { clip1, clip2 } = activeTransitionClips;
+        if (type === 'none') {
+          delete clip1.dataset.transitionOut;
+          delete clip2.dataset.transitionIn;
+          showToast('Transition removed', 'info');
+        } else {
+          clip1.dataset.transitionOut = type;
+          clip2.dataset.transitionIn = type;
+          showToast(`Applied ${type} transition`, 'success');
+        }
+      }
+      dom.transitionSelector.style.display = 'none';
+    });
+  });
 }
 
 export function getAllClips() {

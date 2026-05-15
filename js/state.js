@@ -17,6 +17,11 @@ export const BASE_PX_PER_SEC = 50;
 export let TOTAL_DURATION = 120;
 export let TOTAL_SECONDS = 120;
 
+export function setTotalDuration(newDuration) {
+  TOTAL_DURATION = newDuration;
+  TOTAL_SECONDS = newDuration;
+}
+
 // ── Project Settings ──
 export const projectSettings = {
   resolution: { width: 1920, height: 1080 },
@@ -281,6 +286,9 @@ const domMapping = {
   trimPanel: 'trimPanel',
   speedPanel: 'speedPanel',
   volumePanel: 'volumePanel',
+  cropPanel: 'cropPanel',
+  btnCropApply: 'btnCropApply',
+  btnCropClose: 'btnCropClose',
   trimStartInput: 'trimStart',
   trimEndInput: 'trimEnd',
   speedInput: 'speedInput',
@@ -301,6 +309,9 @@ const domMapping = {
   playerPlaceholder: 'playerPlaceholder',
   playerScreen: 'playerScreen',
   playerControls: 'playerControls',
+  timeline: 'timeline',
+  timelineResizer: 'timelineResizer',
+  transitionSelector: 'transitionSelector',
   textOverlayLayer: 'textOverlayLayer',
   cropOverlay: 'cropOverlay',
   customTextInput: 'customTextInput',

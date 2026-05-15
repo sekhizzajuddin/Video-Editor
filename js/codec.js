@@ -12,15 +12,22 @@ export function renderVideoFrame(ctx, canvas, video, crop = null) {
   const canvasRatio = canvas.width / canvas.height;
   
   let renderWidth, renderHeight, offsetX, offsetY;
+  let activeRatio = videoRatio;
+
+  if (crop) {
+    const sw = (crop.width / 100) * video.videoWidth;
+    const sh = (crop.height / 100) * video.videoHeight;
+    activeRatio = sw / sh;
+  }
   
-  if (videoRatio > canvasRatio) {
+  if (activeRatio > canvasRatio) {
     renderWidth = canvas.width;
-    renderHeight = canvas.width / videoRatio;
+    renderHeight = canvas.width / activeRatio;
     offsetX = 0;
     offsetY = (canvas.height - renderHeight) / 2;
   } else {
     renderHeight = canvas.height;
-    renderWidth = canvas.height * videoRatio;
+    renderWidth = canvas.height * activeRatio;
     offsetX = (canvas.width - renderWidth) / 2;
     offsetY = 0;
   }
@@ -57,15 +64,22 @@ export function renderImageFrame(ctx, canvas, img, crop = null) {
   const canvasRatio = canvas.width / canvas.height;
   
   let renderWidth, renderHeight, offsetX, offsetY;
+  let activeRatio = imgRatio;
+
+  if (crop) {
+    const sw = (crop.width / 100) * img.naturalWidth;
+    const sh = (crop.height / 100) * img.naturalHeight;
+    activeRatio = sw / sh;
+  }
   
-  if (imgRatio > canvasRatio) {
+  if (activeRatio > canvasRatio) {
     renderWidth = canvas.width;
-    renderHeight = canvas.width / imgRatio;
+    renderHeight = canvas.width / activeRatio;
     offsetX = 0;
     offsetY = (canvas.height - renderHeight) / 2;
   } else {
     renderHeight = canvas.height;
-    renderWidth = canvas.height * imgRatio;
+    renderWidth = canvas.height * activeRatio;
     offsetX = (canvas.width - renderWidth) / 2;
     offsetY = 0;
   }
