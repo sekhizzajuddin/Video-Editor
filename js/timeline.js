@@ -267,11 +267,7 @@ export function addClipToTrack(asset, trackEl, leftPx, options = {}) {
   }
 
   // Dynamic duration expansion
-  const clipEndSec = (leftPx + durationWidth) / pxPerSec();
-  if (clipEndSec > TOTAL_DURATION - 10) {
-    setTotalDuration(TOTAL_DURATION + 30);
-    buildRuler();
-  }
+  updateTimelineDuration();
 
   showToast(`Added "${asset.name}" to timeline`, 'success');
   return clip;
@@ -325,12 +321,7 @@ function handleDragMove(clientX) {
   clip.style.left = `${finalLeft}px`;
   clip.dataset.startTime = finalLeft / pxPerSec();
   
-  // Dynamic duration expansion
-  const clipEndSec = (finalLeft + width) / pxPerSec();
-  if (clipEndSec > TOTAL_DURATION - 10) {
-    setTotalDuration(TOTAL_DURATION + 30);
-    buildRuler();
-  }
+  updateTimelineDuration();
 }
 
 document.addEventListener('mousemove', (e) => {
@@ -605,12 +596,7 @@ function handleResizeMove(clientX) {
     clip.style.left = `${newLeft}px`;
     clip.style.width = `${newWidth}px`;
     
-    // Dynamic duration expansion
-    const clipEndSec = (newLeft + newWidth) / pxPerSec();
-    if (clipEndSec > TOTAL_DURATION - 10) {
-      setTotalDuration(TOTAL_DURATION + 30);
-      buildRuler();
-    }
+    updateTimelineDuration();
     
     const currentTrimWidthPx = (parseFloat(clip.dataset.trimEnd) - parseFloat(clip.dataset.trimStart)) * pxPerSec();
     const newSpeed = currentTrimWidthPx / newWidth;
@@ -965,6 +951,9 @@ export function refreshTimelineLayout() {
     }
   });
 
+  // Update dynamic duration based on content/viewport
+  updateTimelineDuration();
+
   // Rebuild ruler
   buildRuler();
   
@@ -1011,6 +1000,34 @@ export function initTransitionMenu() {
       dom.transitionSelector.style.display = 'none';
     });
   });
+}
+
+export function updateTimelineDuration() {
+  if (!dom.trackArea) return;
+  const pps = pxPerSec();
+  
+  // 1. Calculate max content end
+  let maxEnd = 0;
+  document.querySelectorAll('.clip').forEach(clip => {
+    const start = parseFloat(clip.dataset.startTime || 0);
+    const trimStart = parseFloat(clip.dataset.trimStart || 0);
+    const trimEnd = parseFloat(clip.dataset.trimEnd || 0);
+    const speed = parseFloat(clip.dataset.speed || 1);
+    const duration = (trimEnd - trimStart) / speed;
+    maxEnd = Math.max(maxEnd, start + duration);
+  });
+  
+  // 2. Calculate visible duration (min width should cover the screen)
+  const visibleDuration = (dom.trackArea.clientWidth || window.innerWidth) / pps;
+  
+  // 3. Set total duration (padding only if there's content to allow scrolling past)
+  const padding = maxEnd > 0 ? 10 : 0;
+  const newDuration = Math.max(visibleDuration, maxEnd + padding);
+  
+  if (Math.abs(TOTAL_DURATION - newDuration) > 0.1) {
+    setTotalDuration(newDuration);
+    // Note: buildRuler is usually called by the caller (refreshTimelineLayout)
+  }
 }
 
 export function getAllClips() {
