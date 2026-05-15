@@ -13,7 +13,7 @@ try { require('dotenv').config(); } catch (e) {}
 
 const app = express();
 const PORT = process.env.PORT || 8082;
-let PROJECTS_DIR = process.env.PROJECTS_DIR || path.join(__dirname, 'projects');
+let PROJECTS_DIR = process.env.PROJECTS_DIR || path.join(__dirname, '..', 'projects');
 
 // If running in Vercel or AWS Lambda, __dirname is read-only, use /tmp
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
@@ -162,22 +162,7 @@ app.delete('/api/projects/:id', (req, res) => {
   }
 });
 
-// ── Static File Serving ──
-// Serve static files from the root directory
-app.use(express.static(__dirname, {
-  maxAge: '1h',
-  setHeaders: (res, path) => {
-    if (path.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    }
-  }
-}));
-
-// SPA Fallback: Serve index.html for any non-API routes that don't match a file
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) return res.status(404).json({ success: false, error: 'API route not found' });
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+// ── Static serving is handled by Vercel for the /public directory ──
 
 // ── Error Handler ──
 app.use((err, req, res, next) => {
@@ -185,29 +170,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: 'Internal server error' });
 });
 
-// ── Start Server ──
-app.listen(PORT, () => {
-  const env = process.env.NODE_ENV || 'development';
-  console.log(`
-╔══════════════════════════════════════════════════════════╗
-║                                                          ║
-║   🎬 VidForge Pro v2.0 — Full-Stack Video Editor         ║
-║                                                          ║
-║   🌐 App:     http://localhost:${PORT}/                    ║
-║   📡 API:     http://localhost:${PORT}/api/                ║
-║   💾 Storage: ${PROJECTS_DIR}  ║
-║   ⚙️  Mode:    ${env.padEnd(10)}                           ║
-║                                                          ║
-╚══════════════════════════════════════════════════════════╝
-  `);
-});
+// ── Start Server (Local Only) ──
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🎬 VidForge Pro API listening on http://localhost:${PORT}`);
+  });
+}
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received — shutting down gracefully');
-  process.exit(0);
-});
-process.on('SIGINT', () => {
-  console.log('\nSIGINT received — shutting down');
-  process.exit(0);
-});
+// Export for Vercel
+module.exports = app;
