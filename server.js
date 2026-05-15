@@ -13,12 +13,26 @@ try { require('dotenv').config(); } catch (e) {}
 
 const app = express();
 const PORT = process.env.PORT || 8082;
-const PROJECTS_DIR = path.join(__dirname, 'projects');
+let PROJECTS_DIR = process.env.PROJECTS_DIR || path.join(__dirname, 'projects');
+
+// If running in Vercel or AWS Lambda, __dirname is read-only, use /tmp
+if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+  PROJECTS_DIR = path.join('/tmp', 'projects');
+}
 
 // Ensure projects directory exists
-if (!fs.existsSync(PROJECTS_DIR)) {
-  fs.mkdirSync(PROJECTS_DIR, { recursive: true });
-  console.log('📁 Created projects directory');
+try {
+  if (!fs.existsSync(PROJECTS_DIR)) {
+    fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+    console.log(`📁 Created projects directory at ${PROJECTS_DIR}`);
+  }
+} catch (err) {
+  console.warn(`⚠️ Could not create projects directory at ${PROJECTS_DIR}: ${err.message}`);
+  console.warn('⚠️ Falling back to /tmp/projects');
+  PROJECTS_DIR = path.join('/tmp', 'projects');
+  if (!fs.existsSync(PROJECTS_DIR)) {
+    fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+  }
 }
 
 // ── Middleware ──
