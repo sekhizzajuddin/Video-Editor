@@ -162,85 +162,21 @@ app.delete('/api/projects/:id', (req, res) => {
   }
 });
 
-// ── Static File Serving with Range Support ──
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.mjs': 'application/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.ogg': 'video/ogg',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.aac': 'audio/aac',
-  '.flac': 'audio/flac',
-};
-
-// Serve static files with range support for media
-app.use((req, res, next) => {
-  // Only handle GET requests for static files, skip API routes
-  if (req.path.startsWith('/api/')) return next();
-  
-  let filePath = path.join(__dirname, req.path === '/' ? 'index.html' : req.path);
-  
-  // Security: prevent path traversal
-  if (!filePath.startsWith(__dirname)) {
-    return res.status(403).send('Forbidden');
-  }
-  
-  const ext = path.extname(filePath).toLowerCase();
-  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-  const isMedia = ['.mp4', '.webm', '.ogg', '.mp3', '.wav', '.aac', '.flac'].includes(ext);
-  
-  if (!fs.existsSync(filePath)) {
-    // SPA fallback
-    filePath = path.join(__dirname, 'index.html');
-  }
-  
-  if (isMedia) {
-    const stat = fs.statSync(filePath);
-    const range = req.headers.range;
-    
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-      const chunksize = end - start + 1;
-      
-      res.writeHead(206, {
-        'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': contentType
-      });
-      fs.createReadStream(filePath, { start, end }).pipe(res);
-    } else {
-      res.writeHead(200, {
-        'Content-Length': stat.size,
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes'
-      });
-      fs.createReadStream(filePath).pipe(res);
+// ── Static File Serving ──
+// Serve static files from the root directory
+app.use(express.static(__dirname, {
+  maxAge: '1h',
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
-    return;
   }
-  
-  const cacheControl = ext === '.html' ? 'no-cache, no-store, must-revalidate' : 'public, max-age=3600';
-  res.set('Content-Type', contentType);
-  res.set('Cache-Control', cacheControl);
-  res.sendFile(filePath);
+}));
+
+// SPA Fallback: Serve index.html for any non-API routes that don't match a file
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ success: false, error: 'API route not found' });
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // ── Error Handler ──
