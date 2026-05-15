@@ -2,10 +2,10 @@
   "name": "vidforge-pro",
   "version": "2.0.0",
   "description": "VidForge Pro — Enterprise Video Editor",
-  "main": "server.js",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node api/index.js",
+    "dev": "node api/index.js",
     "test": "echo \"No tests configured\" && exit 0"
   },
   "keywords": ["video-editor", "vidforge", "browser-based"],

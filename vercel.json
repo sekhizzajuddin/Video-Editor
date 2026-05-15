@@ -1,11 +1,12 @@
 {
   "version": 2,
   "functions": {
-    "server.js": {
-      "includeFiles": "{index.html,style.css,js/**}"
+    "api/index.js": {
+      "includeFiles": "../{index.html,style.css,js/**}"
     }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/server.js" }
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/(.*)", "destination": "/api/index.js" }
   ]
 }

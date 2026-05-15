@@ -13,7 +13,7 @@ try { require('dotenv').config(); } catch (e) {}
 
 const app = express();
 const PORT = process.env.PORT || 8082;
-let PROJECTS_DIR = process.env.PROJECTS_DIR || path.join(__dirname, 'projects');
+let PROJECTS_DIR = process.env.PROJECTS_DIR || path.join(__dirname, '..', 'projects');
 
 // If running in Vercel or AWS Lambda, __dirname is read-only, use /tmp
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
@@ -163,12 +163,13 @@ app.delete('/api/projects/:id', (req, res) => {
 });
 
 // ── Static File Serving ──
-app.use(express.static(__dirname));
+const root = path.join(__dirname, '..');
+app.use(express.static(root));
 
-// SPA Fallback: Serve index.html for any non-API routes
+// SPA Fallback
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ success: false, error: 'API route not found' });
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(root, 'index.html'));
 });
 
 // ── Error Handler ──
