@@ -10,7 +10,8 @@ import {
 } from './state.js';
 import { 
   makeClipDraggable, makeClipResizable, selectClip, addClipToTrack,
-  applySpeedToClip, updateTrimInputs, getClipLeft, getClipWidth, addNewTrack
+  applySpeedToClip, updateTrimInputs, getClipLeft, getClipWidth, addNewTrack,
+  refreshTimelineLayout
 } from './timeline.js';
 import { pxPerSec, showToast, formatDuration, clamp, downloadBlob, autoSaveProject } from './utils.js';
 import { syncPlayerToTimeline, stopPlayback, jumpToStart, jumpToEnd, rewind, fastForward } from './engine.js';
@@ -170,6 +171,7 @@ export function handleSplit() {
   
   selectedClip.remove();
   selectClip(clipB);
+  refreshTimelineLayout();
   showToast('Clip split at playhead ✓', 'success');
 }
 
@@ -186,6 +188,7 @@ export function handleDelete() {
   pushHistory({ type: 'delete', clip, track });
   clip.remove();
   selectClip(null);
+  refreshTimelineLayout();
   showToast('🗑 Clip deleted', 'info');
 }
 

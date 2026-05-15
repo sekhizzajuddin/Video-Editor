@@ -62,6 +62,11 @@ function init() {
   
   showToast('VidForge Pro Editor Ready!', 'success');
   console.log('🎬 VidForge Pro Editor initialized');
+  
+  // Initial layout refresh to set dynamic duration
+  setTimeout(() => {
+    refreshTimelineLayout();
+  }, 100);
 }
 
 // ── Tab Switching ──

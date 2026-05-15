@@ -14,8 +14,8 @@ export const imageElementCache = new Map();
 
 // ── Timeline Constants ──
 export const BASE_PX_PER_SEC = 50;
-export let TOTAL_DURATION = 120;
-export let TOTAL_SECONDS = 120;
+export let TOTAL_DURATION = 30;
+export let TOTAL_SECONDS = 30;
 
 export function setTotalDuration(newDuration) {
   TOTAL_DURATION = newDuration;
