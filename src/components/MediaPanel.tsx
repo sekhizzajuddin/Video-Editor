@@ -61,10 +61,7 @@ export function MediaPanel() {
 
   const handleMediaDrag = (e: React.DragEvent, mediaId: string) => {
     e.dataTransfer.setData('mediaId', mediaId);
-    const media = project.media.find(m => m.id === mediaId);
-    if (media) {
-      e.dataTransfer.effectAllowed = 'copy';
-    }
+    e.dataTransfer.effectAllowed = 'copy';
   };
 
   const filteredMedia = project.media.filter(m => {
@@ -72,6 +69,9 @@ export function MediaPanel() {
     if (activeTab === 'audio') return m.type === 'audio';
     return false;
   });
+
+  const textClips = project.tracks.find(t => t.type === 'text')?.clips || [];
+  const stickerClips = project.tracks.find(t => t.type === 'sticker')?.clips || [];
 
   return (
     <div className="media-panel">
@@ -211,6 +211,22 @@ export function MediaPanel() {
             <button className="btn btn-primary" onClick={() => addClip('text')}>
               + Add Text
             </button>
+            {textClips.length > 0 && (
+              <div className="media-grid">
+                {textClips.map((clip) => (
+                  <div
+                    key={clip.id}
+                    className="media-item"
+                    style={{ aspectRatio: '16/9', background: 'linear-gradient(135deg, #F59E0B, #B45309)' }}
+                    onClick={() => useEditorStore.getState().setSelectedClip(clip.id)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 14, color: 'white', padding: 8, textAlign: 'center' }}>
+                      {clip.text?.slice(0, 20) || 'Text'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
               Click to add a text layer to your timeline
             </p>
@@ -219,48 +235,39 @@ export function MediaPanel() {
 
         {activeTab === 'stickers' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <button className="btn btn-primary" onClick={() => {}}>
+              Click an emoji to add
+            </button>
             <div className="emoji-grid">
               {EMOJIS.map((emoji, i) => (
                 <button
                   key={i}
                   className="emoji-btn"
-                  onClick={() => {
-                    const clip = useEditorStore.getState().project.tracks.find(t => t.type === 'sticker');
-                    if (clip) {
-                      useEditorStore.setState((state: any) => ({
-                        project: {
-                          ...state.project,
-                          tracks: state.project.tracks.map((t: any) =>
-                            t.type === 'sticker'
-                              ? {
-                                  ...t,
-                                  clips: [...t.clips, {
-                                    id: uuid(),
-                                    trackType: 'sticker',
-                                    trackId: t.id,
-                                    startTime: state.currentTime,
-                                    duration: 3,
-                                    trimStart: 0,
-                                    trimEnd: 3,
-                                    volume: 100,
-                                    speed: 1,
-                                    muted: false,
-                                    sticker: emoji,
-                                    x: 50,
-                                    y: 50,
-                                  }]
-                                }
-                              : t
-                          )
-                        }
-                      }));
-                    }
-                  }}
+                  onClick={() => addClip('sticker', undefined, emoji)}
                 >
                   {emoji}
                 </button>
               ))}
             </div>
+            {stickerClips.length > 0 && (
+              <>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>Recent stickers:</p>
+                <div className="media-grid">
+                  {stickerClips.slice(-4).map((clip) => (
+                    <div
+                      key={clip.id}
+                      className="media-item"
+                      style={{ aspectRatio: '1', background: 'linear-gradient(135deg, #EC4899, #BE185D)', cursor: 'pointer' }}
+                      onClick={() => useEditorStore.getState().setSelectedClip(clip.id)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 32 }}>
+                        {clip.sticker}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

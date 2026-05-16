@@ -42,7 +42,7 @@ export interface Clip {
     preset: string;
   };
   transition?: {
-    type: 'fade' | 'dissolve' | 'crossfade';
+    type: 'none' | 'fadein' | 'fadeout' | 'dissolve' | 'crossfade';
     duration: number;
   };
   x?: number;

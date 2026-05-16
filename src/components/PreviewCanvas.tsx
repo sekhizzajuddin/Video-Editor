@@ -1,50 +1,142 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { formatTime } from '../utils/fileUtils';
 
 export function PreviewCanvas() {
   const { project, currentTime, isPlaying, setCurrentTime, setIsPlaying } = useEditorStore();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [currentVideoClip, setCurrentVideoClip] = useState<any>(null);
+  const [currentImageClip, setCurrentImageClip] = useState<any>(null);
+  const [currentAudioClip, setCurrentAudioClip] = useState<any>(null);
+  const videoUrlRef = useRef<string | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const imageUrlRef = useRef<string | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current);
+    };
+  }, []);
 
   const videoTrack = project.tracks.find(t => t.type === 'video');
+  const audioTrack = project.tracks.find(t => t.type === 'audio');
   const textTrack = project.tracks.find(t => t.type === 'text');
   const stickerTrack = project.tracks.find(t => t.type === 'sticker');
 
-  useEffect(() => {
-    if (!videoTrack) return;
-    
-    const clip = videoTrack.clips.find(c => 
-      currentTime >= c.startTime && currentTime < c.startTime + c.duration
+  const findClipAtTime = useCallback((track: any, time: number) => {
+    return track?.clips.find(c =>
+      time >= c.startTime && time < c.startTime + c.duration
     );
-    
-    setCurrentVideoClip(clip || null);
-  }, [currentTime, videoTrack]);
+  }, []);
+
+  useEffect(() => {
+    if (!videoTrack) { setCurrentVideoClip(null); setCurrentImageClip(null); return; }
+    const clip = findClipAtTime(videoTrack, currentTime);
+    if (clip) {
+      const media = project.media.find(m => m.id === clip.mediaId);
+      if (media?.type === 'image') {
+        setCurrentImageClip(clip);
+        setCurrentVideoClip(null);
+      } else {
+        setCurrentVideoClip(clip);
+        setCurrentImageClip(null);
+      }
+    } else {
+      setCurrentVideoClip(null);
+      setCurrentImageClip(null);
+    }
+  }, [currentTime, videoTrack, project.media, findClipAtTime]);
+
+  useEffect(() => {
+    if (!audioTrack) { setCurrentAudioClip(null); return; }
+    const clip = findClipAtTime(audioTrack, currentTime);
+    setCurrentAudioClip(clip || null);
+  }, [currentTime, audioTrack, findClipAtTime]);
 
   useEffect(() => {
     if (videoRef.current && currentVideoClip?.mediaId) {
       const media = project.media.find(m => m.id === currentVideoClip.mediaId);
       if (media) {
+        if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
         const url = URL.createObjectURL(media.blob);
+        videoUrlRef.current = url;
         videoRef.current.src = url;
-        
         const clipTime = currentTime - currentVideoClip.startTime + currentVideoClip.trimStart;
-        videoRef.current.currentTime = clipTime / currentVideoClip.speed;
-        
-        return () => URL.revokeObjectURL(url);
+        const seekTime = clipTime / currentVideoClip.speed;
+        if (Math.abs(videoRef.current.currentTime - seekTime) > 0.5) {
+          videoRef.current.currentTime = seekTime;
+        }
+        if (isPlaying) {
+          videoRef.current.play().catch(() => {});
+        } else {
+          videoRef.current.pause();
+        }
       }
+    } else if (videoRef.current) {
+      videoRef.current.pause();
     }
-  }, [currentVideoClip, project.media]);
+  }, [currentVideoClip, project.media, isPlaying, currentTime]);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setCurrentTime(currentTime + 0.1);
-      }, 100);
+    if (audioRef.current && currentAudioClip?.mediaId) {
+      const media = project.media.find(m => m.id === currentAudioClip.mediaId);
+      if (media) {
+        if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+        const url = URL.createObjectURL(media.blob);
+        audioUrlRef.current = url;
+        audioRef.current.src = url;
+        const clipTime = currentTime - currentAudioClip.startTime + currentAudioClip.trimStart;
+        const seekTime = clipTime / currentAudioClip.speed;
+        if (Math.abs(audioRef.current.currentTime - seekTime) > 0.5) {
+          audioRef.current.currentTime = seekTime;
+        }
+        audioRef.current.volume = (currentAudioClip.volume / 100) * (currentAudioClip.muted ? 0 : 1);
+        if (isPlaying) {
+          audioRef.current.play().catch(() => {});
+        } else {
+          audioRef.current.pause();
+        }
+      }
+    } else if (audioRef.current) {
+      audioRef.current.pause();
     }
-    return () => clearInterval(interval);
-  }, [isPlaying, currentTime, setCurrentTime]);
+  }, [currentAudioClip, project.media, isPlaying, currentTime]);
+
+  useEffect(() => {
+    let lastTime = performance.now();
+    let accumulatedTime = currentTime;
+
+    const tick = (now: number) => {
+      if (!isPlaying) return;
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+      accumulatedTime += delta;
+
+      if (accumulatedTime >= project.duration) {
+        setIsPlaying(false);
+        setCurrentTime(project.duration);
+        return;
+      }
+
+      setCurrentTime(accumulatedTime);
+      animationFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    if (isPlaying) {
+      lastTime = performance.now();
+      animationFrameRef.current = requestAnimationFrame(tick);
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlaying, project.duration, setCurrentTime, setIsPlaying]);
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
@@ -54,13 +146,26 @@ export function PreviewCanvas() {
     setCurrentTime(parseFloat(e.target.value));
   };
 
-  const textClips = textTrack?.clips.filter(c => 
+  const textClips = textTrack?.clips.filter(c =>
     currentTime >= c.startTime && currentTime < c.startTime + c.duration
   ) || [];
 
-  const stickerClips = stickerTrack?.clips.filter(c => 
+  const stickerClips = stickerTrack?.clips.filter(c =>
     currentTime >= c.startTime && currentTime < c.startTime + c.duration
   ) || [];
+
+  const getFilterStyle = (filters: any) => {
+    if (!filters) return 'none';
+    let filterStr = '';
+    if (filters.brightness !== 0) filterStr += `brightness(${1 + filters.brightness/100}) `;
+    if (filters.contrast !== 0) filterStr += `contrast(${1 + filters.contrast/100}) `;
+    if (filters.saturation !== 0) filterStr += `saturate(${1 + filters.saturation/100}) `;
+    if (filters.preset === 'vintage') filterStr += 'sepia(0.4) contrast(1.1) ';
+    if (filters.preset === 'cool') filterStr += 'hue-rotate(20deg) saturate(1.2) ';
+    if (filters.preset === 'warm') filterStr += 'sepia(0.3) saturate(1.3) ';
+    if (filters.preset === 'bw') filterStr += 'grayscale(1) ';
+    return filterStr || 'none';
+  };
 
   return (
     <div className="preview-container">
@@ -78,21 +183,30 @@ export function PreviewCanvas() {
           {currentVideoClip ? (
             <video
               ref={videoRef}
-              style={{
-                filter: currentVideoClip.filters ? 
-                  `brightness(${1 + currentVideoClip.filters.brightness/100}) ` +
-                  `contrast(${1 + currentVideoClip.filters.contrast/100}) ` +
-                  `saturate(${1 + currentVideoClip.filters.saturation/100})`
-                  : 'none'
-              }}
-              muted
+              style={{ filter: getFilterStyle(currentVideoClip.filters) }}
+              muted={false}
+              playsInline
             />
+          ) : currentImageClip ? (
+            (() => {
+              const media = project.media.find(m => m.id === currentImageClip.mediaId);
+              if (!media) return null;
+              if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current);
+              imageUrlRef.current = URL.createObjectURL(media.blob);
+              return (
+                <img
+                  src={imageUrlRef.current}
+                  alt=""
+                  style={{ filter: getFilterStyle(currentImageClip.filters) }}
+                />
+              );
+            })()
           ) : (
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              height: '100%', 
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
               color: 'var(--text-muted)',
               fontSize: 48,
               flexDirection: 'column',
@@ -102,10 +216,10 @@ export function PreviewCanvas() {
               <span style={{ fontSize: 14 }}>Add media to preview</span>
             </div>
           )}
-          
+
           {textClips.map((clip) => (
             <div key={clip.id} className="preview-text-overlay">
-              <div 
+              <div
                 className="preview-text-content"
                 style={{
                   fontFamily: clip.textStyle?.fontFamily,
@@ -138,6 +252,8 @@ export function PreviewCanvas() {
         </div>
       </div>
 
+      <audio ref={audioRef} />
+
       <div className="playback-controls">
         <button className="btn btn-icon btn-ghost" onClick={() => setCurrentTime(Math.max(0, currentTime - 5))}>
           ⏮
@@ -145,14 +261,14 @@ export function PreviewCanvas() {
         <button className="play-btn" onClick={handlePlayPause}>
           {isPlaying ? '⏸' : '▶'}
         </button>
-        <button className="btn btn-icon btn-ghost" onClick={() => setCurrentTime(currentTime + 5)}>
+        <button className="btn btn-icon btn-ghost" onClick={() => setCurrentTime(Math.min(project.duration, currentTime + 5))}>
           ⏭
         </button>
-        
+
         <div className="time-display">
           {formatTime(currentTime)} / {formatTime(project.duration)}
         </div>
-        
+
         <input
           type="range"
           className="slider"

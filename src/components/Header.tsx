@@ -4,7 +4,7 @@ import { saveProject } from '../utils/fileUtils';
 import { ExportModal } from './ExportModal';
 
 export function Header() {
-  const { project, setProjectName } = useEditorStore();
+  const { project, setProjectName, undo, redo, historyIndex, history } = useEditorStore();
   const [showExport, setShowExport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
@@ -21,6 +21,9 @@ export function Header() {
     setSaving(false);
   };
 
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
   return (
     <>
       <header className="header">
@@ -33,9 +36,29 @@ export function Header() {
             onChange={(e) => setProjectName(e.target.value)}
           />
         </div>
+        <div className="header-center" style={{ display: 'flex', gap: 4 }}>
+          <button
+            className="btn btn-ghost btn-icon"
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+            style={{ opacity: canUndo ? 1 : 0.4 }}
+          >
+            ↩
+          </button>
+          <button
+            className="btn btn-ghost btn-icon"
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+            style={{ opacity: canRedo ? 1 : 0.4 }}
+          >
+            ↪
+          </button>
+        </div>
         <div className="header-right">
           <button className="btn btn-secondary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : showSaved ? '✓ Saved' : 'Save Project'}
+            {saving ? 'Saving...' : showSaved ? '✓ Saved' : 'Save'}
           </button>
           <button className="btn btn-primary" onClick={() => setShowExport(true)}>
             Export

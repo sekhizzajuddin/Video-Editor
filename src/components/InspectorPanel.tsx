@@ -21,12 +21,13 @@ const FILTER_PRESETS = [
 
 const SPEEDS = [0.25, 0.5, 1, 1.5, 2];
 
-const defaultFilters = {
-  brightness: 0,
-  contrast: 0,
-  saturation: 0,
-  preset: 'none'
-};
+const TRANSITION_TYPES = [
+  { name: 'None', value: 'none' },
+  { name: 'Fade In', value: 'fadein' },
+  { name: 'Fade Out', value: 'fadeout' },
+  { name: 'Dissolve', value: 'dissolve' },
+  { name: 'Crossfade', value: 'crossfade' },
+];
 
 export function InspectorPanel() {
   const { getSelectedClip, updateClip, removeClip } = useEditorStore();
@@ -44,6 +45,18 @@ export function InspectorPanel() {
       </div>
     );
   }
+
+  const updateFilters = (updates: Partial<typeof clip.filters>) => {
+    updateClip(clip.id, {
+      filters: { ...clip.filters, ...updates }
+    });
+  };
+
+  const updateTransition = (updates: Partial<typeof clip.transition>) => {
+    updateClip(clip.id, {
+      transition: { ...clip.transition, ...updates }
+    });
+  };
 
   return (
     <div className="inspector-panel">
@@ -67,9 +80,7 @@ export function InspectorPanel() {
                   min={-100}
                   max={100}
                   value={clip.filters?.brightness || 0}
-                  onChange={(e) => updateClip(clip.id, {
-                    filters: { ...defaultFilters, ...clip.filters, brightness: parseInt(e.target.value) }
-                  })}
+                  onChange={(e) => updateFilters({ brightness: parseInt(e.target.value) })}
                 />
                 <span className="slider-value">{clip.filters?.brightness || 0}</span>
               </div>
@@ -83,9 +94,7 @@ export function InspectorPanel() {
                   min={-100}
                   max={100}
                   value={clip.filters?.contrast || 0}
-                  onChange={(e) => updateClip(clip.id, {
-                    filters: { ...defaultFilters, ...clip.filters, contrast: parseInt(e.target.value) }
-                  })}
+                  onChange={(e) => updateFilters({ contrast: parseInt(e.target.value) })}
                 />
                 <span className="slider-value">{clip.filters?.contrast || 0}</span>
               </div>
@@ -99,9 +108,7 @@ export function InspectorPanel() {
                   min={-100}
                   max={100}
                   value={clip.filters?.saturation || 0}
-                  onChange={(e) => updateClip(clip.id, {
-                    filters: { ...defaultFilters, ...clip.filters, saturation: parseInt(e.target.value) }
-                  })}
+                  onChange={(e) => updateFilters({ saturation: parseInt(e.target.value) })}
                 />
                 <span className="slider-value">{clip.filters?.saturation || 0}</span>
               </div>
@@ -113,9 +120,7 @@ export function InspectorPanel() {
                   <button
                     key={preset.value}
                     className={`preset-btn ${clip.filters?.preset === preset.value ? 'active' : ''}`}
-                    onClick={() => updateClip(clip.id, {
-                      filters: { ...defaultFilters, ...clip.filters, preset: preset.value }
-                    })}
+                    onClick={() => updateFilters({ preset: preset.value })}
                   >
                     {preset.name}
                   </button>
@@ -136,6 +141,37 @@ export function InspectorPanel() {
                   {speed}x
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="inspector-section">
+            <div className="inspector-section-title">Transition</div>
+            <div className="inspector-row">
+              <span className="inspector-label">Type</span>
+              <select
+                className="select"
+                value={clip.transition?.type || 'none'}
+                onChange={(e) => updateTransition({ type: e.target.value as any })}
+              >
+                {TRANSITION_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="inspector-row">
+              <span className="inspector-label">Duration</span>
+              <div className="inspector-value">
+                <input
+                  type="range"
+                  className="slider"
+                  min={0.1}
+                  max={2}
+                  step={0.1}
+                  value={clip.transition?.duration || 0.5}
+                  onChange={(e) => updateTransition({ duration: parseFloat(e.target.value) })}
+                />
+                <span className="slider-value">{clip.transition?.duration || 0.5}s</span>
+              </div>
             </div>
           </div>
         </>
@@ -179,7 +215,7 @@ export function InspectorPanel() {
             onChange={(e) => updateClip(clip.id, { text: e.target.value })}
             placeholder="Enter your text..."
           />
-          
+
           <div className="inspector-section-title" style={{ marginTop: 16 }}>Typography</div>
           <div className="inspector-row">
             <span className="inspector-label">Font</span>
@@ -257,6 +293,43 @@ export function InspectorPanel() {
         </div>
       )}
 
+      {clip.trackType === 'sticker' && (
+        <div className="inspector-section">
+          <div className="inspector-section-title">Sticker Position</div>
+          <div className="inspector-row">
+            <span className="inspector-label">X Position</span>
+            <div className="inspector-value">
+              <input
+                type="range"
+                className="slider"
+                min={0}
+                max={100}
+                value={clip.x || 50}
+                onChange={(e) => updateClip(clip.id, { x: parseInt(e.target.value) })}
+              />
+              <span className="slider-value">{clip.x || 50}%</span>
+            </div>
+          </div>
+          <div className="inspector-row">
+            <span className="inspector-label">Y Position</span>
+            <div className="inspector-value">
+              <input
+                type="range"
+                className="slider"
+                min={0}
+                max={100}
+                value={clip.y || 50}
+                onChange={(e) => updateClip(clip.id, { y: parseInt(e.target.value) })}
+              />
+              <span className="slider-value">{clip.y || 50}%</span>
+            </div>
+          </div>
+          <div style={{ fontSize: 32, textAlign: 'center', marginTop: 16 }}>
+            {clip.sticker}
+          </div>
+        </div>
+      )}
+
       <div className="inspector-section">
         <div className="inspector-section-title">Clip Timing</div>
         <div className="inspector-row">
@@ -266,7 +339,7 @@ export function InspectorPanel() {
             className="input"
             style={{ width: 80 }}
             value={clip.startTime.toFixed(1)}
-            onChange={(e) => updateClip(clip.id, { startTime: parseFloat(e.target.value) })}
+            onChange={(e) => updateClip(clip.id, { startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
             step={0.1}
           />
         </div>
@@ -277,7 +350,7 @@ export function InspectorPanel() {
             className="input"
             style={{ width: 80 }}
             value={clip.duration.toFixed(1)}
-            onChange={(e) => updateClip(clip.id, { duration: parseFloat(e.target.value) })}
+            onChange={(e) => updateClip(clip.id, { duration: Math.max(0.1, parseFloat(e.target.value) || 0.1) })}
             step={0.1}
           />
         </div>

@@ -8,10 +8,12 @@ interface EditorState {
   currentTime: number;
   isPlaying: boolean;
   zoom: number;
+  history: Project[];
+  historyIndex: number;
   setProjectName: (name: string) => void;
   addMedia: (file: MediaFile) => void;
   removeMedia: (id: string) => void;
-  addClip: (trackType: TrackType, mediaId?: string) => void;
+  addClip: (trackType: TrackType, mediaId?: string, sticker?: string) => void;
   updateClip: (clipId: string, updates: Partial<Clip>) => void;
   removeClip: (clipId: string) => void;
   splitClip: (clipId: string, time: number) => void;
@@ -23,6 +25,9 @@ interface EditorState {
   toggleTrackVisible: (trackId: string) => void;
   getSelectedClip: () => Clip | null;
   getTrack: (trackType: TrackType) => Track | undefined;
+  undo: () => void;
+  redo: () => void;
+  pushHistory: () => void;
 }
 
 const defaultTextStyle: TextStyle = {
@@ -54,28 +59,64 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   currentTime: 0,
   isPlaying: false,
   zoom: 1,
+  history: [],
+  historyIndex: -1,
+
+  pushHistory: () => {
+    const { project, history, historyIndex } = get();
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(JSON.parse(JSON.stringify(project)));
+    if (newHistory.length > 50) newHistory.shift();
+    set({ history: newHistory, historyIndex: newHistory.length - 1 });
+  },
+
+  undo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      set({ project: JSON.parse(JSON.stringify(history[newIndex])), historyIndex: newIndex });
+    }
+  },
+
+  redo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      set({ project: JSON.parse(JSON.stringify(history[newIndex])), historyIndex: newIndex });
+    }
+  },
 
   setProjectName: (name) => set((state) => ({
     project: { ...state.project, name, updatedAt: Date.now() },
   })),
 
-  addMedia: (file) => set((state) => ({
-    project: {
-      ...state.project,
-      media: [...state.project.media, file],
-      updatedAt: Date.now(),
-    },
-  })),
+  addMedia: (file) => {
+    const { pushHistory } = get();
+    pushHistory();
+    set((state) => ({
+      project: {
+        ...state.project,
+        media: [...state.project.media, file],
+        updatedAt: Date.now(),
+      },
+    }));
+  },
 
-  removeMedia: (id) => set((state) => ({
-    project: {
-      ...state.project,
-      media: state.project.media.filter((m) => m.id !== id),
-      updatedAt: Date.now(),
-    },
-  })),
+  removeMedia: (id) => {
+    const { pushHistory } = get();
+    pushHistory();
+    set((state) => ({
+      project: {
+        ...state.project,
+        media: state.project.media.filter((m) => m.id !== id),
+        updatedAt: Date.now(),
+      },
+    }));
+  },
 
-  addClip: (trackType, mediaId) => {
+  addClip: (trackType, mediaId, sticker) => {
+    const { pushHistory } = get();
+    pushHistory();
     const state = get();
     const track = state.project.tracks.find((t) => t.type === trackType);
     if (!track) return;
@@ -106,6 +147,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       speed: 1,
       muted: false,
       ...(trackType === 'text' && { text: 'New Text', textStyle: { ...defaultTextStyle } }),
+      ...(trackType === 'sticker' && { sticker, x: 50, y: 50 }),
       filters: { brightness: 0, contrast: 0, saturation: 0, preset: 'none' },
     };
 
@@ -121,32 +163,42 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
-  updateClip: (clipId, updates) => set((state) => ({
-    project: {
-      ...state.project,
-      tracks: state.project.tracks.map((track) => ({
-        ...track,
-        clips: track.clips.map((clip) =>
-          clip.id === clipId ? { ...clip, ...updates } : clip
-        ),
-      })),
-      updatedAt: Date.now(),
-    },
-  })),
+  updateClip: (clipId, updates) => {
+    const { pushHistory } = get();
+    pushHistory();
+    set((state) => ({
+      project: {
+        ...state.project,
+        tracks: state.project.tracks.map((track) => ({
+          ...track,
+          clips: track.clips.map((clip) =>
+            clip.id === clipId ? { ...clip, ...updates } : clip
+          ),
+        })),
+        updatedAt: Date.now(),
+      },
+    }));
+  },
 
-  removeClip: (clipId) => set((state) => ({
-    project: {
-      ...state.project,
-      tracks: state.project.tracks.map((track) => ({
-        ...track,
-        clips: track.clips.filter((c) => c.id !== clipId),
-      })),
-      updatedAt: Date.now(),
-    },
-    selectedClipId: state.selectedClipId === clipId ? null : state.selectedClipId,
-  })),
+  removeClip: (clipId) => {
+    const { pushHistory } = get();
+    pushHistory();
+    set((state) => ({
+      project: {
+        ...state.project,
+        tracks: state.project.tracks.map((track) => ({
+          ...track,
+          clips: track.clips.filter((c) => c.id !== clipId),
+        })),
+        updatedAt: Date.now(),
+      },
+      selectedClipId: state.selectedClipId === clipId ? null : state.selectedClipId,
+    }));
+  },
 
   splitClip: (clipId, time) => {
+    const { pushHistory } = get();
+    pushHistory();
     const state = get();
     const track = state.project.tracks.find((t) =>
       t.clips.some((c) => c.id === clipId)
@@ -160,7 +212,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (relativeTime <= 0 || relativeTime >= clip.duration) return;
 
     const newClip: Clip = {
-      ...clip,
+      ...JSON.parse(JSON.stringify(clip)),
       id: uuid(),
       startTime: time,
       duration: clip.duration - relativeTime,
