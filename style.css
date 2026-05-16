@@ -1107,23 +1107,23 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 .track-area::-webkit-scrollbar-track { background: var(--bg-base); }
 .track-area::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
 
-/* Time Ruler — sticky so it doesn't scroll vertically */
+/* Time Ruler — sticky so it doesn’t scroll vertically with tracks */
 .time-ruler {
-  position: sticky;
+  position: sticky;     /* BUG-07: Must be sticky, not relative */
   top: 0;
   z-index: 30;
   height: var(--ruler-height);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
-  position: relative;
   flex-shrink: 0;
   min-width: 100%;
-  overflow: hidden;
+  overflow: visible;    /* allow ticks to overflow without clipping */
   display: flex;
   align-items: flex-end;
   cursor: ew-resize;
   user-select: none;
   -webkit-user-select: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
 .ruler-tick {
@@ -2047,4 +2047,114 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 .clip--audio-separated {
   border-style: dashed;
   border-color: rgba(79,195,247,0.8);
+}
+
+/* ── IMP-01: FILMSTRIP THUMBNAIL (repeating frame across clip width) ── */
+.clip__thumb {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-size: auto 100%;
+  background-repeat: repeat-x;
+  background-position: left center;
+  opacity: 0.25;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+.clip--video .clip__thumb { opacity: 0.3; }
+.clip--image .clip__thumb { opacity: 0.4; }
+
+/* Text and VFX clips on slim tracks */
+.track--text .clip,
+.track--vfx .clip {
+  top: 2px;
+  height: calc(100% - 4px);
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+/* ── Timeline drag-over glow ── */
+.timeline--drag-active .track-area {
+  box-shadow: inset 0 0 0 2px rgba(91,110,245,0.4);
+}
+
+/* ── Track mute visual state ── */
+.track[data-muted="true"] {
+  opacity: 0.45;
+}
+.track[data-muted="true"] .clip {
+  filter: grayscale(0.7);
+}
+
+/* ── Linked audio indicator on video clips ── */
+.clip[data-mute-audio="true"]::after {
+  content: '🔊';
+  position: absolute;
+  bottom: 3px;
+  right: 6px;
+  font-size: 8px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ── Loading spinner for file import ── */
+.asset-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 11px;
+  animation: fadeIn 0.2s ease;
+}
+.asset-loading::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── VFX clip label on slim track ── */
+.clip--vfx,
+.clip--text {
+  background: linear-gradient(135deg, rgba(180,120,255,0.6), rgba(120,60,220,0.75));
+  border: 1px solid rgba(180,120,255,0.7);
+}
+.clip--vfx:hover,
+.clip--text:hover {
+  filter: brightness(1.2);
+  box-shadow: 0 4px 20px rgba(180,120,255,0.35);
+}
+.clip--vfx.clip--selected,
+.clip--text.clip--selected {
+  border: 2px solid #f8f0ff;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #b47aff, 0 6px 24px rgba(180,120,255,0.55);
+}
+
+/* ── Mute button active state ── */
+.track-ctrl-btn.track-ctrl-btn--active {
+  color: var(--accent);
+}
+.track-ctrl-btn:not(.track-ctrl-btn--active) {
+  opacity: 0.5;
+}
+
+/* ── Context Menu Improvements ── */
+.context-menu {
+  animation: contextMenuIn 0.12s ease;
+  transform-origin: top left;
+}
+@keyframes contextMenuIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
 }

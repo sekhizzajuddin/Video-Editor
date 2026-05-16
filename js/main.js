@@ -35,6 +35,7 @@ function init() {
   initTrackDropZones();
   initTrackControls();
   initPlayheadDrag();
+  // BUG-20: Removed initRulerScrubbing() — initPlayheadDrag() already handles ruler clicks
   initTools();
   initTextTools();
   initEffectTools();
@@ -51,6 +52,8 @@ function init() {
   initClipRightClickMenus();
   initProjectName();
   initTimelineResizer();
+  initAddTrackButton();
+  initDragOverlay();
   
   buildRuler();
   updateTimelineDuration();
@@ -196,11 +199,7 @@ function initZoom() {
   }, { passive: false });
 
   dom.trackArea?.addEventListener('scroll', () => {
-    // Sync horizontal scroll with time ruler - only horizontal, not vertical
-    if (dom.timeRuler) {
-      dom.timeRuler.style.transform = `translateX(-${dom.trackArea.scrollLeft}px)`;
-    }
-    // Sync vertical scroll with track headers - independent of horizontal
+    // BUG-07: Only sync vertical scroll with track headers. Ruler is position:sticky so it stays fixed.
     if (dom.trackHeaders) {
       dom.trackHeaders.scrollTop = dom.trackArea.scrollTop;
     }
@@ -212,7 +211,7 @@ function initZoom() {
       dom.trackArea.scrollTop += e.deltaY;
     }
   }, { passive: true });
-}
+
 
 // ── Timeline Resizer ──
 function initTimelineResizer() {
@@ -244,38 +243,8 @@ function initTimelineResizer() {
 }
 
 
-// ── Ruler Scrubbing ──
-function initRulerScrubbing() {
-  let isScrubbing = false;
-  
-  dom.timeRuler?.addEventListener('mousedown', (e) => {
-    isScrubbing = true;
-    updateScrub(e);
-  });
-  
-  window.addEventListener('mousemove', (e) => {
-    if (isScrubbing) updateScrub(e);
-  });
-  
-  window.addEventListener('mouseup', () => {
-    isScrubbing = false;
-  });
-  
-  function updateScrub(e) {
-    if (!dom.trackArea) return;
-    
-    const rect = dom.trackArea.getBoundingClientRect();
-    let x = e.clientX - rect.left + dom.trackArea.scrollLeft;
-    x = Math.max(0, x);
-    
-    setPlayheadX(x);
-    playbackState.currentTime = x / pxPerSec();
-    
-    if (!playbackState.isPlaying) {
-      syncPlayerToTimeline(playbackState.currentTime);
-    }
-  }
-}
+// BUG-20: initRulerScrubbing removed - initPlayheadDrag() handles ruler clicks
+function initRulerScrubbing() { /* NOOP */ }
 
 // ── Keyboard Shortcuts ──
 function initKeyboardShortcuts() {
@@ -433,6 +402,47 @@ function initProjectName() {
       updateProjectSettings({ name: e.target.value });
     });
   }
+}
+
+// ── Add Track Button ──
+function initAddTrackButton() {
+  dom.addTrackBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const existing = document.getElementById('addTrackMenu');
+    if (existing) { existing.remove(); return; }
+    const menu = document.createElement('div');
+    menu.id = 'addTrackMenu';
+    menu.className = 'context-menu';
+    menu.style.cssText = 'display:block;position:fixed;z-index:9999;';
+    const rect = dom.addTrackBtn.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.innerHTML = `
+      <div class="context-menu__item" data-type="video">🎬 Video Track</div>
+      <div class="context-menu__item" data-type="audio">🎵 Audio Track</div>
+      <div class="context-menu__item" data-type="text">T&nbsp; Text Track</div>
+      <div class="context-menu__item" data-type="vfx">✨ VFX Track</div>
+    `;
+    document.body.appendChild(menu);
+    menu.querySelectorAll('.context-menu__item').forEach(item => {
+      item.addEventListener('click', () => {
+        import('./timeline.js').then(m => m.addNewTrack(item.dataset.type));
+        menu.remove();
+      });
+    });
+    setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 50);
+  });
+}
+
+// ── Drag Overlay ──
+function initDragOverlay() {
+  const timeline = document.getElementById('timeline');
+  if (!timeline) return;
+  timeline.addEventListener('dragenter', () => timeline.classList.add('timeline--drag-active'));
+  timeline.addEventListener('dragleave', (e) => {
+    if (!timeline.contains(e.relatedTarget)) timeline.classList.remove('timeline--drag-active');
+  });
+  timeline.addEventListener('drop', () => timeline.classList.remove('timeline--drag-active'));
 }
 
 // ── Window Resize Handler ──

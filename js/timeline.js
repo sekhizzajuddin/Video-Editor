@@ -3,7 +3,7 @@
 // ===================================================
 import { 
   uploadedAssets, playbackState, dom, zoomFactor, selectedClip, setSelectedClip,
-  selectedClips, clearSelectedClips, clipDrag, resizeDrag, TOTAL_SECONDS, TOTAL_DURATION,
+  selectedClips, clearSelectedClips, addSelectedClip, clipDrag, resizeDrag, TOTAL_SECONDS, TOTAL_DURATION,
   setTotalDuration, isSpeedModeActive, setSpeedMode, videoElementCache, trackStates,
   initTrackState, toggleTrackMute, toggleTrackVisibility, toggleTrackLock
 } from './state.js';
@@ -237,8 +237,9 @@ export function addClipToTrack(asset, trackEl, leftPx, options = {}) {
   clip.dataset.assetId = asset.id;
   clip.dataset.type = asset.type; // for cross-track type check
   clip.dataset.baseDur = asset.duration || 0;
-  clip.dataset.trimStart = options.trimStart || 0;
-  clip.dataset.trimEnd = options.trimEnd || asset.duration || 5;
+  clip.dataset.trimStart = options.trimStart !== undefined ? options.trimStart : 0;
+  // BUG-14: Always set trimEnd so refreshTimelineLayout calculates width correctly
+  clip.dataset.trimEnd = options.trimEnd !== undefined ? options.trimEnd : (asset.duration || 5);
   clip.dataset.speed = options.speed || 1;
   clip.dataset.volume = options.volume || 100;
   clip.dataset.startTime = leftPx / pxPerSec();
@@ -446,7 +447,8 @@ document.addEventListener('mouseup', () => {
     if (clipDrag.hoverTrackEl && clipDrag.hoverTrackEl !== clipDrag.clip.parentElement) {
       const clip = clipDrag.clip;
       const targetTrack = clipDrag.hoverTrackEl;
-      const clipType = clip.classList.contains('clip--audio') ? 'audio' : 'video';
+      // BUG-04: Use dataset.type for accurate type detection (covers text, vfx, audio, video)
+      const clipType = clip.dataset.type || (clip.classList.contains('clip--audio') ? 'audio' : 'video');
       if (isDropAllowed(targetTrack, clipType)) {
         // Check for overlaps on target
         const cLeft = getClipLeft(clip);
@@ -571,16 +573,17 @@ function findBlankLeft(trackEl, preferredLeft, widthPx) {
 
 // ── Initialize Track Drop Zones ──
 export function initTrackDropZones() {
-  [dom.videoTrack, dom.audioTrack].filter(Boolean).forEach(trackEl => initSingleTrackDropZone(trackEl));
+  // BUG-03: Register ALL tracks (including text and vfx) as drop zones
+  document.querySelectorAll('.track').forEach(trackEl => initSingleTrackDropZone(trackEl));
 
   document.addEventListener('dragstart', (e) => {
-    const card = e.target.closest('.asset-card, .audio-item');
+    const card = e.target.closest('.asset-card, .audio-item, .fx-card, .text-preset');
     if (!card) return;
     window.__currentDragId = card.dataset.id;
-    window.__currentDragType = card.dataset.type;
+    window.__currentDragType = card.dataset.type || card.dataset.transition || card.dataset.effect || card.dataset.textType;
   });
   document.addEventListener('dragend', (e) => {
-    if (e.target.closest('.asset-card, .audio-item')) {
+    if (e.target.closest('.asset-card, .audio-item, .fx-card, .text-preset')) {
       clearDropHighlights();
       setTimeout(() => { window.__currentDragId = null; window.__currentDragType = null; }, 0);
     }
@@ -938,6 +941,10 @@ export function initTrackControls() {
         const muted = toggleTrackMute(trackId);
         muteBtn.textContent = muted ? '🔇' : '🔊';
         muteBtn.classList.toggle('track-ctrl-btn--active', !muted);
+        // BUG-15: Update track visual and sync player so mute takes effect immediately
+        const trackEl = document.querySelector(`.track[data-track-id="${trackId}"]`);
+        if (trackEl) trackEl.dataset.muted = muted ? 'true' : 'false';
+        syncPlayerToTimeline(playbackState.currentTime);
         showToast(`Track ${muted ? 'muted' : 'unmuted'}`, 'info');
       });
     }
@@ -1010,7 +1017,13 @@ export function addNewTrack(type = 'video') {
   
   const trackArea = dom.trackArea;
   if (trackArea) {
-    trackArea.appendChild(track);
+    // BUG-21: Insert before snap indicator so playhead stays on top
+    const snapIndicator = document.getElementById('snapIndicator');
+    if (snapIndicator) {
+      trackArea.insertBefore(track, snapIndicator);
+    } else {
+      trackArea.appendChild(track);
+    }
   }
   
   initTrackState(trackId);
@@ -1057,6 +1070,7 @@ export function addNewTrack(type = 'video') {
 // ── Refresh Timeline Layout (Zoom/Resize) ──
 export function refreshTimelineLayout() {
   const pps = pxPerSec();
+  // BUG-16: Update waveform canvas size when zoom changes
   document.querySelectorAll('.clip').forEach(clip => {
     // Update Position
     const startTime = parseFloat(clip.dataset.startTime || 0);
@@ -1066,13 +1080,19 @@ export function refreshTimelineLayout() {
     const trimStart = parseFloat(clip.dataset.trimStart || 0);
     const trimEnd = parseFloat(clip.dataset.trimEnd || 0);
     const speed = parseFloat(clip.dataset.speed || 1);
-    const duration = (trimEnd - trimStart) / speed;
+    const duration = trimEnd > trimStart ? (trimEnd - trimStart) / speed : (parseFloat(clip.dataset.baseDur) || 5);
     const newWidth = Math.max(40, duration * pps);
     clip.style.width = `${newWidth}px`;
     
     // Update duration text
     const durEl = clip.querySelector('.clip__duration');
     if (durEl) durEl.textContent = formatDuration(duration);
+
+    // Update waveform canvas width to match new clip width
+    const waveCanvas = clip.querySelector('.waveform-canvas');
+    if (waveCanvas) {
+      waveCanvas.width = Math.round(newWidth);
+    }
   });
   
   // Render transitions
@@ -1088,7 +1108,7 @@ export function refreshTimelineLayout() {
       const c1Right = getClipLeft(c1) + getClipWidth(c1);
       const c2Left = getClipLeft(c2);
       
-      if (Math.abs(c2Left - c1Right) < 20) {
+      if (Math.abs(c2Left - c1Right) < 40) { // BUG-09: was 20, now 40px for better UX
         const appliedType = c1.dataset.transitionOut;
         const btn = document.createElement('div');
         btn.className = appliedType ? 'transition-btn transition-btn--applied' : 'transition-btn';
@@ -1132,7 +1152,8 @@ export function refreshTimelineLayout() {
   }
 }
 
-let activeTransitionClips = null;
+// BUG-12: Export activeTransitionClips so tools.js can check if + was clicked first
+export let activeTransitionClips = null;
 function showTransitionMenu(clip1, clip2, x, y) {
   if (!dom.transitionSelector) return;
   activeTransitionClips = { clip1, clip2 };
@@ -1213,19 +1234,17 @@ export function updateTimelineDuration() {
   
   // 2. Visible duration covers at least the viewport
   const visibleDuration = (dom.trackArea.clientWidth || window.innerWidth) / pps;
-  const padding = maxEnd > 0 ? 30 : 0; // 30s breathing room
+  // BUG-08: Always recalculate — allow shrinking when clips are deleted
+  const padding = maxEnd > 0 ? 30 : 0; // 30s breathing room after last clip
   const newDuration = Math.max(visibleDuration, maxEnd + padding);
   
-  const changed = Math.abs(TOTAL_DURATION - newDuration) > 0.5;
-  if (changed) {
-    setTotalDuration(newDuration);
-    // Always rebuild ruler so time extends dynamically
-    buildRuler();
-    // Stretch all tracks so horizontal scrollbar works
-    const totalPx = Math.ceil(newDuration * pps);
-    document.querySelectorAll('.track').forEach(t => { t.style.minWidth = `${totalPx}px`; });
-    if (dom.timeRuler) dom.timeRuler.style.minWidth = `${totalPx}px`;
-  }
+  setTotalDuration(newDuration);
+  // Always rebuild ruler so time extends/contracts dynamically
+  buildRuler();
+  // Stretch all tracks so horizontal scrollbar works
+  const totalPx = Math.ceil(newDuration * pps);
+  document.querySelectorAll('.track').forEach(t => { t.style.minWidth = `${totalPx}px`; });
+  if (dom.timeRuler) dom.timeRuler.style.minWidth = `${totalPx}px`;
 }
 
 export function getAllClips() {
@@ -1442,33 +1461,46 @@ function handleVfxRightClick(clip, e) {
 
 // ── Audio Separation from Video ──
 export function separateAudioFromVideo(videoClip) {
-  const assetId = videoClip.dataset.assetId;
-  const { uploadedAssets, audioElementCache } = window.__vidforgeState || {};
+  // BUG-06: Use module-level imports instead of window.__vidforgeState
   const audioTrack = document.querySelector('.track--audio');
   if (!audioTrack) { showToast('No audio track found', 'error'); return; }
 
   const startTime = parseFloat(videoClip.dataset.startTime || 0);
   const leftPx = startTime * pxPerSec();
 
-  // Create a fake audio clip element representing the embedded audio
-  const dur = parseFloat(videoClip.dataset.trimEnd) - parseFloat(videoClip.dataset.trimStart);
+  const trimStart = parseFloat(videoClip.dataset.trimStart || 0);
+  const trimEnd = parseFloat(videoClip.dataset.trimEnd || videoClip.dataset.baseDur || 5);
+  const speed = parseFloat(videoClip.dataset.speed || 1);
+  const dur = (trimEnd - trimStart) / speed;
   const width = Math.max(80, dur * pxPerSec());
+
+  // Check if audio track has space at this position
+  const hasOverlap = Array.from(audioTrack.querySelectorAll('.clip')).some(c => {
+    const cL = getClipLeft(c); const cR = cL + getClipWidth(c);
+    return leftPx < cR && leftPx + width > cL;
+  });
+  if (hasOverlap) {
+    showToast('Audio track occupied at this position', 'warning');
+    return;
+  }
 
   const audioClip = document.createElement('div');
   audioClip.className = 'clip clip--audio clip--audio-separated';
   audioClip.style.left = `${leftPx}px`;
   audioClip.style.width = `${width}px`;
-  audioClip.dataset.assetId = assetId;
+  audioClip.dataset.assetId = videoClip.dataset.assetId;
   audioClip.dataset.type = 'audio';
-  audioClip.dataset.trimStart = videoClip.dataset.trimStart;
-  audioClip.dataset.trimEnd = videoClip.dataset.trimEnd;
-  audioClip.dataset.speed = videoClip.dataset.speed || 1;
+  audioClip.dataset.trimStart = trimStart;
+  audioClip.dataset.trimEnd = trimEnd;
+  audioClip.dataset.baseDur = videoClip.dataset.baseDur || dur;
+  audioClip.dataset.speed = speed;
   audioClip.dataset.volume = videoClip.dataset.volume || 100;
   audioClip.dataset.startTime = startTime;
   audioClip.dataset.separatedFrom = videoClip.dataset.clipId;
+  audioClip.dataset.clipId = `clip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   audioClip.innerHTML = `
     <div class="clip__thumb"></div>
-    <div class="clip__label">🔊 Audio</div>
+    <div class="clip__label">🔊 ${videoClip.querySelector('.clip__label')?.textContent?.replace(/^🎬\s*/, '') || 'Audio'}</div>
     <div class="clip__duration">${formatDuration(dur)}</div>
     <div class="clip__waveform clip__waveform--audio"><canvas class="waveform-canvas" width="${width}" height="30" style="width:100%;height:100%;pointer-events:none;"></canvas></div>
     <div class="clip__resize clip__resize--left"></div>
@@ -1477,8 +1509,20 @@ export function separateAudioFromVideo(videoClip) {
   audioTrack.appendChild(audioClip);
   makeClipDraggable(audioClip);
   makeClipResizable(audioClip);
-  // Mute source video clip audio
+
+  // Style original video clip to show audio is muted
   videoClip.dataset.muteAudio = 'true';
-  showToast('Audio separated to audio track', 'success');
+  videoClip.style.borderBottom = '2px solid var(--accent)';
+
+  // Draw a placeholder waveform
+  const canvas = audioClip.querySelector('.waveform-canvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    // Generate synthetic waveform since we don't have decoded audio data yet
+    const fakeWave = Array.from({ length: 200 }, () => Math.random() * 0.8 + 0.1);
+    drawEnhancedWaveform(ctx, canvas, fakeWave);
+  }
+
+  showToast('Audio separated to audio track ✓', 'success');
   refreshTimelineLayout();
 }

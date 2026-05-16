@@ -86,6 +86,8 @@ export const clipDrag = {
   startMouseX: 0,
   startLeft: 0,
   trackEl: null,
+  startTrackEl: null,    // BUG-02: original track before cross-track drag
+  hoverTrackEl: null,   // BUG-02: track currently hovered during drag
   ghost: null
 };
 

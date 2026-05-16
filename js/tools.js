@@ -2,7 +2,7 @@
 // js/tools.js — UI Toolbar Actions & Logic v2.0
 // ===================================================
 import { 
-  dom, selectedClip, historyStack, historyIdx, setHistoryIdx,
+  dom, selectedClip, selectedClips, historyStack, historyIdx, setHistoryIdx,
   activeTool, setActiveTool, uploadedAssets, textOverlays, getNextTextOverlayId,
   playbackState, projectSettings, updateProjectSettings, exportState,
   videoElementCache, audioElementCache, imageElementCache, pushHistory,
@@ -135,6 +135,7 @@ export function handleSplit() {
     c.style.width = `${Math.max(40, width)}px`;
     c.draggable = true;
     c.dataset.assetId = assetId;
+    c.dataset.type = selectedClip.dataset.type || 'video'; // BUG-17: copy type for cross-track drag
     c.dataset.speed = speed;
     c.dataset.volume = volume;
     c.dataset.trimStart = newTrimStart;
@@ -183,7 +184,20 @@ export function handleSplit() {
 }
 
 // ── Delete Clip ──
+// ── Delete Clip ──
 export function handleDelete() {
+  // BUG-19: Delete all multi-selected clips, not just the single selected clip
+  if (selectedClips && selectedClips.size > 0) {
+    selectedClips.forEach(clip => {
+      const track = clip.parentElement;
+      pushHistory({ type: 'delete', clip, track });
+      clip.remove();
+    });
+    selectedClips.clear();
+    import('./timeline.js').then(m => { m.deselectAll(); m.refreshTimelineLayout(); });
+    showToast(`🗑 ${selectedClips.size || 'Clips'} deleted`, 'info');
+    return;
+  }
   if (!selectedClip) {
     showToast('Select a clip first', 'warning');
     return;
@@ -522,6 +536,7 @@ function hideCropOverlay() {
 
 // ── Text Tools ──
 export function initTextTools() {
+  // BUG-11: Text preset click directly adds to timeline (no need to click 'Add' button separately)
   document.querySelectorAll('.text-preset').forEach(preset => {
     preset.addEventListener('click', () => {
       const textType = preset.dataset.textType;
@@ -531,9 +546,12 @@ export function initTextTools() {
         caption: 'Your Caption',
         outro: 'Thanks for watching!'
       };
-      if (dom.customTextInput) {
-        dom.customTextInput.value = defaultTexts[textType] || '';
-      }
+      const text = defaultTexts[textType] || 'Text';
+      const fontSize = textType === 'title' ? 72 : textType === 'subtitle' ? 48 : 32;
+      const color = textType === 'title' ? '#ffffff' : '#cccccc';
+      if (dom.customTextInput) dom.customTextInput.value = text;
+      addTextToTimeline(text, fontSize, color, textType);
+      showToast(`“${text}” added to Text track`, 'success');
     });
   });
   
@@ -553,53 +571,54 @@ export function initTextTools() {
   });
 }
 
-function addTextToTimeline(text, fontSize, color) {
+// BUG-05: Fixed race condition by using a single chained async flow
+async function addTextToTimeline(text, fontSize, color, preset = null) {
+  const m = await import('./timeline.js');
   let textTrack = document.querySelector('.track--text');
   if (!textTrack) {
-    import('./timeline.js').then(m => textTrack = m.addNewTrack('text'));
+    textTrack = m.addNewTrack('text');
   }
   const asset = {
     id: `text-${Date.now()}`,
     type: 'text',
-    name: 'Text: ' + text.substring(0,10),
-    duration: 5
+    name: 'T: ' + text.substring(0, 12),
+    duration: preset === 'title' ? 8 : preset === 'outro' ? 6 : 5
   };
-  import('./timeline.js').then(m => {
-    const clip = m.addClipToTrack(asset, textTrack, playbackState.currentTime * m.pxPerSec());
-    clip.dataset.text = text;
-    clip.dataset.fontSize = fontSize;
-    clip.dataset.color = color;
-    clip.dataset.animation = 'none';
-  });
+  const clip = m.addClipToTrack(asset, textTrack, playbackState.currentTime * m.pxPerSec());
+  clip.dataset.text = text;
+  clip.dataset.fontSize = fontSize;
+  clip.dataset.color = color;
+  clip.dataset.animation = preset === 'title' ? 'fade' : preset === 'subtitle' ? 'slide' : 'none';
 }
 
 // ── Effect Tools ──
 export function initEffectTools() {
-  // Transitions
+  // Transitions — clicking a card applies to activeTransitionClips
   document.querySelectorAll('[data-transition]').forEach(card => {
-    card.addEventListener('click', () => {
-      import('./timeline.js').then(m => {
-        if (!m.activeTransitionClips) {
-          showToast('Click the + button between clips first', 'warning');
-          return;
-        }
-        const transition = card.dataset.transition;
-        const { clip1, clip2 } = m.activeTransitionClips;
-        clip1.dataset.transitionOut = transition;
-        clip2.dataset.transitionIn = transition;
-        showToast(`Applied ${transition} transition`, 'success');
-        m.refreshTimelineLayout();
-      });
+    card.addEventListener('click', async () => {
+      const m = await import('./timeline.js');
+      // BUG-12: activeTransitionClips is now exported and accessible
+      if (!m.activeTransitionClips) {
+        showToast('Click the \u002B button between two clips first, then pick a transition', 'warning');
+        return;
+      }
+      const transition = card.dataset.transition;
+      const { clip1, clip2 } = m.activeTransitionClips;
+      clip1.dataset.transitionOut = transition;
+      clip2.dataset.transitionIn = transition;
+      showToast(`Applied ${transition} transition ✓`, 'success');
+      m.refreshTimelineLayout();
     });
   });
   
-  // VFX (Effects)
+  // VFX (Effects) — BUG-05: Fixed race condition with async/await
   document.querySelectorAll('[data-effect]').forEach(card => {
-    card.addEventListener('click', () => {
+    card.addEventListener('click', async () => {
       const effect = card.dataset.effect;
+      const m = await import('./timeline.js');
       let vfxTrack = document.querySelector('.track--vfx');
       if (!vfxTrack) {
-        import('./timeline.js').then(m => vfxTrack = m.addNewTrack('vfx'));
+        vfxTrack = m.addNewTrack('vfx');
       }
       const asset = {
         id: `vfx-${Date.now()}`,
@@ -607,17 +626,15 @@ export function initEffectTools() {
         name: 'VFX: ' + effect,
         duration: 5
       };
-      import('./timeline.js').then(m => {
-        const clip = m.addClipToTrack(asset, vfxTrack, playbackState.currentTime * m.pxPerSec());
-        clip.dataset.effect = effect;
-        clip.dataset.intensity = 50;
-        clip.dataset.blendMode = 'normal';
-        showToast(`Added ${effect} to VFX track`, 'success');
-      });
+      const clip = m.addClipToTrack(asset, vfxTrack, playbackState.currentTime * m.pxPerSec());
+      clip.dataset.effect = effect;
+      clip.dataset.intensity = 50;
+      clip.dataset.blendMode = 'normal';
+      showToast(`Added ${effect} to VFX track ✓`, 'success');
     });
   });
   
-  // Filters (these apply directly to selected video clip)
+  // Filters (apply directly to selected video clip)
   document.querySelectorAll('[data-filter]').forEach(card => {
     card.addEventListener('click', () => {
       if (!selectedClip) {
