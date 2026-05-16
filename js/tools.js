@@ -640,11 +640,10 @@ export function initExportModal() {
 }
 
 // ── Start Export ──
-async function startExport() {
-  const format = dom.exportFormat?.value || 'webm';
+export async function startExport() {
+  const format = dom.exportFormat?.value || 'mp4';
   const fps = parseInt(dom.exportFps?.value) || 30;
   
-  // Check if timeline has content
   const videoClips = Array.from(dom.videoTrack?.querySelectorAll('.clip') || []);
   const audioClips = Array.from(dom.audioTrack?.querySelectorAll('.clip') || []);
   
@@ -662,464 +661,167 @@ async function startExport() {
   if (dom.exportProgress) dom.exportProgress.style.display = 'block';
   if (dom.exportActions) dom.exportActions.style.display = 'none';
   
+  let audioContext = null;
+
   try {
-    const dimensions = {
-      '1080p': { width: 1920, height: 1080 },
-      '720p': { width: 1280, height: 720 },
-      '480p': { width: 854, height: 480 }
-    };
-    
-    const { width, height } = dimensions[exportState.resolution] || dimensions['1080p'];
+    const { width, height } = projectSettings.resolution || { width: 1920, height: 1080 };
     
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = width;
     exportCanvas.height = height;
     const ctx = exportCanvas.getContext('2d', { alpha: false });
     
-    // Get total duration from last clip
+    // Get total duration
     let totalDuration = 0;
     [...videoClips, ...audioClips].forEach(clip => {
       const clipEnd = (getClipLeft(clip) + getClipWidth(clip)) / pxPerSec();
       if (clipEnd > totalDuration) totalDuration = clipEnd;
     });
-    if (totalDuration === 0) totalDuration = 10;
-    
-    console.log('Export settings:', { width, height, fps, totalDuration });
-    
+    if (totalDuration === 0) totalDuration = 5;
+
     // Setup MediaRecorder
     const stream = exportCanvas.captureStream(fps);
     
-    // Add audio if available
-    let audioContext = null;
+    // Audio integration
     try {
-      // Prepare audio elements
-      for (const clip of audioClips) {
-        const assetId = clip.dataset.assetId;
-        const asset = uploadedAssets.find(a => a.id === assetId);
-        if (asset && (asset.type === 'audio' || asset.type === 'video')) {
-          let audioEl = audioElementCache.get(assetId);
-          if (!audioEl && asset.type === 'video') {
-            // For video files, create audio element from same URL
-            audioEl = new Audio(asset.objectURL);
-            audioElementCache.set(assetId, audioEl);
-          }
-          if (audioEl) {
-            audioEl.currentTime = 0;
-            audioEl.volume = parseFloat(clip.dataset.volume || 100) / 100;
-          }
-        }
-      }
-      
-      // Create audio context
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const dest = audioContext.createMediaStreamDestination();
       
-      // Connect all audio sources
-      audioClips.forEach(clip => {
+      for (const clip of audioClips) {
         const assetId = clip.dataset.assetId;
-        const asset = uploadedAssets.find(a => a.id === assetId);
-        if (asset) {
-          let audioEl = audioElementCache.get(assetId);
-          if (audioEl) {
-            try {
-              const source = audioContext.createMediaElementSource(audioEl);
-              const gain = audioContext.createGain();
-              gain.gain.value = parseFloat(clip.dataset.volume || 100) / 100;
-              source.connect(gain).connect(dest);
-            } catch (e) {
-              console.warn('Audio source error:', e);
-            }
-          }
+        const audioEl = audioElementCache.get(assetId) || videoElementCache.get(assetId);
+        if (audioEl) {
+          const source = audioContext.createMediaElementSource(audioEl);
+          const gain = audioContext.createGain();
+          gain.gain.value = parseFloat(clip.dataset.volume || 100) / 100;
+          source.connect(gain).connect(dest);
         }
-      });
+      }
       
       if (dest.stream.getAudioTracks().length > 0) {
         stream.addTrack(dest.stream.getAudioTracks()[0]);
       }
-    } catch (audioErr) {
-      console.warn('Audio setup error:', audioErr);
-    }
-    
-    // Use WebM format (browser native)
-    let mimeType = 'video/webm';
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
-      mimeType = 'video/webm;codecs=vp9';
-    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
-      mimeType = 'video/webm;codecs=vp8';
-    }
-    
-    console.log('Using mimeType:', mimeType);
-    
-    const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: mimeType,
-      videoBitsPerSecond: 8000000
-    });
-    
-    exportState.mediaRecorder = mediaRecorder;
+    } catch (e) { console.warn('Audio export setup failed:', e); }
+
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    const mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
     const chunks = [];
     
-    // More reliable data collection
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) {
-        chunks.push(e.data);
-        console.log('Chunk received:', chunks.length, 'size:', e.data.size);
-      }
-    };
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
     
     mediaRecorder.onstop = async () => {
-      console.log('Recording stopped, chunks:', chunks.length, 'total size:', chunks.reduce((a,b) => a + b.size, 0));
-      
-      if (chunks.length === 0 || chunks.reduce((a,b) => a + b.size, 0) === 0) {
-        showToast('Export failed - no data captured', 'error');
-        exportState.isExporting = false;
-        exportState.progress = 0;
-        if (dom.exportModal) dom.exportModal.classList.remove('active');
-        if (dom.exportProgress) dom.exportProgress.style.display = 'none';
-        if (dom.exportActions) dom.exportActions.style.display = 'flex';
+      if (chunks.length === 0) {
+        showToast('Export failed: No data', 'error');
+        resetExportUI();
         return;
       }
       
       const webmBlob = new Blob(chunks, { type: mimeType });
-      console.log('WebM Blob size:', webmBlob.size);
       
       try {
         if (exportState.format === 'mp4') {
-          if (dom.exportProgressText) {
-            dom.exportProgressText.textContent = 'Finalizing MP4... (using FFmpeg.wasm)';
-          }
-          if (dom.exportProgressFill) {
-            dom.exportProgressFill.style.width = '0%';
-          }
-          
-          const mp4Blob = await transcodeToMP4(webmBlob, exportState.fps, (progress) => {
-            if (dom.exportProgressFill) {
-              dom.exportProgressFill.style.width = `${progress * 100}%`;
-            }
-            if (dom.exportProgressText) {
-              dom.exportProgressText.textContent = `Converting to MP4: ${Math.round(progress * 100)}%`;
-            }
+          updateExportStatus('Finalizing MP4 (FFmpeg)...');
+          const mp4Blob = await transcodeToMP4(webmBlob, fps, (p) => {
+            updateExportProgress(p);
+            updateExportStatus(`Converting: ${Math.round(p * 100)}%`);
           });
-          
-          downloadBlob(mp4Blob, `vidforge_export_${Date.now()}.mp4`);
-          showToast('MP4 Export complete!', 'success');
+          downloadBlob(mp4Blob, `vidforge_${Date.now()}.mp4`);
+          showToast('MP4 Export successful!', 'success');
         } else {
-          downloadBlob(webmBlob, `vidforge_export_${Date.now()}.webm`);
-          showToast('WebM Export complete!', 'success');
+          downloadBlob(webmBlob, `vidforge_${Date.now()}.webm`);
+          showToast('WebM Export successful!', 'success');
         }
       } catch (err) {
-        console.error('Finalization error:', err);
-        showToast('Finalization failed, downloading WebM fallback', 'warning');
-        downloadBlob(webmBlob, `vidforge_export_${Date.now()}.webm`);
+        console.error('Transcode error:', err);
+        showToast('MP4 error, downloading WebM fallback', 'warning');
+        downloadBlob(webmBlob, `vidforge_${Date.now()}.webm`);
       }
-      
-      exportState.isExporting = false;
-      exportState.mediaRecorder = null;
-      exportState.progress = 0;
-      
-      if (dom.exportModal) dom.exportModal.classList.remove('active');
-      if (dom.exportProgress) dom.exportProgress.style.display = 'none';
-      if (dom.exportActions) dom.exportActions.style.display = 'flex';
-      
-      if (audioContext && audioContext.state !== 'closed') {
-        audioContext.close().catch(() => {});
-      }
+      resetExportUI();
     };
-    
-    mediaRecorder.onerror = (e) => {
-      console.error('MediaRecorder error:', e);
-      showToast('Export error occurred', 'error');
-      exportState.isExporting = false;
-      exportState.mediaRecorder = null;
-      exportState.progress = 0;
-      if (dom.exportProgress) dom.exportProgress.style.display = 'none';
-      if (dom.exportActions) dom.exportActions.style.display = 'flex';
-    };
-    
-    // Start recording - use 100ms interval for more reliable data
-    mediaRecorder.start(100);
-    
-// Pre-seek all videos to start
-    for (const clip of videoClips) {
-      const assetId = clip.dataset.assetId;
-      const video = videoElementCache.get(assetId);
-      if (video) {
-        const trimStart = parseFloat(clip.dataset.trimStart || 0);
-        video.currentTime = trimStart;
-      }
-    }
-    
-    // Wait for videos to be ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Frame rendering using setInterval for reliability
-    const frameDuration = 1000 / fps; // ms per frame
-    let currentTime = 0;
-    let frameCount = 0;
-    const totalFrames = Math.ceil(totalDuration * fps);
-    
-    console.log('Starting export:', totalFrames, 'frames at', fps, 'fps');
-    
-    const renderInterval = setInterval(async () => {
-      if (exportState.cancelRequested) {
-        clearInterval(renderInterval);
-        if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-        return;
-      }
-      
-      if (currentTime >= totalDuration) {
-        clearInterval(renderInterval);
-        if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-        return;
-      }
-      
-      try {
-        // Clear canvas
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, width, height);
-        
-        // Find active video clip at this time
-        const activeVideoClip = videoClips.find(clip => {
-          const start = getClipLeft(clip) / pxPerSec();
-          const end = start + (getClipWidth(clip) / pxPerSec());
-          return currentTime >= start && currentTime < end;
-        });
-        
-        if (activeVideoClip) {
-          const assetId = activeVideoClip.dataset.assetId;
-          const asset = uploadedAssets.find(a => a.id === assetId);
-          
-          if (asset) {
-            const clipStart = getClipLeft(activeVideoClip) / pxPerSec();
-            const trimStart = parseFloat(activeVideoClip.dataset.trimStart || 0);
-            const trimEnd = parseFloat(activeVideoClip.dataset.trimEnd || asset.duration || 0);
-            const speed = parseFloat(activeVideoClip.dataset.speed || 1);
-            
-            let localTime = trimStart + ((currentTime - clipStart) * speed);
-            // Clamp to trim range
-            localTime = Math.max(trimStart, Math.min(localTime, trimEnd));
-            
-            if (asset.type === 'video') {
-              const video = videoElementCache.get(assetId);
-              if (video && video.readyState >= 2) {
-                // Seek if needed
-                if (Math.abs(video.currentTime - localTime) > 0.1) {
-                  video.currentTime = localTime;
-                }
-                
-                // Draw video frame
-                const vw = video.videoWidth || width;
-                const vh = video.videoHeight || height;
-                const scale = Math.min(width / vw, height / vh);
-                const dw = vw * scale;
-                const dh = vh * scale;
-                const dx = (width - dw) / 2;
-                const dy = (height - dh) / 2;
-                
-                ctx.drawImage(video, dx, dy, dw, dh);
-                
-                // Apply filter if any
-                const filter = activeVideoClip.dataset.filter;
-                if (filter) {
-                  const filterStr = getFilterString(filter);
-                  if (filterStr) {
-                    ctx.filter = filterStr;
-                    ctx.drawImage(exportCanvas, 0, 0);
-                    ctx.filter = 'none';
-                  }
-                }
-              }
-            } else if (asset.type === 'image') {
-              const img = imageElementCache.get(assetId);
-              if (img && img.complete) {
-                const iw = img.naturalWidth;
-                const ih = img.naturalHeight;
-                const scale = Math.min(width / iw, height / ih);
-                const dw = iw * scale;
-                const dh = ih * scale;
-                const dx = (width - dw) / 2;
-                const dy = (height - dh) / 2;
-                ctx.drawImage(img, dx, dy, dw, dh);
-              }
-            }
-          }
-        }
-        
-        // Draw text overlays
-        textOverlays.forEach(overlay => {
-          if (currentTime >= overlay.startTime && currentTime < overlay.endTime) {
-            ctx.fillStyle = overlay.color || '#ffffff';
-            ctx.font = `${overlay.fontSize || 48}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(overlay.text, (overlay.x / 100) * width, (overlay.y / 100) * height);
-          }
-        });
-        
-        // Update progress
-        frameCount++;
-        exportState.progress = (frameCount / totalFrames) * 100;
-        if (dom.exportProgressFill) {
-          dom.exportProgressFill.style.width = `${exportState.progress}%`;
-        }
-        if (dom.exportProgressText) {
-          dom.exportProgressText.textContent = `Exporting... ${Math.round(exportState.progress)}% (${frameCount}/${totalFrames} frames)`;
-        }
-        
-        currentTime += (1000 / fps) / 1000; // increment in seconds
-      } catch (frameErr) {
-        console.error('Frame render error:', frameErr);
-      }
-    }, frameDuration);
-    
-  } catch (err) {
-    console.error('Export error:', err);
-    showToast('Export failed: ' + err.message, 'error');
-    exportState.isExporting = false;
-    exportState.progress = 0;
-    if (dom.exportModal) dom.exportModal.classList.remove('active');
-    if (dom.exportProgress) dom.exportProgress.style.display = 'none';
-    if (dom.exportActions) dom.exportActions.style.display = 'flex';
-  }
-}
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Frame rendering loop
+
+    mediaRecorder.start();
+
+    // Rendering Loop
     const frameDuration = 1 / fps;
     let currentTime = 0;
-    let frameCount = 0;
     const totalFrames = Math.ceil(totalDuration * fps);
-    
-    const renderFrame = async () => {
-      if (exportState.cancelRequested) {
-        if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-        return;
-      }
+
+    for (let i = 0; i < totalFrames; i++) {
+      if (exportState.cancelRequested) break;
       
-      if (currentTime >= totalDuration) {
-        if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-        return;
-      }
-      
-      // Clear
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, width, height);
       
-      // Find active video
-      const activeVideoClip = videoClips.find(clip => {
+      const activeClip = videoClips.find(clip => {
         const start = getClipLeft(clip) / pxPerSec();
         const end = start + (getClipWidth(clip) / pxPerSec());
         return currentTime >= start && currentTime < end;
       });
-      
-      if (activeVideoClip) {
-        const assetId = activeVideoClip.dataset.assetId;
+
+      if (activeClip) {
+        const assetId = activeClip.dataset.assetId;
         const asset = uploadedAssets.find(a => a.id === assetId);
-        
         if (asset) {
-          const clipStart = getClipLeft(activeVideoClip) / pxPerSec();
-          const trimStart = parseFloat(activeVideoClip.dataset.trimStart || 0);
-          const speed = parseFloat(activeVideoClip.dataset.speed || 1);
-          const localTime = trimStart + ((currentTime - clipStart) * speed);
+          const clipStart = getClipLeft(activeClip) / pxPerSec();
+          const trimStart = parseFloat(activeClip.dataset.trimStart || 0);
+          const speed = parseFloat(activeClip.dataset.speed || 1);
+          const localTime = trimStart + (currentTime - clipStart) * speed;
           
           if (asset.type === 'video') {
             const video = videoElementCache.get(assetId);
             if (video) {
-              if (Math.abs(video.currentTime - localTime) > 0.05) {
-                video.currentTime = localTime;
-                await new Promise(resolve => {
-                  const onSeeked = () => {
-                    video.removeEventListener('seeked', onSeeked);
-                    resolve();
-                  };
-                  video.addEventListener('seeked', onSeeked);
-                  setTimeout(resolve, 100);
-                });
-              }
-              
-              const hRatio = width / (video.videoWidth || width);
-              const vRatio = height / (video.videoHeight || height);
-              const ratio = Math.min(hRatio, vRatio);
-              const offsetX = (width - (video.videoWidth || width) * ratio) / 2;
-              const offsetY = (height - (video.videoHeight || height) * ratio) / 2;
-              
-              ctx.drawImage(
-                video,
-                0, 0, video.videoWidth || width, video.videoHeight || height,
-                offsetX, offsetY, (video.videoWidth || width) * ratio, (video.videoHeight || height) * ratio
-              );
-              
-              const filter = activeVideoClip.dataset.filter;
-              if (filter) {
-                ctx.save();
-                ctx.filter = getFilterString(filter);
-                ctx.globalCompositeOperation = 'copy';
-                ctx.drawImage(exportCanvas, 0, 0);
-                ctx.restore();
-              }
+              video.currentTime = localTime;
+              // Simple wait for frame
+              await new Promise(r => setTimeout(r, 40));
+              ctx.drawImage(video, 0, 0, width, height);
             }
           } else if (asset.type === 'image') {
             const img = imageElementCache.get(assetId);
-            if (img && img.complete) {
-              const hRatio = width / img.naturalWidth;
-              const vRatio = height / img.naturalHeight;
-              const ratio = Math.min(hRatio, vRatio);
-              const offsetX = (width - img.naturalWidth * ratio) / 2;
-              const offsetY = (height - img.naturalHeight * ratio) / 2;
-              
-              ctx.drawImage(
-                img,
-                0, 0, img.naturalWidth, img.naturalHeight,
-                offsetX, offsetY, img.naturalWidth * ratio, img.naturalHeight * ratio
-              );
-            }
+            if (img) ctx.drawImage(img, 0, 0, width, height);
           }
         }
       }
-      
-      // Text overlays
-      textOverlays.forEach(overlay => {
-        if (currentTime >= overlay.startTime && currentTime < overlay.endTime) {
-          renderTextOverlay(ctx, { width, height }, overlay.text, {
-            x: (overlay.x / 100) * width,
-            y: (overlay.y / 100) * height,
-            fontSize: overlay.fontSize,
-            color: overlay.color,
-            align: 'center',
-            baseline: 'middle'
-          });
+
+      // Overlays
+      textOverlays.forEach(o => {
+        if (currentTime >= o.startTime && currentTime < o.endTime) {
+          ctx.fillStyle = o.color || '#fff';
+          ctx.font = `${o.fontSize || 40}px Arial`;
+          ctx.textAlign = 'center';
+          ctx.fillText(o.text, (o.x/100)*width, (o.y/100)*height);
         }
       });
-      
-      // Progress
-      frameCount++;
-      exportState.progress = (frameCount / totalFrames) * 100;
-      if (dom.exportProgressFill) {
-        dom.exportProgressFill.style.width = `${exportState.progress}%`;
-      }
-      if (dom.exportProgressText) {
-        dom.exportProgressText.textContent = `Exporting... ${Math.round(exportState.progress)}% (${frameCount}/${totalFrames} frames)`;
-      }
+
+      updateExportProgress(i / totalFrames);
+      updateExportStatus(`Capturing: ${Math.round((i/totalFrames)*100)}%`);
       
       currentTime += frameDuration;
-      
-      // Schedule next frame
+      // Let browser breathe
       await new Promise(r => requestAnimationFrame(r));
-      renderFrame();
-    };
-    
-    renderFrame();
-    
-  } catch (error) {
-    console.error('Export error:', error);
-    showToast('Export failed: ' + error.message, 'error');
-    exportState.isExporting = false;
-    exportState.mediaRecorder = null;
-    exportState.progress = 0;
-    if (dom.exportProgress) dom.exportProgress.style.display = 'none';
-    if (dom.exportActions) dom.exportActions.style.display = 'flex';
+    }
+
+    mediaRecorder.stop();
+    if (audioContext) audioContext.close();
+
+  } catch (err) {
+    console.error('Export error:', err);
+    showToast('Export failed', 'error');
+    resetExportUI();
+    if (audioContext) audioContext.close();
   }
+}
+
+function updateExportProgress(p) {
+  if (dom.exportProgressFill) dom.exportProgressFill.style.width = `${p * 100}%`;
+}
+function updateExportStatus(msg) {
+  if (dom.exportProgressText) dom.exportProgressText.textContent = msg;
+}
+function resetExportUI() {
+  exportState.isExporting = false;
+  if (dom.exportModal) dom.exportModal.classList.remove('active');
+  if (dom.exportProgress) dom.exportProgress.style.display = 'none';
+  if (dom.exportActions) dom.exportActions.style.display = 'flex';
 }
 
 // ── Project Settings ──
