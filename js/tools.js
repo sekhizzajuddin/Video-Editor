@@ -139,8 +139,15 @@ export function handleSplit() {
     c.dataset.volume = volume;
     c.dataset.trimStart = newTrimStart;
     c.dataset.trimEnd = newTrimEnd;
-    c.dataset.baseDur = selectedClip.dataset.baseDur;
+    c.dataset.baseDur = selectedClip.dataset.baseDur || 0;
     c.dataset.startTime = left / pxPerSec();
+    
+    // BUG-10: Copy all filter/effect/crop data
+    if (selectedClip.dataset.filter) c.dataset.filter = selectedClip.dataset.filter;
+    if (selectedClip.dataset.effect) c.dataset.effect = selectedClip.dataset.effect;
+    if (selectedClip.dataset.transition) c.dataset.transition = selectedClip.dataset.transition;
+    if (selectedClip.dataset.crop) c.dataset.crop = selectedClip.dataset.crop;
+    
     c.dataset.clipId = `clip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     c.innerHTML = `
@@ -295,7 +302,9 @@ export function initTools() {
       return;
     }
     
-    const baseDur = parseFloat(selectedClip.dataset.baseDur || 0);
+    const assetId = selectedClip.dataset.assetId;
+    const asset = uploadedAssets.find(a => a.id === assetId);
+    const baseDur = parseFloat(selectedClip.dataset.baseDur) || asset?.duration || 0;
     if (endSec > baseDur) {
       showToast('Trim end exceeds clip duration', 'error');
       return;
@@ -372,9 +381,11 @@ function showCropOverlay() {
   // Show overlay with visible styles
   overlay.style.display = 'block';
   overlay.style.position = 'absolute';
-  overlay.style.zIndex = '100';
-  overlay.style.border = '2px dashed #5b6ef5';
-  overlay.style.backgroundColor = 'rgba(91, 110, 245, 0.2)';
+  overlay.style.zIndex = '1000';
+  overlay.style.border = '2px solid #ffffff';
+  overlay.style.outline = '2px solid #5b6ef5';
+  overlay.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)';
+  overlay.style.backgroundColor = 'rgba(91, 110, 245, 0.1)';
   
   // Get existing crop data or default
   let cropData = { x: 0, y: 0, width: 100, height: 100 };
@@ -736,6 +747,7 @@ async function startExport() {
       if (chunks.length === 0) {
         showToast('Export failed - no data captured', 'error');
         exportState.isExporting = false;
+        exportState.progress = 0;
         if (dom.exportModal) dom.exportModal.classList.remove('active');
         if (dom.exportProgress) dom.exportProgress.style.display = 'none';
         if (dom.exportActions) dom.exportActions.style.display = 'flex';
@@ -748,6 +760,7 @@ async function startExport() {
       if (blob.size === 0) {
         showToast('Export failed - empty file', 'error');
         exportState.isExporting = false;
+        exportState.progress = 0;
         if (dom.exportModal) dom.exportModal.classList.remove('active');
         if (dom.exportProgress) dom.exportProgress.style.display = 'none';
         if (dom.exportActions) dom.exportActions.style.display = 'flex';
@@ -780,6 +793,7 @@ async function startExport() {
       showToast('Export error occurred', 'error');
       exportState.isExporting = false;
       exportState.mediaRecorder = null;
+      exportState.progress = 0;
       if (dom.exportProgress) dom.exportProgress.style.display = 'none';
       if (dom.exportActions) dom.exportActions.style.display = 'flex';
     };
@@ -930,6 +944,7 @@ async function startExport() {
     showToast('Export failed: ' + error.message, 'error');
     exportState.isExporting = false;
     exportState.mediaRecorder = null;
+    exportState.progress = 0;
     if (dom.exportProgress) dom.exportProgress.style.display = 'none';
     if (dom.exportActions) dom.exportActions.style.display = 'flex';
   }

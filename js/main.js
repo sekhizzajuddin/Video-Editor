@@ -301,7 +301,7 @@ function initKeyboardShortcuts() {
           handleMarkIn();
         } else {
           e.preventDefault();
-          dom.fileInput?.click(); // Ctrl+I for import
+          (dom.fileInput || document.getElementById('fileInput'))?.click(); // Ctrl+I for import
         }
         break;
         

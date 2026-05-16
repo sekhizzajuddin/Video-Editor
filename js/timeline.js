@@ -336,7 +336,7 @@ document.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 document.addEventListener('mouseup', () => {
-  if (clipDrag.active) {
+  if (clipDrag.active && clipDrag.clip) {
     hideSnapIndicator();
     clipDrag.clip.classList.remove('clip--dragging');
     clipDrag.clip.style.zIndex = '';
@@ -346,7 +346,7 @@ document.addEventListener('mouseup', () => {
 });
 
 document.addEventListener('touchend', () => {
-  if (clipDrag.active) {
+  if (clipDrag.active && clipDrag.clip) {
     hideSnapIndicator();
     clipDrag.clip.classList.remove('clip--dragging');
     clipDrag.clip.style.zIndex = '';
@@ -522,23 +522,22 @@ export function makeClipResizable(clip) {
 
 // ── Push Siblings Function (for auto-push on clip extension) ──
 function pushSiblingsOnResize(clip, newRightPx, track) {
-  const siblings = Array.from(track.querySelectorAll('.clip')).filter(c => c !== clip);
-  const clipLeft = getClipLeft(clip);
-  
-  // Find all clips to the right of the resized clip
-  const clipsToPush = siblings
-    .filter(c => getClipLeft(c) >= newRightPx - 1)
+  const siblings = Array.from(track.querySelectorAll('.clip'))
+    .filter(c => c !== clip)
     .sort((a, b) => getClipLeft(a) - getClipLeft(b));
   
-  // Push each clip to the right
-  clipsToPush.forEach(sibling => {
+  let currentPushBoundary = newRightPx;
+  
+  siblings.forEach(sibling => {
     const siblingLeft = getClipLeft(sibling);
-    const siblingWidth = getClipWidth(sibling);
-    const pushAmount = newRightPx - siblingLeft;
-    
-    if (pushAmount > 0) {
-      sibling.style.left = `${siblingLeft + pushAmount}px`;
-      sibling.dataset.startTime = (siblingLeft + pushAmount) / pxPerSec();
+    // If this sibling starts before our push boundary, push it
+    if (siblingLeft < currentPushBoundary - 1) {
+      const pushAmount = currentPushBoundary - siblingLeft;
+      const newLeft = siblingLeft + pushAmount;
+      sibling.style.left = `${newLeft}px`;
+      sibling.dataset.startTime = newLeft / pxPerSec();
+      // Update boundary for next sibling
+      currentPushBoundary = newLeft + getClipWidth(sibling);
     }
   });
 }

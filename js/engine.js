@@ -214,18 +214,21 @@ function renderVideoClip(ctx, canvas, clip, asset, timeSec) {
   }
 
   const drift = Math.abs(hiddenVideo.currentTime - expectedLocalTime);
-  if (drift > 0.15) {
-    hiddenVideo.currentTime = expectedLocalTime;
-  }
-
+  
   if (playbackState.isPlaying) {
     if (hiddenVideo.paused) {
       hiddenVideo.play().catch(err => console.warn('Video play error:', err));
     }
-  } else {
-    if (drift > 0.05) {
+    // Continuous sync during playback if drift is too large
+    if (drift > 0.15) {
       hiddenVideo.currentTime = expectedLocalTime;
     }
+  } else {
+    // Precise sync when scrubbed/stopped
+    if (drift > 0.04) {
+      hiddenVideo.currentTime = expectedLocalTime;
+    }
+    if (!hiddenVideo.paused) hiddenVideo.pause();
   }
 
   const clipVolume = parseFloat(clip.dataset.volume || 100) / 100;
@@ -300,16 +303,11 @@ function handleMultiTrackAudio(timeSec) {
     }
   }
 
-  // Fall back to video clip's embedded audio
-  if (!activeClip && activeVideoClip) {
-    const assetId = activeVideoClip.dataset.assetId;
-    asset = uploadedAssets.find(a => a.id === assetId);
-    if (asset && (asset.type === 'video' || asset.type === 'audio')) {
-      activeClip = activeVideoClip;
-    }
-  }
-
-  if (activeClip && asset) {
+  // Fall back to video clip's embedded audio ONLY if no audio clip is found
+  // AND mute the hidden video element if we are using the previewAudio instead
+  // Actually, standardizing: Video clips use hiddenVideo, Audio clips use previewAudio
+  
+  if (activeClip && asset && asset.type === 'audio') {
     if (mediaEl.dataset.activeAssetId !== asset.id) {
       mediaEl.src = asset.objectURL;
       mediaEl.dataset.activeAssetId = asset.id;

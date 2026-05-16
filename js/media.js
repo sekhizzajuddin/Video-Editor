@@ -127,30 +127,43 @@ export function createAudioRow(asset) {
     window.__currentDragType = asset.type;
   });
 
-  let previewAudio = null;
+  let singletonPreviewAudio = null; // Defined at file scope below or managed via state
+  
+  // NOTE: Moving singleton definition to module scope for persistence
   item.querySelector('.audio-item__play').addEventListener('click', (e) => {
     e.stopPropagation();
     const btn = e.currentTarget;
     
-    if (previewAudio && !previewAudio.paused) {
-      previewAudio.pause();
-      previewAudio.currentTime = 0;
-      btn.textContent = '▶';
-      return;
+    // Stop any existing singleton playback
+    if (window.__singletonPreviewAudio) {
+      const isPlaying = !window.__singletonPreviewAudio.paused;
+      const sameAsset = window.__singletonPreviewAudio.dataset.assetId === asset.id;
+      
+      window.__singletonPreviewAudio.pause();
+      window.__singletonPreviewAudio.currentTime = 0;
+      
+      // Reset all buttons
+      document.querySelectorAll('.audio-item__play').forEach(b => b.textContent = '▶');
+      
+      if (isPlaying && sameAsset) return;
+    } else {
+      window.__singletonPreviewAudio = new Audio();
+      window.__singletonPreviewAudio.volume = 0.5;
     }
     
-    previewAudio = previewAudio || new Audio(asset.objectURL);
-    previewAudio.volume = 0.5;
+    const pa = window.__singletonPreviewAudio;
+    pa.src = asset.objectURL;
+    pa.dataset.assetId = asset.id;
     
-    previewAudio.play().catch(err => {
+    pa.play().catch(err => {
       console.error('Audio preview error:', err);
       showToast('Failed to preview audio', 'error');
     });
     
     btn.textContent = '⏹';
-    previewAudio.addEventListener('ended', () => {
+    pa.onended = () => {
       btn.textContent = '▶';
-    }, { once: true });
+    };
   });
 
   if (dom.audioList && dom.audioListEmpty) {
@@ -498,9 +511,34 @@ export function removeAsset(assetId) {
     URL.revokeObjectURL(asset.objectURL);
   }
   
-  videoElementCache.delete(assetId);
-  audioElementCache.delete(assetId);
-  imageElementCache.delete(assetId);
+  // ISSUE-15: Cleanup media elements
+  const vid = videoElementCache.get(assetId);
+  if (vid) {
+    vid.pause();
+    vid.src = "";
+    vid.load();
+    videoElementCache.delete(assetId);
+  }
+  
+  const aud = audioElementCache.get(assetId);
+  if (aud) {
+    aud.pause();
+    aud.src = "";
+    aud.load();
+    audioElementCache.delete(assetId);
+  }
+  
+  const img = imageElementCache.get(assetId);
+  if (img) {
+    img.src = "";
+    imageElementCache.delete(assetId);
+  }
+  
+  // Cleanup singleton preview if it was using this asset
+  if (window.__singletonPreviewAudio && window.__singletonPreviewAudio.dataset.assetId === assetId) {
+    window.__singletonPreviewAudio.pause();
+    window.__singletonPreviewAudio.src = "";
+  }
   
   uploadedAssets.splice(index, 1);
   
