@@ -1172,8 +1172,13 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 .track--text,
 .track--fx,
 .track--vfx {
-  height: 36px;
+  height: 28px;
   background-color: rgba(180,120,255,0.04);
+}
+
+/* Even smaller for VFX specifically */
+.track--vfx {
+  height: 24px;
 }
 
 /* Cross-track drag target highlight */

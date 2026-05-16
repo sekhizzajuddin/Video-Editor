@@ -196,14 +196,15 @@ function initZoom() {
   }, { passive: false });
 
   dom.trackArea?.addEventListener('scroll', () => {
+    // Sync horizontal scroll with time ruler - only horizontal, not vertical
     if (dom.timeRuler) {
       dom.timeRuler.style.transform = `translateX(-${dom.trackArea.scrollLeft}px)`;
     }
-    // Sync vertical scroll with track headers
+    // Sync vertical scroll with track headers - independent of horizontal
     if (dom.trackHeaders) {
       dom.trackHeaders.scrollTop = dom.trackArea.scrollTop;
     }
-  });
+  }, { passive: true });
 
   // Also sync wheel event from headers to track area
   dom.trackHeaders?.addEventListener('wheel', (e) => {
