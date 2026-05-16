@@ -1,6 +1,0 @@
-node_modules/
-.env
-projects/*.json
-*.log
-.DS_Store
-Thumbs.db
