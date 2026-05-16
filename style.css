@@ -265,9 +265,10 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   color: var(--text-primary);
 }
 
-.sidebar__item--active {
-  background: var(--accent-subtle);
-  color: var(--accent);
+.sidebar__item.sidebar__item--active {
+  background: var(--accent-subtle) !important;
+  color: var(--accent) !important;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .sidebar__icon {
