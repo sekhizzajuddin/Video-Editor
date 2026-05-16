@@ -1035,6 +1035,11 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   justify-content: center;
   position: relative;
 }
+.track-header--slim {
+  height: 36px;
+  padding: 0 6px;
+}
+.track-header--slim .track-header__controls { margin-top: 1px; }
 .track-header__time-display {
   font-size: 9px;
   color: var(--text-muted);
@@ -1093,6 +1098,8 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   background: var(--bg-base);
   background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
   background-size: 100px 100%;
+  display: flex;
+  flex-direction: column;
 }
 .track-area::-webkit-scrollbar { width: 10px; height: 10px; }
 .track-area::-webkit-scrollbar-corner { background: var(--bg-panel); }
@@ -1100,8 +1107,11 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 .track-area::-webkit-scrollbar-track { background: var(--bg-base); }
 .track-area::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
 
-/* Time Ruler */
+/* Time Ruler — sticky so it doesn't scroll vertically */
 .time-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   height: var(--ruler-height);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
@@ -1157,6 +1167,21 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 .track--video { background-color: rgba(91,110,245,0.03); }
 .track--audio  { background-color: rgba(46,203,133,0.03); }
 .track--image  { background-color: rgba(245,166,35,0.03); }
+
+/* Slim tracks for Text & VFX */
+.track--text,
+.track--fx,
+.track--vfx {
+  height: 36px;
+  background-color: rgba(180,120,255,0.04);
+}
+
+/* Cross-track drag target highlight */
+.track--drag-target {
+  outline: 2px dashed rgba(91,110,245,0.6);
+  outline-offset: -2px;
+  background-color: rgba(91,110,245,0.06) !important;
+}
 
 /* Drop Zone Feedback */
 .track--drop-active {
@@ -1334,19 +1359,29 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 20px;
-  height: 20px;
-  background: var(--accent);
-  color: #fff;
+  width: 22px;
+  height: 22px;
+  background: var(--bg-elevated);
+  border: 2px solid var(--accent);
+  color: var(--accent);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 11px;
   cursor: pointer;
   z-index: 25;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-  opacity: 0.8;
+  box-shadow: 0 0 8px rgba(91,110,245,0.4);
+  opacity: 0.7;
+  transition: all 0.15s ease;
+}
+.transition-btn:hover { opacity: 1; transform: translate(-50%, -50%) scale(1.2); background: var(--accent); color: #fff; }
+.transition-btn--applied {
+  background: var(--accent);
+  color: #fff;
+  opacity: 1;
+  font-size: 9px;
+  font-weight: bold;
 }
 .transition-btn:hover { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
 
@@ -1892,4 +1927,119 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   .workspace {
     grid-template-columns: 300px 1fr;
   }
+}
+
+/* ── CLIP THUMBNAIL (initial frame) ── */
+.clip__thumb {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: left center;
+  opacity: 0.25;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ── ENHANCED AUDIO CLIP ── */
+.clip--audio {
+  background: linear-gradient(135deg, rgba(15,30,50,0.95), rgba(20,40,60,0.9));
+  border: 1px solid rgba(79,195,247,0.5);
+}
+.clip--audio .waveform-canvas { opacity: 1; }
+
+/* ── SLIM CLIP for text/vfx tracks ── */
+.clip--text, .clip--vfx {
+  background: linear-gradient(135deg, rgba(140,82,255,0.6), rgba(90,50,180,0.8));
+  border: 1px solid rgba(180,120,255,0.7);
+  top: 3px;
+  height: calc(100% - 6px);
+  font-size: 9px;
+}
+
+/* ── PROPERTY POPOVER ── */
+.clip-property-popover {
+  position: fixed;
+  z-index: 3000;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  padding: 14px 16px;
+  min-width: 220px;
+  max-width: 280px;
+  font-size: 12px;
+  color: var(--text-primary);
+  animation: popoverIn 0.15s ease;
+}
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.clip-property-popover h4 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.prop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+.prop-row label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.prop-row input[type="range"],
+.prop-row select {
+  flex: 1;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  font-size: 11px;
+}
+.prop-row-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--accent-subtle);
+  border: 1px solid rgba(91,110,245,0.3);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+}
+.prop-row-btn:hover { background: var(--accent); color: #fff; }
+.prop-row-btn--danger { background: var(--red-subtle); border-color: var(--red); color: var(--red); }
+.prop-row-btn--danger:hover { background: var(--red); color: #fff; }
+.prop-row-btn--ai {
+  background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(91,110,245,0.2));
+  border-color: rgba(124,58,237,0.5);
+  color: #b78bff;
+}
+.prop-row-btn--ai:hover {
+  background: linear-gradient(135deg, #7c3aed, #5b6ef5);
+  color: #fff;
+}
+
+/* ── TRACK HEADER — no drag ── */
+.track-header { user-select: none; }
+.track-header[draggable] { draggable: false; }
+
+/* ── AUDIO SEPARATION INDICATOR ── */
+.clip--audio-separated {
+  border-style: dashed;
+  border-color: rgba(79,195,247,0.8);
 }

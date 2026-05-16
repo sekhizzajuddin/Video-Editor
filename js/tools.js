@@ -531,7 +531,6 @@ export function initTextTools() {
         caption: 'Your Caption',
         outro: 'Thanks for watching!'
       };
-      
       if (dom.customTextInput) {
         dom.customTextInput.value = defaultTexts[textType] || '';
       }
@@ -548,55 +547,81 @@ export function initTextTools() {
     const fontSize = parseInt(dom.textFontSize?.value) || 48;
     const color = dom.textColor?.value || '#ffffff';
     
-    const overlay = {
-      id: `text-${getNextTextOverlayId()}`,
-      text,
-      fontSize,
-      color,
-      x: 50,
-      y: 50,
-      startTime: playbackState.currentTime,
-      endTime: playbackState.currentTime + 5,
-      type: 'custom'
-    };
-    
-    textOverlays.push(overlay);
+    addTextToTimeline(text, fontSize, color);
     showToast('Text added to timeline', 'success');
-    
     if (dom.customTextInput) dom.customTextInput.value = '';
+  });
+}
+
+function addTextToTimeline(text, fontSize, color) {
+  let textTrack = document.querySelector('.track--text');
+  if (!textTrack) {
+    import('./timeline.js').then(m => textTrack = m.addNewTrack('text'));
+  }
+  const asset = {
+    id: `text-${Date.now()}`,
+    type: 'text',
+    name: 'Text: ' + text.substring(0,10),
+    duration: 5
+  };
+  import('./timeline.js').then(m => {
+    const clip = m.addClipToTrack(asset, textTrack, playbackState.currentTime * m.pxPerSec());
+    clip.dataset.text = text;
+    clip.dataset.fontSize = fontSize;
+    clip.dataset.color = color;
+    clip.dataset.animation = 'none';
   });
 }
 
 // ── Effect Tools ──
 export function initEffectTools() {
+  // Transitions
   document.querySelectorAll('[data-transition]').forEach(card => {
     card.addEventListener('click', () => {
-      if (!selectedClip) {
-        showToast('Select a clip first', 'warning');
-        return;
-      }
-      const transition = card.dataset.transition;
-      selectedClip.dataset.transition = transition;
-      showToast(`Applied ${transition} transition`, 'success');
+      import('./timeline.js').then(m => {
+        if (!m.activeTransitionClips) {
+          showToast('Click the + button between clips first', 'warning');
+          return;
+        }
+        const transition = card.dataset.transition;
+        const { clip1, clip2 } = m.activeTransitionClips;
+        clip1.dataset.transitionOut = transition;
+        clip2.dataset.transitionIn = transition;
+        showToast(`Applied ${transition} transition`, 'success');
+        m.refreshTimelineLayout();
+      });
     });
   });
   
+  // VFX (Effects)
   document.querySelectorAll('[data-effect]').forEach(card => {
     card.addEventListener('click', () => {
-      if (!selectedClip) {
-        showToast('Select a clip first', 'warning');
-        return;
-      }
       const effect = card.dataset.effect;
-      selectedClip.dataset.effect = effect;
-      showToast(`Applied ${effect} effect`, 'success');
+      let vfxTrack = document.querySelector('.track--vfx');
+      if (!vfxTrack) {
+        import('./timeline.js').then(m => vfxTrack = m.addNewTrack('vfx'));
+      }
+      const asset = {
+        id: `vfx-${Date.now()}`,
+        type: 'vfx',
+        name: 'VFX: ' + effect,
+        duration: 5
+      };
+      import('./timeline.js').then(m => {
+        const clip = m.addClipToTrack(asset, vfxTrack, playbackState.currentTime * m.pxPerSec());
+        clip.dataset.effect = effect;
+        clip.dataset.intensity = 50;
+        clip.dataset.blendMode = 'normal';
+        showToast(`Added ${effect} to VFX track`, 'success');
+      });
     });
   });
   
+  // Filters (these apply directly to selected video clip)
   document.querySelectorAll('[data-filter]').forEach(card => {
     card.addEventListener('click', () => {
       if (!selectedClip) {
-        showToast('Select a clip first', 'warning');
+        showToast('Select a video clip first', 'warning');
         return;
       }
       const filter = card.dataset.filter;

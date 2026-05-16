@@ -78,6 +78,7 @@ export function makeClipDraggable(clip) {
     clipDrag.startMouseX = e.clientX;
     clipDrag.startLeft = getClipLeft(clip);
     clipDrag.trackEl = trackEl;
+    clipDrag.startTrackEl = trackEl; // remember original track for cross-track drag
 
     clip.classList.add('clip--dragging');
     clip.style.zIndex = '20';
@@ -96,6 +97,7 @@ export function makeClipDraggable(clip) {
     clipDrag.startMouseX = touch.clientX;
     clipDrag.startLeft = getClipLeft(clip);
     clipDrag.trackEl = trackEl;
+    clipDrag.startTrackEl = trackEl;
     clip.classList.add('clip--dragging');
     clip.style.zIndex = '20';
   }, { passive: false });
@@ -106,6 +108,8 @@ export function isDropAllowed(trackEl, assetType) {
   const trackType = trackEl?.dataset?.track;
   if (assetType === 'video' || assetType === 'image') return trackType === 'video';
   if (assetType === 'audio') return trackType === 'audio';
+  if (assetType === 'text') return trackType === 'text';
+  if (assetType === 'vfx') return trackType === 'vfx';
   return false;
 }
 
@@ -231,6 +235,7 @@ export function addClipToTrack(asset, trackEl, leftPx, options = {}) {
   clip.draggable = true;
 
   clip.dataset.assetId = asset.id;
+  clip.dataset.type = asset.type; // for cross-track type check
   clip.dataset.baseDur = asset.duration || 0;
   clip.dataset.trimStart = options.trimStart || 0;
   clip.dataset.trimEnd = options.trimEnd || asset.duration || 5;
@@ -240,6 +245,7 @@ export function addClipToTrack(asset, trackEl, leftPx, options = {}) {
   clip.dataset.clipId = `clip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   clip.innerHTML = `
+    <div class="clip__thumb"></div>
     <div class="clip__label">${icon} ${asset.name}</div>
     <div class="clip__speed-badge" style="display:none;"></div>
     <div class="clip__duration">${formatDuration(duration)}</div>
@@ -252,13 +258,31 @@ export function addClipToTrack(asset, trackEl, leftPx, options = {}) {
 
   trackEl.appendChild(clip);
   
+  // Draw waveform
   if (asset.waveformData) {
     const canvas = clip.querySelector('.waveform-canvas');
     if (canvas) {
       const ctx = canvas.getContext('2d');
-      drawWaveform(ctx, canvas, asset.waveformData, { color: isVideo ? 'rgba(255,255,255,0.4)' : '#5b6ef5' });
+      if (isAudio) {
+        drawEnhancedWaveform(ctx, canvas, asset.waveformData);
+      } else {
+        drawWaveform(ctx, canvas, asset.waveformData, { color: 'rgba(255,255,255,0.3)' });
+      }
     }
   }
+
+  // Capture initial frame thumbnail for video clips
+  if (isVideo) {
+    const video = videoElementCache.get(asset.id);
+    if (video) {
+      captureInitialFrame(video, clip);
+    }
+  }
+  if (isImage && asset.thumbnail) {
+    const thumb = clip.querySelector('.clip__thumb');
+    if (thumb) thumb.style.backgroundImage = `url('${asset.thumbnail}')`;
+  }
+
   makeClipDraggable(clip);
   makeClipResizable(clip);
   
@@ -271,6 +295,59 @@ export function addClipToTrack(asset, trackEl, leftPx, options = {}) {
 
   showToast(`Added "${asset.name}" to timeline`, 'success');
   return clip;
+}
+
+function captureInitialFrame(video, clip) {
+  const thumb = clip.querySelector('.clip__thumb');
+  if (!thumb || !video) return;
+  const tryCapture = () => {
+    if (video.readyState < 2) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 180;
+    const ctx = canvas.getContext('2d');
+    const savedTime = video.currentTime;
+    video.currentTime = parseFloat(clip.dataset.trimStart) || 0;
+    const onSeeked = () => {
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        thumb.style.backgroundImage = `url('${canvas.toDataURL('image/jpeg', 0.6)}')`;
+      } catch(e) {}
+      video.currentTime = savedTime;
+      video.removeEventListener('seeked', onSeeked);
+    };
+    video.addEventListener('seeked', onSeeked);
+  };
+  if (video.readyState >= 2) tryCapture();
+  else video.addEventListener('loadeddata', tryCapture, { once: true });
+}
+
+function drawEnhancedWaveform(ctx, canvas, waveformData) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const w = canvas.width, h = canvas.height;
+  const barCount = Math.floor(w / 3);
+  const step = Math.ceil(waveformData.length / barCount);
+  const amp = h / 2;
+  const midY = h / 2;
+
+  // Center line
+  ctx.strokeStyle = 'rgba(79,195,247,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, midY);
+  ctx.lineTo(w, midY);
+  ctx.stroke();
+
+  for (let i = 0; i < barCount; i++) {
+    const value = waveformData[i * step] || 0;
+    const barH = Math.max(1, value * amp * 1.8);
+    const x = i * 3;
+    const y = midY - barH / 2;
+    // White for high peaks (vocal), blue for rest
+    const isHighPeak = value > 0.5;
+    ctx.fillStyle = isHighPeak ? 'rgba(255,255,255,0.85)' : '#4FC3F7';
+    ctx.fillRect(x, y, 2, barH);
+  }
 }
 
 function updateSpeedBadge(clip, speed) {
@@ -291,32 +368,59 @@ export function clearDropHighlights() {
   });
 }
 
-// ── Global Drag Handler ──
-function handleDragMove(clientX) {
+// ── Global Drag Handler (with cross-track support) ──
+function handleDragMove(clientX, clientY) {
   if (!clipDrag.active || !clipDrag.clip) return;
   
   const clip = clipDrag.clip;
-  const track = clip.parentElement;
+  const currentTrack = clip.parentElement;
   const width = getClipWidth(clip);
   const startLeft = clipDrag.startLeft;
   
   let newLeft = startLeft + (clientX - clipDrag.startMouseX);
   newLeft = Math.max(0, newLeft);
   
+  // ── Cross-Track Detection ──
+  if (clientY !== undefined) {
+    const allTracks = Array.from(document.querySelectorAll('.track'));
+    let targetTrack = null;
+    for (const t of allTracks) {
+      const r = t.getBoundingClientRect();
+      if (clientY >= r.top && clientY <= r.bottom) {
+        targetTrack = t;
+        break;
+      }
+    }
+    
+    // Clear drag-target highlights
+    allTracks.forEach(t => t.classList.remove('track--drag-target'));
+    
+    if (targetTrack && targetTrack !== currentTrack) {
+      const clipType = clip.dataset.type || (clip.classList.contains('clip--video') ? 'video' : clip.classList.contains('clip--audio') ? 'audio' : 'video');
+      if (isDropAllowed(targetTrack, clipType)) {
+        targetTrack.classList.add('track--drag-target');
+        clipDrag.hoverTrackEl = targetTrack;
+      } else {
+        clipDrag.hoverTrackEl = null;
+      }
+    } else {
+      clipDrag.hoverTrackEl = null;
+    }
+  }
+  
   // Snap
-  const snapResult = findSnapPosition(newLeft, width, track, clip);
+  const snapResult = findSnapPosition(newLeft, width, currentTrack, clip);
   let finalLeft = snapResult.left;
   
-  // Show snap indicator
   if (snapResult.didSnap) {
     showSnapIndicator(snapResult.left);
   } else {
     hideSnapIndicator();
   }
   
-  // Collision
+  // Collision (only on current track)
   const direction = newLeft > startLeft ? 1 : -1;
-  finalLeft = resolveCollision(finalLeft, width, track, clip, direction);
+  finalLeft = resolveCollision(finalLeft, width, currentTrack, clip, direction);
   
   clip.style.left = `${finalLeft}px`;
   clip.dataset.startTime = finalLeft / pxPerSec();
@@ -325,37 +429,63 @@ function handleDragMove(clientX) {
 }
 
 document.addEventListener('mousemove', (e) => {
-  if (clipDrag.active) handleDragMove(e.clientX);
+  if (clipDrag.active) handleDragMove(e.clientX, e.clientY);
 });
 
 document.addEventListener('touchmove', (e) => {
   if (clipDrag.active) {
     e.preventDefault();
-    handleDragMove(e.touches[0].clientX);
+    handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
   }
 }, { passive: false });
 
 document.addEventListener('mouseup', () => {
   if (clipDrag.active && clipDrag.clip) {
     hideSnapIndicator();
+    // ── Finalize cross-track move ──
+    if (clipDrag.hoverTrackEl && clipDrag.hoverTrackEl !== clipDrag.clip.parentElement) {
+      const clip = clipDrag.clip;
+      const targetTrack = clipDrag.hoverTrackEl;
+      const clipType = clip.classList.contains('clip--audio') ? 'audio' : 'video';
+      if (isDropAllowed(targetTrack, clipType)) {
+        // Check for overlaps on target
+        const cLeft = getClipLeft(clip);
+        const cWidth = getClipWidth(clip);
+        const hasOverlap = Array.from(targetTrack.querySelectorAll('.clip')).some(c => {
+          const tL = getClipLeft(c); const tR = tL + getClipWidth(c);
+          return cLeft < tR && cLeft + cWidth > tL;
+        });
+        if (!hasOverlap) {
+          targetTrack.appendChild(clip);
+          showToast('Clip moved to track', 'success');
+        } else {
+          showToast('Cannot move — overlaps existing clip', 'warning');
+        }
+      }
+    }
+    document.querySelectorAll('.track--drag-target').forEach(t => t.classList.remove('track--drag-target'));
     clipDrag.clip.classList.remove('clip--dragging');
     clipDrag.clip.style.zIndex = '';
     clipDrag.active = false;
     clipDrag.clip = null;
+    clipDrag.hoverTrackEl = null;
+    refreshTimelineLayout();
   }
 });
 
 document.addEventListener('touchend', () => {
   if (clipDrag.active && clipDrag.clip) {
     hideSnapIndicator();
+    document.querySelectorAll('.track--drag-target').forEach(t => t.classList.remove('track--drag-target'));
     clipDrag.clip.classList.remove('clip--dragging');
     clipDrag.clip.style.zIndex = '';
     clipDrag.active = false;
     clipDrag.clip = null;
+    clipDrag.hoverTrackEl = null;
   }
 });
 
-// ── Register Drop Zone for a Single Track (BUG-05 fix) ──
+// ── Register Drop Zone for a Single Track ──
 export function initSingleTrackDropZone(trackEl) {
   if (!trackEl) return;
   const trackId = trackEl.dataset.trackId;
@@ -387,34 +517,56 @@ export function initSingleTrackDropZone(trackEl) {
     const asset = uploadedAssets.find(a => a.id === assetId);
     if (!asset) { showToast('Asset not found', 'error'); return; }
     if (!isDropAllowed(trackEl, asset.type)) {
-      showToast(`Drop ${asset.type} files onto a ${asset.type === 'audio' ? 'audio' : 'video'} track`, 'warning');
+      showToast(`Cannot drop ${asset.type} here`, 'warning');
       return;
     }
     let leftPx = dropPositionX(e, trackEl);
-    let targetTrack = trackEl;
-    
-    // Overlap Protection
-    let duration = asset.duration || 5;
-    let durationPx = duration * pxPerSec();
-    let rightPx = leftPx + durationPx;
-    
-    const siblings = Array.from(trackEl.querySelectorAll('.clip'));
-    const isOverlap = siblings.some(c => {
-       const cLeft = getClipLeft(c);
-       const cRight = cLeft + getClipWidth(c);
-       return (leftPx < cRight && rightPx > cLeft);
-    });
-    
-    if (isOverlap) {
-       targetTrack = addNewTrack(trackEl.dataset.track || (asset.type === 'video' ? 'video' : 'audio'));
-       showToast(`Overlap detected: Moved to new track`, 'info');
-    }
-    
-    addClipToTrack(asset, targetTrack, leftPx);
+    const duration = asset.duration || 5;
+    const durationPx = Math.max(80, duration * pxPerSec());
+
+    // ── Smart Placement: find blank space ──
+    const targetTrack = findDropTarget(trackEl, leftPx, durationPx, asset.type);
+    const finalLeft = findBlankLeft(targetTrack, leftPx, durationPx);
+
+    addClipToTrack(asset, targetTrack, finalLeft);
     syncPlayerToTimeline(playbackState.currentTime);
     window.__currentDragId = null;
     window.__currentDragType = null;
   });
+}
+
+// Find the best track to drop into (same track if space, else existing same-type, else new)
+function findDropTarget(preferredTrack, leftPx, widthPx, assetType) {
+  // Check if preferred track has space
+  if (!hasOverlapAtPosition(preferredTrack, leftPx, widthPx)) return preferredTrack;
+  // Check other same-type tracks
+  const trackType = preferredTrack.dataset.track;
+  const allSameTracks = Array.from(document.querySelectorAll(`.track--${trackType}`));
+  for (const t of allSameTracks) {
+    if (t === preferredTrack) continue;
+    if (!hasOverlapAtPosition(t, leftPx, widthPx)) return t;
+  }
+  // No space found — create new track
+  showToast('Added to new track (no space available)', 'info');
+  return addNewTrack(trackType);
+}
+
+function hasOverlapAtPosition(trackEl, leftPx, widthPx) {
+  const rightPx = leftPx + widthPx;
+  return Array.from(trackEl.querySelectorAll('.clip')).some(c => {
+    const cL = getClipLeft(c); const cR = cL + getClipWidth(c);
+    return leftPx < cR && rightPx > cL;
+  });
+}
+
+// Snap leftPx to first available blank space on track
+function findBlankLeft(trackEl, preferredLeft, widthPx) {
+  if (!hasOverlapAtPosition(trackEl, preferredLeft, widthPx)) return preferredLeft;
+  // Try appending after last clip
+  const clips = Array.from(trackEl.querySelectorAll('.clip')).sort((a,b) => getClipLeft(a) - getClipLeft(b));
+  if (clips.length === 0) return preferredLeft;
+  const lastRight = getClipLeft(clips[clips.length-1]) + getClipWidth(clips[clips.length-1]);
+  return lastRight + 2;
 }
 
 // ── Initialize Track Drop Zones ──
@@ -925,7 +1077,8 @@ export function refreshTimelineLayout() {
   
   // Render transitions
   document.querySelectorAll('.transition-btn').forEach(btn => btn.remove());
-  document.querySelectorAll('.track').forEach(track => {
+  const TRANSITION_ICONS = { fade: '⬛', wipe: '◧', dissolve: '🌫', zoom: '🔍', slide: '▶', blur: '💫', none: '+' };
+  document.querySelectorAll('.track--video, .track--audio').forEach(track => {
     const clips = Array.from(track.querySelectorAll('.clip'))
       .sort((a, b) => getClipLeft(a) - getClipLeft(b));
     
@@ -935,20 +1088,37 @@ export function refreshTimelineLayout() {
       const c1Right = getClipLeft(c1) + getClipWidth(c1);
       const c2Left = getClipLeft(c2);
       
-      if (Math.abs(c2Left - c1Right) < 5) {
+      if (Math.abs(c2Left - c1Right) < 20) {
+        const appliedType = c1.dataset.transitionOut;
         const btn = document.createElement('div');
-        btn.className = 'transition-btn';
-        btn.innerHTML = '+';
+        btn.className = appliedType ? 'transition-btn transition-btn--applied' : 'transition-btn';
+        btn.dataset.c1Id = c1.dataset.clipId;
+        btn.dataset.c2Id = c2.dataset.clipId;
+        btn.title = appliedType ? `Transition: ${appliedType}` : 'Add Transition';
+        btn.innerHTML = appliedType ? (TRANSITION_ICONS[appliedType] || '✦') : '+';
         btn.style.left = `${c1Right}px`;
         
+        // Left-click: show transition selector AND open FX tab
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
+          // Open FX tab in media panel
+          const fxTab = document.querySelector('.tab[data-tab="transitions"]');
+          if (fxTab) fxTab.click();
           showTransitionMenu(c1, c2, e.clientX, e.clientY);
         });
+
+        // Right-click: copy / delete / properties
+        btn.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showTransitionContextMenu(c1, c2, btn, e.clientX, e.clientY);
+        });
+
         track.appendChild(btn);
       }
     }
   });
+
 
   // Update dynamic duration based on content/viewport
   updateTimelineDuration();
@@ -966,10 +1136,34 @@ let activeTransitionClips = null;
 function showTransitionMenu(clip1, clip2, x, y) {
   if (!dom.transitionSelector) return;
   activeTransitionClips = { clip1, clip2 };
-  
   dom.transitionSelector.style.display = 'block';
-  dom.transitionSelector.style.left = `${x}px`;
-  dom.transitionSelector.style.top = `${y}px`;
+  dom.transitionSelector.style.left = `${Math.min(x, window.innerWidth - 200)}px`;
+  dom.transitionSelector.style.top = `${Math.min(y, window.innerHeight - 220)}px`;
+}
+
+function showTransitionContextMenu(clip1, clip2, btn, x, y) {
+  removePopover();
+  const menu = document.createElement('div');
+  menu.className = 'clip-property-popover';
+  menu.style.left = `${Math.min(x, window.innerWidth - 240)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - 180)}px`;
+  const applied = clip1.dataset.transitionOut || 'None';
+  menu.innerHTML = `
+    <h4>⚡ Transition</h4>
+    <div class="prop-row"><label>Current</label><span style="color:var(--accent)">${applied}</span></div>
+    <button class="prop-row-btn" id="tc-change">Change Transition</button>
+    <button class="prop-row-btn prop-row-btn--danger" id="tc-remove">Remove Transition</button>
+  `;
+  document.body.appendChild(menu);
+  menu.querySelector('#tc-change')?.addEventListener('click', () => {
+    removePopover(); showTransitionMenu(clip1, clip2, x, y);
+  });
+  menu.querySelector('#tc-remove')?.addEventListener('click', () => {
+    delete clip1.dataset.transitionOut; delete clip2.dataset.transitionIn;
+    btn.className = 'transition-btn'; btn.innerHTML = '+'; btn.title = 'Add Transition';
+    removePopover(); refreshTimelineLayout();
+  });
+  setTimeout(() => document.addEventListener('click', removePopover, { once: true }), 50);
 }
 
 document.addEventListener('click', (e) => {
@@ -995,6 +1189,7 @@ export function initTransitionMenu() {
           clip2.dataset.transitionIn = type;
           showToast(`Applied ${type} transition`, 'success');
         }
+        refreshTimelineLayout(); // This updates the + button icon immediately
       }
       dom.transitionSelector.style.display = 'none';
     });
@@ -1005,27 +1200,31 @@ export function updateTimelineDuration() {
   if (!dom.trackArea) return;
   const pps = pxPerSec();
   
-  // 1. Calculate max content end
+  // 1. Calculate max content end from all clips
   let maxEnd = 0;
   document.querySelectorAll('.clip').forEach(clip => {
     const start = parseFloat(clip.dataset.startTime || 0);
     const trimStart = parseFloat(clip.dataset.trimStart || 0);
     const trimEnd = parseFloat(clip.dataset.trimEnd || 0);
     const speed = parseFloat(clip.dataset.speed || 1);
-    const duration = (trimEnd - trimStart) / speed;
-    maxEnd = Math.max(maxEnd, start + duration);
+    const dur = trimEnd > trimStart ? (trimEnd - trimStart) / speed : parseFloat(clip.style.width) / pps;
+    maxEnd = Math.max(maxEnd, start + dur);
   });
   
-  // 2. Calculate visible duration (min width should cover the screen)
+  // 2. Visible duration covers at least the viewport
   const visibleDuration = (dom.trackArea.clientWidth || window.innerWidth) / pps;
-  
-  // 3. Set total duration (padding only if there's content to allow scrolling past)
-  const padding = maxEnd > 0 ? 10 : 0;
+  const padding = maxEnd > 0 ? 30 : 0; // 30s breathing room
   const newDuration = Math.max(visibleDuration, maxEnd + padding);
   
-  if (Math.abs(TOTAL_DURATION - newDuration) > 0.1) {
+  const changed = Math.abs(TOTAL_DURATION - newDuration) > 0.5;
+  if (changed) {
     setTotalDuration(newDuration);
-    // Note: buildRuler is usually called by the caller (refreshTimelineLayout)
+    // Always rebuild ruler so time extends dynamically
+    buildRuler();
+    // Stretch all tracks so horizontal scrollbar works
+    const totalPx = Math.ceil(newDuration * pps);
+    document.querySelectorAll('.track').forEach(t => { t.style.minWidth = `${totalPx}px`; });
+    if (dom.timeRuler) dom.timeRuler.style.minWidth = `${totalPx}px`;
   }
 }
 
@@ -1107,7 +1306,6 @@ export function initPlayheadDrag() {
       syncPlayerToTimeline(playbackState.currentTime);
     }
     
-    // Update ruler time display
     if (dom.rulerTimeDisplay) {
       dom.rulerTimeDisplay.textContent = pxToTimecode(x);
     }
@@ -1119,9 +1317,168 @@ export function initPlayheadDrag() {
   window.addEventListener('mousemove', moveDrag);
   window.addEventListener('mouseup', endDrag);
   
-  // Touch support
   dom.playheadHead?.addEventListener('touchstart', startDrag, { passive: false });
   dom.timeRuler?.addEventListener('touchstart', startDrag, { passive: false });
   window.addEventListener('touchmove', moveDrag, { passive: false });
   window.addEventListener('touchend', endDrag);
+}
+
+// ── Popover helpers ──
+function removePopover() {
+  document.querySelectorAll('.clip-property-popover').forEach(p => p.remove());
+}
+
+// ── Right-click property popovers ──
+export function initClipRightClickMenus() {
+  document.addEventListener('contextmenu', (e) => {
+    const clip = e.target.closest('.clip');
+    if (!clip) return;
+    // Only intercept non-video/audio for property popover (video/audio handled by tools.js contextMenu)
+    const type = clip.dataset.type || '';
+    if (type === 'video') { handleVideoRightClick(clip, e); return; }
+    if (type === 'audio') { handleAudioRightClick(clip, e); return; }
+    if (clip.parentElement?.dataset?.track === 'text') { handleTextRightClick(clip, e); return; }
+    if (clip.parentElement?.dataset?.track === 'vfx') { handleVfxRightClick(clip, e); return; }
+  });
+}
+
+function handleVideoRightClick(clip, e) {
+  e.preventDefault();
+  removePopover();
+  const assetId = clip.dataset.assetId;
+  const menu = document.createElement('div');
+  menu.className = 'clip-property-popover';
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 250)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 200)}px`;
+  menu.innerHTML = `
+    <h4>🎬 Video Clip</h4>
+    <div class="prop-row"><label>Speed</label><input type="number" id="rcp-speed" value="${clip.dataset.speed||1}" step="0.1" min="0.1" max="4" style="width:70px;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-primary);padding:3px;border-radius:4px;"></div>
+    <div class="prop-row"><label>Volume</label><input type="range" id="rcp-vol" min="0" max="200" value="${clip.dataset.volume||100}"></div>
+    <button class="prop-row-btn" id="rcp-separate">🎵 Separate Audio Track</button>
+    <button class="prop-row-btn prop-row-btn--danger" id="rcp-delete">🗑 Delete Clip</button>
+  `;
+  document.body.appendChild(menu);
+  menu.querySelector('#rcp-speed')?.addEventListener('change', (ev) => { clip.dataset.speed = ev.target.value; });
+  menu.querySelector('#rcp-vol')?.addEventListener('input', (ev) => { clip.dataset.volume = ev.target.value; });
+  menu.querySelector('#rcp-separate')?.addEventListener('click', () => { separateAudioFromVideo(clip); removePopover(); });
+  menu.querySelector('#rcp-delete')?.addEventListener('click', () => { clip.remove(); refreshTimelineLayout(); removePopover(); });
+  setTimeout(() => document.addEventListener('click', removePopover, { once: true }), 50);
+}
+
+function handleAudioRightClick(clip, e) {
+  e.preventDefault();
+  removePopover();
+  const menu = document.createElement('div');
+  menu.className = 'clip-property-popover';
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 260)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 280)}px`;
+  menu.innerHTML = `
+    <h4>🎵 Audio Properties</h4>
+    <div class="prop-row"><label>Volume</label><input type="range" id="ap-vol" min="0" max="200" value="${clip.dataset.volume||100}"></div>
+    <div class="prop-row"><label>Fade In</label><input type="range" id="ap-fi" min="0" max="5" step="0.1" value="${clip.dataset.fadeIn||0}"></div>
+    <div class="prop-row"><label>Fade Out</label><input type="range" id="ap-fo" min="0" max="5" step="0.1" value="${clip.dataset.fadeOut||0}"></div>
+    <button class="prop-row-btn prop-row-btn--ai" id="ap-ai">✨ AI Vocal Isolation</button>
+    <button class="prop-row-btn prop-row-btn--danger" id="ap-del">🗑 Delete Clip</button>
+  `;
+  document.body.appendChild(menu);
+  menu.querySelector('#ap-vol')?.addEventListener('input', (ev) => { clip.dataset.volume = ev.target.value; });
+  menu.querySelector('#ap-fi')?.addEventListener('input', (ev) => { clip.dataset.fadeIn = ev.target.value; });
+  menu.querySelector('#ap-fo')?.addEventListener('input', (ev) => { clip.dataset.fadeOut = ev.target.value; });
+  menu.querySelector('#ap-ai')?.addEventListener('click', () => {
+    clip.dataset.aiVocalIsolation = clip.dataset.aiVocalIsolation === 'true' ? 'false' : 'true';
+    const btn = menu.querySelector('#ap-ai');
+    const on = clip.dataset.aiVocalIsolation === 'true';
+    if (btn) btn.textContent = on ? '✅ AI Vocal ON' : '✨ AI Vocal Isolation';
+    showToast(on ? 'AI Vocal Isolation enabled' : 'AI Vocal Isolation disabled', 'info');
+  });
+  menu.querySelector('#ap-del')?.addEventListener('click', () => { clip.remove(); refreshTimelineLayout(); removePopover(); });
+  setTimeout(() => document.addEventListener('click', removePopover, { once: true }), 50);
+}
+
+function handleTextRightClick(clip, e) {
+  e.preventDefault();
+  removePopover();
+  const menu = document.createElement('div');
+  menu.className = 'clip-property-popover';
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 250)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 220)}px`;
+  menu.innerHTML = `
+    <h4>T Text Properties</h4>
+    <div class="prop-row"><label>Text</label><input type="text" id="tp-text" value="${clip.dataset.text||''}" style="flex:1;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 6px;border-radius:4px;"></div>
+    <div class="prop-row"><label>Font Size</label><input type="number" id="tp-size" value="${clip.dataset.fontSize||40}" min="10" max="200" style="width:70px;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-primary);padding:3px;border-radius:4px;"></div>
+    <div class="prop-row"><label>Color</label><input type="color" id="tp-color" value="${clip.dataset.color||'#ffffff'}"></div>
+    <div class="prop-row"><label>Animation</label><select id="tp-anim" style="flex:1;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-primary);padding:3px;border-radius:4px;"><option value="none">None</option><option value="fade">Fade</option><option value="slide">Slide Up</option><option value="typewrite">Typewrite</option></select></div>
+    <button class="prop-row-btn prop-row-btn--danger" id="tp-del">🗑 Delete</button>
+  `;
+  document.body.appendChild(menu);
+  menu.querySelector('#tp-text')?.addEventListener('input', (ev) => { clip.dataset.text = ev.target.value; clip.querySelector('.clip__label').textContent = 'T ' + ev.target.value; });
+  menu.querySelector('#tp-size')?.addEventListener('input', (ev) => { clip.dataset.fontSize = ev.target.value; });
+  menu.querySelector('#tp-color')?.addEventListener('input', (ev) => { clip.dataset.color = ev.target.value; });
+  menu.querySelector('#tp-anim')?.addEventListener('change', (ev) => { clip.dataset.animation = ev.target.value; });
+  menu.querySelector('#tp-del')?.addEventListener('click', () => { clip.remove(); refreshTimelineLayout(); removePopover(); });
+  setTimeout(() => document.addEventListener('click', removePopover, { once: true }), 50);
+}
+
+function handleVfxRightClick(clip, e) {
+  e.preventDefault();
+  removePopover();
+  const menu = document.createElement('div');
+  menu.className = 'clip-property-popover';
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - 250)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - 200)}px`;
+  menu.innerHTML = `
+    <h4>✨ VFX Properties</h4>
+    <div class="prop-row"><label>Effect</label><span style="color:var(--accent)">${clip.dataset.effect||'None'}</span></div>
+    <div class="prop-row"><label>Intensity</label><input type="range" id="vp-int" min="0" max="100" value="${clip.dataset.intensity||50}"></div>
+    <div class="prop-row"><label>Blend</label><select id="vp-blend" style="flex:1;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-primary);padding:3px;border-radius:4px;"><option value="normal">Normal</option><option value="screen">Screen</option><option value="overlay">Overlay</option><option value="multiply">Multiply</option></select></div>
+    <button class="prop-row-btn prop-row-btn--danger" id="vp-del">🗑 Delete</button>
+  `;
+  document.body.appendChild(menu);
+  menu.querySelector('#vp-int')?.addEventListener('input', (ev) => { clip.dataset.intensity = ev.target.value; });
+  menu.querySelector('#vp-blend')?.addEventListener('change', (ev) => { clip.dataset.blendMode = ev.target.value; });
+  menu.querySelector('#vp-del')?.addEventListener('click', () => { clip.remove(); refreshTimelineLayout(); removePopover(); });
+  setTimeout(() => document.addEventListener('click', removePopover, { once: true }), 50);
+}
+
+// ── Audio Separation from Video ──
+export function separateAudioFromVideo(videoClip) {
+  const assetId = videoClip.dataset.assetId;
+  const { uploadedAssets, audioElementCache } = window.__vidforgeState || {};
+  const audioTrack = document.querySelector('.track--audio');
+  if (!audioTrack) { showToast('No audio track found', 'error'); return; }
+
+  const startTime = parseFloat(videoClip.dataset.startTime || 0);
+  const leftPx = startTime * pxPerSec();
+
+  // Create a fake audio clip element representing the embedded audio
+  const dur = parseFloat(videoClip.dataset.trimEnd) - parseFloat(videoClip.dataset.trimStart);
+  const width = Math.max(80, dur * pxPerSec());
+
+  const audioClip = document.createElement('div');
+  audioClip.className = 'clip clip--audio clip--audio-separated';
+  audioClip.style.left = `${leftPx}px`;
+  audioClip.style.width = `${width}px`;
+  audioClip.dataset.assetId = assetId;
+  audioClip.dataset.type = 'audio';
+  audioClip.dataset.trimStart = videoClip.dataset.trimStart;
+  audioClip.dataset.trimEnd = videoClip.dataset.trimEnd;
+  audioClip.dataset.speed = videoClip.dataset.speed || 1;
+  audioClip.dataset.volume = videoClip.dataset.volume || 100;
+  audioClip.dataset.startTime = startTime;
+  audioClip.dataset.separatedFrom = videoClip.dataset.clipId;
+  audioClip.innerHTML = `
+    <div class="clip__thumb"></div>
+    <div class="clip__label">🔊 Audio</div>
+    <div class="clip__duration">${formatDuration(dur)}</div>
+    <div class="clip__waveform clip__waveform--audio"><canvas class="waveform-canvas" width="${width}" height="30" style="width:100%;height:100%;pointer-events:none;"></canvas></div>
+    <div class="clip__resize clip__resize--left"></div>
+    <div class="clip__resize clip__resize--right"></div>
+  `;
+  audioTrack.appendChild(audioClip);
+  makeClipDraggable(audioClip);
+  makeClipResizable(audioClip);
+  // Mute source video clip audio
+  videoClip.dataset.muteAudio = 'true';
+  showToast('Audio separated to audio track', 'success');
+  refreshTimelineLayout();
 }

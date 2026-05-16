@@ -13,7 +13,7 @@ import {
 import { 
   buildRuler, deselectAll, initTrackDropZones, initTrackControls,
   selectClip, addNewTrack, initPlayheadDrag, refreshTimelineLayout,
-  initTransitionMenu
+  initTransitionMenu, initClipRightClickMenus, updateTimelineDuration
 } from './timeline.js';
 import { pxPerSec, pxToTimecode, formatTimecode, showToast, loadAutoSave } from './utils.js';
 import { 
@@ -48,10 +48,12 @@ function init() {
   initContextMenu();
   initTransitionMenu();
   initInspector();
+  initClipRightClickMenus();
   initProjectName();
   initTimelineResizer();
   
   buildRuler();
+  updateTimelineDuration();
   updateEmptyStates();
   
   // Check for auto-save
