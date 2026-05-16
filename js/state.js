@@ -378,6 +378,8 @@ const domMapping = {
   confirmOk: 'confirmOk',
   confirmCancel: 'confirmCancel',
   projectNameInput: 'projectNameInput',
+  sidebarItems: '.sidebar__item',
+  tabContents: '.tab-content',
 };
 
 export const dom = {};

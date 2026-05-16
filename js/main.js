@@ -76,14 +76,29 @@ function init() {
 
 // ── Tab Switching ──
 function initTabs() {
-  document.querySelectorAll('.sidebar__item').forEach(item => {
-    item.addEventListener('click', () => {
-      document.querySelectorAll('.sidebar__item').forEach(i => i.classList.remove('sidebar__item--active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('tab-content--active'));
+  const sidebarItems = document.querySelectorAll('.sidebar__item');
+  const tabContents = document.querySelectorAll('.tab-content');
+  
+  sidebarItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      const clickedItem = e.currentTarget;
+      const tabName = clickedItem.dataset.tab;
       
-      item.classList.add('sidebar__item--active');
-      const target = document.getElementById(`content-${item.dataset.tab}`);
-      if (target) target.classList.add('tab-content--active');
+      console.log('Sidebar item clicked:', tabName);
+      
+      // Clear active states
+      sidebarItems.forEach(i => i.classList.remove('sidebar__item--active'));
+      tabContents.forEach(c => c.classList.remove('tab-content--active'));
+      
+      // Set new active state
+      clickedItem.classList.add('sidebar__item--active');
+      const target = document.getElementById(`content-${tabName}`);
+      if (target) {
+        target.classList.add('tab-content--active');
+        console.log('Resource panel updated to:', tabName);
+      } else {
+        console.warn('Target content not found for:', tabName);
+      }
     });
   });
 }
