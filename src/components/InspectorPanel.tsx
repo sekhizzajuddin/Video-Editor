@@ -46,15 +46,15 @@ export function InspectorPanel() {
     );
   }
 
-  const updateFilters = (updates: Partial<typeof clip.filters>) => {
+  const updateFilters = (updates: Partial<NonNullable<typeof clip.filters>>) => {
     updateClip(clip.id, {
-      filters: { ...clip.filters, ...updates }
+      filters: { brightness: 0, contrast: 0, saturation: 0, preset: 'none', ...clip.filters, ...updates }
     });
   };
 
-  const updateTransition = (updates: Partial<typeof clip.transition>) => {
+  const updateTransition = (updates: Partial<NonNullable<typeof clip.transition>>) => {
     updateClip(clip.id, {
-      transition: { ...clip.transition, ...updates }
+      transition: { type: 'none', duration: 0.5, ...clip.transition, ...updates }
     });
   };
 

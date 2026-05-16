@@ -27,8 +27,8 @@ export function PreviewCanvas() {
   const textTrack = project.tracks.find(t => t.type === 'text');
   const stickerTrack = project.tracks.find(t => t.type === 'sticker');
 
-  const findClipAtTime = useCallback((track: any, time: number) => {
-    return track?.clips.find(c =>
+  const findClipAtTime = useCallback((track: { clips: any[] } | undefined, time: number) => {
+    return track?.clips.find((c: any) =>
       time >= c.startTime && time < c.startTime + c.duration
     );
   }, []);
