@@ -4,18 +4,18 @@
 
 /* ── Tokens ── */
 :root {
-  --bg-base:        #0d0d0f;
-  --bg-panel:       #141417;
-  --bg-panel-2:     #1a1a1f;
-  --bg-elevated:    #202028;
-  --bg-hover:       #28282f;
-  --border:         #2a2a32;
-  --border-light:   #3a3a45;
+  --bg-base:        #16191d;
+  --bg-panel:       #1e2227;
+  --bg-panel-2:     #25292e;
+  --bg-elevated:    #2c3136;
+  --bg-hover:       #333a41;
+  --border:         #2a2f34;
+  --border-light:   #3d444b;
 
-  --accent:         #5b6ef5;
-  --accent-glow:    rgba(91, 110, 245, 0.3);
-  --accent-hover:   #6f80ff;
-  --accent-subtle:  rgba(91, 110, 245, 0.12);
+  --accent:         #0084ff;
+  --accent-glow:    rgba(0, 132, 255, 0.3);
+  --accent-hover:   #1a90ff;
+  --accent-subtle:  rgba(0, 132, 255, 0.12);
 
   --green:          #2ecb85;
   --green-subtle:   rgba(46, 203, 133, 0.15);
@@ -23,13 +23,8 @@
   --red-subtle:     rgba(255, 77, 106, 0.12);
   --amber:          #f5a623;
 
-  --ai-start:       #7c3aed;
-  --ai-end:         #5b6ef5;
-
-  --text-primary:   #e8e8f0;
-  --text-secondary: #9090a8;
-  --text-muted:     #55556a;
-
+  --sidebar-width:  4.5rem;
+  --panel-width:    18rem;
   --track-height:   3.75rem;
   --ruler-height:   1.75rem;
   --header-width:   7.5rem;
@@ -43,7 +38,7 @@
 
   --shadow-panel: 0 0.25rem 1.5rem rgba(0,0,0,0.5);
   --shadow-clip:  0 0.125rem 0.75rem rgba(0,0,0,0.4);
-  --transition:   all 0.18s cubic-bezier(0.4,0,0.2,1);
+  --transition:   all 0.2s cubic-bezier(0.4,0,0.2,1);
   
   --player-min-height: 15rem;
   --player-max-height: 30rem;
@@ -232,11 +227,56 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 /* ── MAIN WORKSPACE ── */
 .workspace {
   display: grid;
-  grid-template-columns: 17.5rem 1fr;
+  grid-template-columns: var(--sidebar-width) var(--panel-width) 1fr;
   height: 100%;
   min-height: 0;
   gap: 0;
   flex: 1;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 0;
+  gap: 0.5rem;
+  z-index: 101;
+}
+
+.sidebar__item {
+  width: 3.25rem;
+  height: 3.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: var(--transition);
+  cursor: pointer;
+  gap: 0.25rem;
+}
+
+.sidebar__item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__item--active {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.sidebar__icon {
+  font-size: 1.25rem;
+}
+
+.sidebar__label {
+  font-size: 0.625rem;
+  font-weight: 500;
 }
 
 /* ── Shared Panel ── */
@@ -247,6 +287,14 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   overflow: hidden;
   min-height: 0;
   min-width: 0;
+  position: relative;
+}
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.02), transparent);
+  pointer-events: none;
 }
 .panel--media  { border-right: 1px solid var(--border); }
 .panel--player { background: var(--bg-base); }

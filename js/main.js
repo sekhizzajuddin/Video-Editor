@@ -76,13 +76,13 @@ function init() {
 
 // ── Tab Switching ──
 function initTabs() {
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab--active'));
+  document.querySelectorAll('.sidebar__item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.sidebar__item').forEach(i => i.classList.remove('sidebar__item--active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('tab-content--active'));
       
-      tab.classList.add('tab--active');
-      const target = document.getElementById(`content-${tab.dataset.tab}`);
+      item.classList.add('sidebar__item--active');
+      const target = document.getElementById(`content-${item.dataset.tab}`);
       if (target) target.classList.add('tab-content--active');
     });
   });

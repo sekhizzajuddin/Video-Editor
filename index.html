@@ -32,18 +32,37 @@
   <!-- ═══════════════════════ MAIN WORKSPACE ═══════════════════════ -->
   <main class="workspace">
 
-    <!-- ── Panel 1: Media Pool ── -->
-    <section class="panel panel--media" id="mediaPool">
-      <div class="panel__tabs">
-        <button class="tab tab--active" data-tab="media" id="tab-media">Media</button>
-        <button class="tab" data-tab="audio" id="tab-audio">Audio</button>
-        <button class="tab" data-tab="text" id="tab-text">Text</button>
-        <button class="tab" data-tab="transitions" id="tab-transitions">FX</button>
-        <button class="tab" data-tab="effects" id="tab-effects">VFX</button>
-        <button class="tab" data-tab="filters" id="tab-filters">Filters</button>
-        <button class="mobile-close-btn" id="mobileCloseBtn" aria-label="Close media panel">✕</button>
+    <!-- ── Sidebar (Clideo style) ── -->
+    <nav class="sidebar">
+      <div class="sidebar__item sidebar__item--active" data-tab="media">
+        <span class="sidebar__icon">📁</span>
+        <span class="sidebar__label">Media</span>
       </div>
+      <div class="sidebar__item" data-tab="audio">
+        <span class="sidebar__icon">🎵</span>
+        <span class="sidebar__label">Audio</span>
+      </div>
+      <div class="sidebar__item" data-tab="text">
+        <span class="sidebar__icon">T</span>
+        <span class="sidebar__label">Text</span>
+      </div>
+      <div class="sidebar__item" data-tab="transitions">
+        <span class="sidebar__icon">FX</span>
+        <span class="sidebar__label">FX</span>
+      </div>
+      <div class="sidebar__item" data-tab="effects">
+        <span class="sidebar__icon">✨</span>
+        <span class="sidebar__label">VFX</span>
+      </div>
+      <div class="sidebar__item" data-tab="filters">
+        <span class="sidebar__icon">🌈</span>
+        <span class="sidebar__label">Filters</span>
+      </div>
+    </nav>
 
+    <!-- ── Resource Panel ── -->
+    <section class="panel panel--media" id="mediaPool">
+      
       <!-- Media Tab -->
       <div class="tab-content tab-content--active" id="content-media">
         <div class="panel__toolbar">
