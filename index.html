@@ -623,5 +623,31 @@
   </div>
 
   <script type="module" src="js/main.js"></script>
+  <script>
+    // Robust Tab Switching (Inlined for reliability)
+    document.addEventListener('DOMContentLoaded', () => {
+      const sidebarItems = document.querySelectorAll('.sidebar__item');
+      const tabContents = document.querySelectorAll('.tab-content');
+      
+      sidebarItems.forEach(item => {
+        item.addEventListener('click', () => {
+          const tabName = item.getAttribute('data-tab');
+          if (!tabName) return;
+
+          // Clear active states
+          sidebarItems.forEach(i => i.classList.remove('sidebar__item--active'));
+          tabContents.forEach(c => c.classList.remove('tab-content--active'));
+          
+          // Set new active state
+          item.classList.add('sidebar__item--active');
+          const target = document.getElementById('content-' + tabName);
+          if (target) {
+            target.classList.add('tab-content--active');
+          }
+        });
+      });
+      console.log('Sidebar navigation initialized');
+    });
+  </script>
 </body>
 </html>

@@ -26,7 +26,6 @@ import {
 // ── Initialize Application ──
 function init() {
   refreshDomReferences();
-  initTabs();
   initFileImport();
   initPlaybackControls();
   initZoom();
@@ -72,40 +71,6 @@ function init() {
   setTimeout(() => {
     refreshTimelineLayout();
   }, 100);
-}
-
-// ── Tab Switching ──
-function initTabs() {
-  const sidebarItems = document.querySelectorAll('.sidebar__item');
-  const tabContents = document.querySelectorAll('.tab-content');
-  
-  if (!sidebarItems.length) {
-    console.warn('No sidebar items found during initTabs');
-    return;
-  }
-
-  sidebarItems.forEach(item => {
-    item.onclick = (e) => {
-      const tabName = item.dataset.tab;
-      if (!tabName) return;
-
-      console.log('Sidebar item clicked via onclick:', tabName);
-      
-      // 1. Clear all active states
-      sidebarItems.forEach(i => i.classList.remove('sidebar__item--active'));
-      tabContents.forEach(c => c.classList.remove('tab-content--active'));
-      
-      // 2. Set new active state
-      item.classList.add('sidebar__item--active');
-      const target = document.getElementById(`content-${tabName}`);
-      if (target) {
-        target.classList.add('tab-content--active');
-        console.log('Successfully switched to tab:', tabName);
-      } else {
-        console.error('Failed to find content target for:', tabName);
-      }
-    };
-  });
 }
 
 // ── File Import ──
