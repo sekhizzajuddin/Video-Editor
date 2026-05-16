@@ -35,6 +35,7 @@ export interface Clip {
   text?: string;
   textStyle?: TextStyle;
   sticker?: string;
+  thumbnailFrame?: string;
   filters?: {
     brightness: number;
     contrast: number;
@@ -76,3 +77,7 @@ export interface ExportSettings {
   resolution: ExportResolution;
   quality: 'low' | 'medium' | 'high';
 }
+
+export const SNAP_THRESHOLD = 0.3;
+export const MIN_CLIP_DURATION = 0.3;
+export const CLIP_GRID = 0.1;

@@ -155,6 +155,42 @@ export async function generateThumbnail(file: File): Promise<string | undefined>
   });
 }
 
+export async function extractVideoFrame(blob: Blob, time: number, width: number = 320): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    if (!blob.type.startsWith('video/')) { resolve(undefined); return; }
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.src = url;
+    video.currentTime = Math.max(0.1, time);
+
+    const onData = () => {
+      const canvas = document.createElement('canvas');
+      const aspect = video.videoWidth / video.videoHeight;
+      canvas.width = width;
+      canvas.height = width / aspect;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      video.remove();
+      resolve(canvas.toDataURL('image/jpeg', 0.5));
+    };
+
+    const onError = () => {
+      URL.revokeObjectURL(url);
+      video.remove();
+      resolve(undefined);
+    };
+
+    video.onloadeddata = onData;
+    video.onseeked = onData;
+    video.onerror = onError;
+
+    setTimeout(() => { if (!video.ended) { onError(); } }, 5000);
+  });
+}
+
 export async function getMediaDuration(file: File): Promise<number> {
   return new Promise((resolve) => {
     if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
