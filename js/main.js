@@ -81,25 +81,19 @@ function initTabs() {
 
   sidebar.addEventListener('click', (e) => {
     const item = e.target.closest('.sidebar__item');
-    if (!item) return;
+    if (!item || !item.dataset.tab) return;
 
     const tabName = item.dataset.tab;
-    console.log('Tab selected:', tabName);
-
-    // Remove active class from all items in this sidebar
-    sidebar.querySelectorAll('.sidebar__item').forEach(i => {
-      i.classList.remove('sidebar__item--active');
-    });
-
-    // Hide all tab contents
-    document.querySelectorAll('.tab-content').forEach(c => {
-      c.classList.remove('tab-content--active');
-    });
-
-    // Add active class to clicked item
+    
+    // 1. Update Sidebar UI
+    const allItems = sidebar.querySelectorAll('.sidebar__item');
+    allItems.forEach(i => i.classList.remove('sidebar__item--active'));
     item.classList.add('sidebar__item--active');
 
-    // Show target content
+    // 2. Update Content UI
+    const allContents = document.querySelectorAll('.tab-content');
+    allContents.forEach(c => c.classList.remove('tab-content--active'));
+    
     const target = document.getElementById(`content-${tabName}`);
     if (target) {
       target.classList.add('tab-content--active');
