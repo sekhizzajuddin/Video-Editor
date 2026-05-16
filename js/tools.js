@@ -15,7 +15,7 @@ import {
 } from './timeline.js';
 import { pxPerSec, showToast, formatDuration, clamp, downloadBlob, autoSaveProject } from './utils.js';
 import { syncPlayerToTimeline, stopPlayback, jumpToStart, jumpToEnd, rewind, fastForward } from './engine.js';
-import { getFilterString, renderTransition, renderTextOverlay } from './codec.js';
+import { getFilterString, renderTransition, renderTextOverlay, transcodeToMP4 } from './codec.js';
 
 // ── Undo ──
 export function handleUndo() {
@@ -766,7 +766,7 @@ async function startExport() {
       }
     };
     
-    mediaRecorder.onstop = () => {
+    mediaRecorder.onstop = async () => {
       console.log('Recording stopped, chunks:', chunks.length, 'total size:', chunks.reduce((a,b) => a + b.size, 0));
       
       if (chunks.length === 0 || chunks.reduce((a,b) => a + b.size, 0) === 0) {
@@ -779,26 +779,46 @@ async function startExport() {
         return;
       }
       
-      const blob = new Blob(chunks, { type: mimeType });
-      console.log('Blob size:', blob.size);
+      const webmBlob = new Blob(chunks, { type: mimeType });
+      console.log('WebM Blob size:', webmBlob.size);
       
-      if (blob.size < 1000) {
-        showToast('Export failed - file too small', 'error');
-        exportState.isExporting = false;
-        exportState.progress = 0;
-        return;
+      try {
+        if (exportState.format === 'mp4') {
+          if (dom.exportProgressText) {
+            dom.exportProgressText.textContent = 'Finalizing MP4... (using FFmpeg.wasm)';
+          }
+          if (dom.exportProgressFill) {
+            dom.exportProgressFill.style.width = '0%';
+          }
+          
+          const mp4Blob = await transcodeToMP4(webmBlob, exportState.fps, (progress) => {
+            if (dom.exportProgressFill) {
+              dom.exportProgressFill.style.width = `${progress * 100}%`;
+            }
+            if (dom.exportProgressText) {
+              dom.exportProgressText.textContent = `Converting to MP4: ${Math.round(progress * 100)}%`;
+            }
+          });
+          
+          downloadBlob(mp4Blob, `vidforge_export_${Date.now()}.mp4`);
+          showToast('MP4 Export complete!', 'success');
+        } else {
+          downloadBlob(webmBlob, `vidforge_export_${Date.now()}.webm`);
+          showToast('WebM Export complete!', 'success');
+        }
+      } catch (err) {
+        console.error('Finalization error:', err);
+        showToast('Finalization failed, downloading WebM fallback', 'warning');
+        downloadBlob(webmBlob, `vidforge_export_${Date.now()}.webm`);
       }
-      
-      const filename = `vidforge_export_${Date.now()}.webm`;
-      downloadBlob(blob, filename);
       
       exportState.isExporting = false;
       exportState.mediaRecorder = null;
+      exportState.progress = 0;
       
       if (dom.exportModal) dom.exportModal.classList.remove('active');
       if (dom.exportProgress) dom.exportProgress.style.display = 'none';
       if (dom.exportActions) dom.exportActions.style.display = 'flex';
-      showToast('Export complete!', 'success');
       
       if (audioContext && audioContext.state !== 'closed') {
         audioContext.close().catch(() => {});

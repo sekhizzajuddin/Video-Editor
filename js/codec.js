@@ -1,6 +1,70 @@
-// ===================================================
-// js/codec.js — Media Rendering Codecs & Effects
-// ===================================================
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { exportState } from './state.js';
+import { showToast } from './utils.js';
+
+export async function loadFFmpeg() {
+  if (exportState.ffmpeg) return exportState.ffmpeg;
+  
+  const ffmpeg = new FFmpeg();
+  
+  // Load ffmpeg.wasm from a reliable CDN for speed and to avoid local config issues
+  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+  
+  ffmpeg.on('log', ({ message }) => {
+    console.log('[FFmpeg]', message);
+  });
+  
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+  
+  exportState.ffmpeg = ffmpeg;
+  return ffmpeg;
+}
+
+export async function transcodeToMP4(webmBlob, fps = 30, onProgress = null) {
+  try {
+    const ffmpeg = await loadFFmpeg();
+    
+    const inputName = 'input.webm';
+    const outputName = 'output.mp4';
+    
+    // Write the WebM file to FFmpeg's virtual file system
+    await ffmpeg.writeFile(inputName, await fetchFile(webmBlob));
+    
+    if (onProgress) {
+      ffmpeg.on('progress', ({ progress }) => {
+        onProgress(progress);
+      });
+    }
+    
+    // Transcode to MP4 (H.264)
+    // -c:v libx264: Use H.264 codec
+    // -preset ultrafast: Speed up transcoding for browser
+    // -crf 23: Balance quality and size
+    // -c:a aac: Use AAC for audio
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-strict', '-2',
+      outputName
+    ]);
+    
+    // Read the output file
+    const data = await ffmpeg.readFile(outputName);
+    return new Blob([data.buffer], { type: 'video/mp4' });
+    
+  } catch (error) {
+    console.error('Transcoding error:', error);
+    showToast('MP4 Transcoding failed - downloading WebM instead', 'warning');
+    return webmBlob;
+  }
+}
 
 export function renderVideoFrame(ctx, canvas, video, crop = null) {
   if (!video || !video.videoWidth) return;

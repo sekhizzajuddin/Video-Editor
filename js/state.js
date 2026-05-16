@@ -206,9 +206,10 @@ export const exportState = {
   progress: 0,
   cancelRequested: false,
   resolution: '1080p',
-  format: 'webm',
+  format: 'mp4', // Default to mp4 now
   fps: 30,
-  mediaRecorder: null
+  mediaRecorder: null,
+  ffmpeg: null
 };
 
 // ── Clipboard State (Copy/Paste) ──
