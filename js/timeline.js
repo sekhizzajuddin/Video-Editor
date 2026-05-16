@@ -7,7 +7,7 @@ import {
   setTotalDuration, isSpeedModeActive, setSpeedMode, videoElementCache, trackStates,
   initTrackState, toggleTrackMute, toggleTrackVisibility, toggleTrackLock
 } from './state.js';
-import { pxPerSec, formatDuration, showToast, clamp, pxToSeconds, secondsToPx } from './utils.js';
+import { pxPerSec, formatDuration, showToast, clamp, pxToSeconds, secondsToPx, pxToTimecode } from './utils.js';
 import { syncPlayerToTimeline, setPlayheadX } from './engine.js';
 import { drawWaveform } from './codec.js';
 
