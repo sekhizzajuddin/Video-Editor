@@ -324,8 +324,8 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   border-bottom-color: var(--accent);
 }
 
-.tab-content { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-.tab-content--active { display: flex; }
+.tab-content { display: none !important; flex-direction: column; flex: 1; overflow: hidden; }
+.tab-content.tab-content--active { display: flex !important; }
 
 .panel__toolbar {
   display: flex;

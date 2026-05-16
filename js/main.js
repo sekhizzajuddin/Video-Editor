@@ -76,28 +76,35 @@ function init() {
 
 // ── Tab Switching ──
 function initTabs() {
-  const sidebar = document.querySelector('.sidebar');
-  if (!sidebar) return;
+  const sidebarItems = document.querySelectorAll('.sidebar__item');
+  const tabContents = document.querySelectorAll('.tab-content');
+  
+  if (!sidebarItems.length) {
+    console.warn('No sidebar items found during initTabs');
+    return;
+  }
 
-  sidebar.addEventListener('click', (e) => {
-    const item = e.target.closest('.sidebar__item');
-    if (!item || !item.dataset.tab) return;
+  sidebarItems.forEach(item => {
+    item.onclick = (e) => {
+      const tabName = item.dataset.tab;
+      if (!tabName) return;
 
-    const tabName = item.dataset.tab;
-    
-    // 1. Update Sidebar UI
-    const allItems = sidebar.querySelectorAll('.sidebar__item');
-    allItems.forEach(i => i.classList.remove('sidebar__item--active'));
-    item.classList.add('sidebar__item--active');
-
-    // 2. Update Content UI
-    const allContents = document.querySelectorAll('.tab-content');
-    allContents.forEach(c => c.classList.remove('tab-content--active'));
-    
-    const target = document.getElementById(`content-${tabName}`);
-    if (target) {
-      target.classList.add('tab-content--active');
-    }
+      console.log('Sidebar item clicked via onclick:', tabName);
+      
+      // 1. Clear all active states
+      sidebarItems.forEach(i => i.classList.remove('sidebar__item--active'));
+      tabContents.forEach(c => c.classList.remove('tab-content--active'));
+      
+      // 2. Set new active state
+      item.classList.add('sidebar__item--active');
+      const target = document.getElementById(`content-${tabName}`);
+      if (target) {
+        target.classList.add('tab-content--active');
+        console.log('Successfully switched to tab:', tabName);
+      } else {
+        console.error('Failed to find content target for:', tabName);
+      }
+    };
   });
 }
 
