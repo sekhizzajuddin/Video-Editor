@@ -47,7 +47,9 @@ app.use((req, res, next) => {
   res.setHeader('Accept-Ranges', 'bytes');
   // Required for ffmpeg.wasm SharedArrayBuffer support
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  // Use credentialless if supported, or temporarily disable to restore functionality
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless'); 
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 });
 

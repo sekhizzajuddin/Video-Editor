@@ -91,23 +91,13 @@ function initFileImport() {
   const importAudioBtn = document.getElementById('importAudioBtn');
   
   // Main import button - click file input
-  importBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('Import button clicked');
-    if (fileInput) {
-      fileInput.click();
-    }
+  importBtn?.addEventListener('click', () => {
+    fileInput?.click();
   });
   
   // Audio tab import button
-  importAudioBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('Audio import button clicked');
-    if (fileInput) {
-      fileInput.click();
-    }
+  importAudioBtn?.addEventListener('click', () => {
+    fileInput?.click();
   });
   
   // File input change handler
