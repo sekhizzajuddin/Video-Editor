@@ -459,7 +459,28 @@ export function loadAutoSave() {
   try {
     const data = localStorage.getItem('vidforge_autosave');
     return data ? JSON.parse(data) : null;
-  } catch (e) {
-    return null;
+// ── Waveform Drawing ──
+export function drawEnhancedWaveform(ctx, canvas, data) {
+  if (!ctx || !canvas || !data) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  
+  const step = Math.ceil(data.length / w);
+  const amp = h / 2;
+  
+  ctx.beginPath();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  
+  for (let i = 0; i < w; i++) {
+    const start = i * step;
+    const chunk = data.slice(start, start + step);
+    const min = Math.min(...chunk) || 0;
+    const max = Math.max(...chunk) || 0;
+    
+    ctx.moveTo(i, amp - (max * amp));
+    ctx.lineTo(i, amp - (min * amp));
   }
+  ctx.stroke();
 }

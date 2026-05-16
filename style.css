@@ -999,8 +999,9 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 
 .timeline {
   display: flex;
-  height: 250px;
-  min-height: 120px;
+  flex-direction: column;
+  height: 320px;
+  min-height: 150px;
   background: var(--bg-base);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -1008,7 +1009,111 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   overflow: hidden;
 }
 
-/* Track Headers */
+/* Timeline Toolbar (Top of Timeline) */
+.timeline__toolbar {
+  height: var(--toolbar-height);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  z-index: 60;
+}
+
+.timeline-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 1rem;
+}
+
+.timeline-toolbar__left,
+.timeline-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tool-btn-group {
+  display: flex;
+  align-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.tool-btn {
+  padding: 6px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+.tool-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tool-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tool-btn--danger:hover {
+  background: var(--red-subtle) !important;
+  color: var(--red) !important;
+}
+
+.tool-btn--sm {
+  padding: 4px;
+}
+
+.tool-divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--border);
+}
+
+.timeline-timings {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  padding: 4px 12px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+}
+
+.timeline-timings__divider {
+  color: var(--text-muted);
+  margin: 0 4px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zoom-slider {
+  width: 80px;
+  height: 4px;
+}
+
+/* Timeline Trackpad (Main Container) */
+.timeline__trackpad {
+  flex: 1;
+  display: flex;
+  overflow: hidden; /* Scroll handled by children */
+  position: relative;
+}
+
+/* Track Headers sidebar (Sticky Left) */
 .track-headers {
   width: var(--header-width);
   flex-shrink: 0;
@@ -1016,10 +1121,11 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  overflow-y: hidden;
-  overflow-x: hidden;
-  z-index: 20;
+  z-index: 40;
+  position: sticky;
+  left: 0;
 }
+
 .track-header {
   height: var(--track-height);
   border-bottom: 1px solid var(--border);
@@ -1029,101 +1135,50 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   padding: 0 10px;
   flex-shrink: 0;
 }
+
 .track-header--ruler { 
   height: var(--ruler-height); 
-  background: var(--bg-elevated);
-  justify-content: center;
-  position: relative;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  z-index: 41;
 }
+
 .track-header--slim {
-  height: 36px;
+  height: 32px;
   padding: 0 6px;
 }
-.track-header--slim .track-header__controls { margin-top: 1px; }
+
 .track-header__time-display {
   font-size: 9px;
-  color: var(--text-muted);
-  font-family: 'Courier New', monospace;
-  position: absolute;
-  right: 6px;
-}
-.track-header__icon { font-size: 14px; flex-shrink: 0; }
-.track-header__info { flex: 1; min-width: 0; }
-.track-header__name { font-size: 11px; font-weight: 600; color: var(--text-primary); }
-.track-header__controls { display: flex; gap: 4px; margin-top: 4px; }
-.track-ctrl-btn {
-  font-size: 10px;
-  padding: 2px 4px;
-  border-radius: 2px;
-  color: var(--text-muted);
-  transition: var(--transition);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-.track-ctrl-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.track-ctrl-btn--active { color: var(--accent); }
-
-.track-header--add {
-  height: auto;
-  flex: 1;
-  border-bottom: none;
-  justify-content: center;
-}
-.add-track-btn {
-  font-size: 11px;
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px dashed var(--border-light);
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: var(--transition);
-  width: 80%;
-}
-.add-track-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
+  color: var(--accent);
+  font-weight: bold;
 }
 
-/* Track Area */
+/* Track Area (Scrollable Main Content) */
 .track-area {
   flex: 1;
-  position: relative;
-  overflow-x: auto;
-  overflow-y: auto;
+  overflow: auto;
   background: var(--bg-base);
-  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
-  background-size: 100px 100%;
-  display: flex;
-  flex-direction: column;
+  position: relative;
 }
-.track-area::-webkit-scrollbar { width: 10px; height: 10px; }
-.track-area::-webkit-scrollbar-corner { background: var(--bg-panel); }
-.track-area::-webkit-scrollbar { height: 6px; }
-.track-area::-webkit-scrollbar-track { background: var(--bg-base); }
-.track-area::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
 
-/* Time Ruler — sticky so it doesn’t scroll vertically with tracks */
-.time-ruler {
-  position: sticky;     /* BUG-07: Must be sticky, not relative */
+.track-area__sticky-box {
+  position: sticky;
   top: 0;
   z-index: 30;
   height: var(--ruler-height);
-  background: var(--bg-elevated);
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  pointer-events: none; /* Let clicks pass through to tracks if needed, but ruler has its own */
+}
+
+/* Time Ruler */
+.time-ruler {
+  height: 100%;
+  position: relative;
   min-width: 100%;
-  overflow: visible;    /* allow ticks to overflow without clipping */
-  display: flex;
-  align-items: flex-end;
   cursor: ew-resize;
-  user-select: none;
-  -webkit-user-select: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  pointer-events: auto;
 }
 
 .ruler-tick {
@@ -1148,37 +1203,43 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
   white-space: nowrap;
 }
 
+/* Clips Content Area */
+.track-area__content {
+  position: relative;
+  min-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Tracks */
 .track {
   height: var(--track-height);
   border-bottom: 1px solid var(--border);
   position: relative;
   flex-shrink: 0;
-  min-width: 900px;
+  width: 100%;
   background: repeating-linear-gradient(
     90deg,
     transparent 0px,
-    transparent 49px,
-    rgba(255,255,255,0.015) 49px,
-    rgba(255,255,255,0.015) 50px
+    transparent 99px,
+    var(--border) 99px,
+    var(--border) 100px
   );
   touch-action: none;
 }
-.track--video { background-color: rgba(91,110,245,0.03); }
-.track--audio  { background-color: rgba(46,203,133,0.03); }
-.track--image  { background-color: rgba(245,166,35,0.03); }
+
+.track--video { background-color: rgba(91,110,245,0.02); }
+.track--audio  { background-color: rgba(46,203,133,0.02); }
 
 /* Slim tracks for Text & VFX */
 .track--text,
-.track--fx,
 .track--vfx {
-  height: 28px;
-  background-color: rgba(180,120,255,0.04);
+  height: 32px;
+  background-color: rgba(180,120,255,0.03);
 }
 
-/* Even smaller for VFX specifically */
 .track--vfx {
-  height: 24px;
+  background-color: rgba(255,100,150,0.03);
 }
 
 /* Cross-track drag target highlight */
@@ -1393,41 +1454,37 @@ input, textarea, select { font-family: inherit; outline: none; border: none; bac
 /* Playhead */
 .playhead {
   position: absolute;
-  top: 0; bottom: 0;
-  width: 13px;
-  margin-left: -6px;
-  z-index: 50;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.playhead__line {
-  position: absolute;
-  top: var(--ruler-height); bottom: 0;
-  left: 6px;
+  top: 0;
+  height: 1000px; /* Long enough to cover all tracks */
   width: 1px;
   background: var(--red);
-  box-shadow: 0 0 4px var(--red);
+  z-index: 50;
   pointer-events: none;
+  transform: translateX(-0.5px);
 }
+
 .playhead__head {
   position: absolute;
-  top: 0; left: 0;
+  top: 0; 
+  left: -6px;
   width: 13px; height: 18px;
   background: var(--red);
   clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
   pointer-events: auto;
   cursor: grab;
   touch-action: none;
+  z-index: 51;
 }
-.playhead__head:active { cursor: grabbing; transform: scale(1.1); transition: transform 0.1s; }
-.playhead__handle-icon {
+
+.playhead__line {
   position: absolute;
-  top: 2px; left: 3.5px;
-  width: 6px; height: 6px;
-  border-top: 1px solid rgba(255,255,255,0.8);
-  border-bottom: 1px solid rgba(255,255,255,0.8);
-  pointer-events: none;
+  top: 18px;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--red);
+  opacity: 0.8;
+  box-shadow: 0 0 4px var(--red);
 }
 .playhead__tooltip {
   position: absolute;

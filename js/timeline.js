@@ -7,8 +7,8 @@ import {
   setTotalDuration, isSpeedModeActive, setSpeedMode, videoElementCache, trackStates,
   initTrackState, toggleTrackMute, toggleTrackVisibility, toggleTrackLock
 } from './state.js';
-import { pxPerSec, formatDuration, showToast, clamp, pxToSeconds, secondsToPx, pxToTimecode } from './utils.js';
-import { syncPlayerToTimeline, setPlayheadX } from './engine.js';
+import { pxPerSec, formatDuration, showToast, clamp, pxToSeconds, secondsToPx, pxToTimecode, drawEnhancedWaveform } from './utils.js';
+import { syncPlayerToTimeline, setPlayheadX, stopPlayback } from './engine.js';
 import { drawWaveform } from './codec.js';
 
 // ── Clip Selection ──
@@ -858,30 +858,29 @@ export function buildRuler() {
   dom.timeRuler.innerHTML = '';
 
   const pps = pxPerSec();
-  const totalWidth = Math.ceil(TOTAL_SECONDS * pps);
-  dom.timeRuler.style.minWidth = `${totalWidth}px`;
+  // BUG-08: Ensure TOTAL_DURATION is correctly reflected in the ruler width
+  const totalWidth = Math.ceil(TOTAL_DURATION * pps);
+  dom.timeRuler.style.width = `${totalWidth}px`;
 
-  const majorIntervals = [60, 30, 15, 10, 5, 2, 1, 0.5, 0.25];
-  const minLabelGap = 60;
+  const majorIntervals = [300, 60, 30, 15, 10, 5, 2, 1, 0.5, 0.1];
+  const minLabelGap = 70;
   let majorInterval = majorIntervals[0];
   
   for (const iv of majorIntervals) {
     if (iv * pps >= minLabelGap) {
       majorInterval = iv;
-    } else {
-      break;
     }
   }
   
-  const minorInterval = majorInterval / 4;
+  const minorInterval = majorInterval / 5;
   const frag = document.createDocumentFragment();
-  const numMajorTicks = Math.floor(TOTAL_SECONDS / majorInterval) + 1;
+  const numMajorTicks = Math.floor(TOTAL_DURATION / majorInterval) + 1;
   
   for (let i = 0; i < numMajorTicks; i++) {
     const sec = i * majorInterval;
     const xPx = sec * pps;
     
-    if (xPx > totalWidth) break;
+    if (xPx > totalWidth + 1) break;
     
     const majorTick = document.createElement('div');
     majorTick.className = 'ruler-tick ruler-tick--major';
@@ -889,14 +888,7 @@ export function buildRuler() {
     
     const label = document.createElement('span');
     label.className = 'ruler-tick__label';
-    
-    if (sec < 60) {
-      label.textContent = `0:${sec.toString().padStart(2, '0')}`;
-    } else {
-      const m = Math.floor(sec / 60);
-      const s = Math.floor(sec % 60);
-      label.textContent = `${m}:${s.toString().padStart(2, '0')}`;
-    }
+    label.textContent = formatTimecode(sec);
     
     majorTick.appendChild(label);
     const line = document.createElement('div');
@@ -904,8 +896,9 @@ export function buildRuler() {
     majorTick.appendChild(line);
     frag.appendChild(majorTick);
     
+    // Minor ticks
     if (i < numMajorTicks - 1 && minorInterval > 0) {
-      for (let j = 1; j < 4; j++) {
+      for (let j = 1; j < 5; j++) {
         const minorSec = sec + (j * minorInterval);
         const minorPx = minorSec * pps;
         if (minorPx > totalWidth) break;
@@ -1225,26 +1218,31 @@ export function updateTimelineDuration() {
   let maxEnd = 0;
   document.querySelectorAll('.clip').forEach(clip => {
     const start = parseFloat(clip.dataset.startTime || 0);
-    const trimStart = parseFloat(clip.dataset.trimStart || 0);
-    const trimEnd = parseFloat(clip.dataset.trimEnd || 0);
-    const speed = parseFloat(clip.dataset.speed || 1);
-    const dur = trimEnd > trimStart ? (trimEnd - trimStart) / speed : parseFloat(clip.style.width) / pps;
-    maxEnd = Math.max(maxEnd, start + dur);
+    const width = parseFloat(clip.style.width) || 0;
+    maxEnd = Math.max(maxEnd, start + (width / pps));
   });
   
-  // 2. Visible duration covers at least the viewport
-  const visibleDuration = (dom.trackArea.clientWidth || window.innerWidth) / pps;
-  // BUG-08: Always recalculate — allow shrinking when clips are deleted
-  const padding = maxEnd > 0 ? 30 : 0; // 30s breathing room after last clip
-  const newDuration = Math.max(visibleDuration, maxEnd + padding);
+  // 2. Visible duration covers at least the viewport + some buffer
+  const viewportDuration = (dom.trackArea.clientWidth || window.innerWidth) / pps;
+  const padding = 30; // 30s breathing room
+  const newDuration = Math.max(viewportDuration, maxEnd + padding);
   
   setTotalDuration(newDuration);
+  
+  // 3. Stretch tracks and ruler to fit duration
+  const totalPx = Math.ceil(newDuration * pps);
+  
+  if (dom.trackContent) dom.trackContent.style.width = `${totalPx}px`;
+  if (dom.timeRuler) dom.timeRuler.style.width = `${totalPx}px`;
+  if (dom.rulerStickyBox) dom.rulerStickyBox.style.width = `${totalPx}px`;
+  
+  // Update total duration timecode in toolbar
+  if (dom.totalTimecode) {
+    dom.totalTimecode.textContent = formatTimecode(maxEnd);
+  }
+
   // Always rebuild ruler so time extends/contracts dynamically
   buildRuler();
-  // Stretch all tracks so horizontal scrollbar works
-  const totalPx = Math.ceil(newDuration * pps);
-  document.querySelectorAll('.track').forEach(t => { t.style.minWidth = `${totalPx}px`; });
-  if (dom.timeRuler) dom.timeRuler.style.minWidth = `${totalPx}px`;
 }
 
 export function getAllClips() {
@@ -1294,50 +1292,50 @@ export function initPlayheadDrag() {
   
   const startDrag = (e) => {
     isDragging = true;
-    dom.playheadEl?.classList.add('playhead--dragging');
+    if (dom.playheadEl) dom.playheadEl.classList.add('playhead--dragging');
     updatePlayheadFromEvent(e);
+    
+    // Stop playback while dragging
+    stopPlayback();
   };
   
   const moveDrag = (e) => {
     if (!isDragging) return;
-    e.preventDefault();
     updatePlayheadFromEvent(e);
   };
   
   const endDrag = () => {
     if (!isDragging) return;
     isDragging = false;
-    dom.playheadEl?.classList.remove('playhead--dragging');
+    if (dom.playheadEl) dom.playheadEl.classList.remove('playhead--dragging');
   };
   
   const updatePlayheadFromEvent = (e) => {
-    const clientX = e.clientX || (e.touches?.[0]?.clientX || 0);
     if (!dom.trackArea) return;
-    
     const rect = dom.trackArea.getBoundingClientRect();
-    let x = clientX - rect.left + (dom.trackArea.scrollLeft || 0);
+    const clientX = e.clientX || (e.touches?.[0]?.clientX || 0);
+    
+    // Calculate X relative to trackArea, including scroll
+    let x = clientX - rect.left + dom.trackArea.scrollLeft;
     x = Math.max(0, x);
     
     setPlayheadX(x);
     playbackState.currentTime = x / pxPerSec();
-    
-    if (!playbackState.isPlaying) {
-      syncPlayerToTimeline(playbackState.currentTime);
-    }
-    
-    if (dom.rulerTimeDisplay) {
-      dom.rulerTimeDisplay.textContent = pxToTimecode(x);
-    }
+    syncPlayerToTimeline(playbackState.currentTime);
   };
   
-  dom.playheadHead?.addEventListener('mousedown', startDrag);
-  dom.timeRuler?.addEventListener('mousedown', startDrag);
+  // Bind to BOTH playhead head and ruler
+  if (dom.playheadHead) {
+    dom.playheadHead.addEventListener('mousedown', startDrag);
+    dom.playheadHead.addEventListener('touchstart', startDrag, { passive: false });
+  }
+  if (dom.timeRuler) {
+    dom.timeRuler.addEventListener('mousedown', startDrag);
+    dom.timeRuler.addEventListener('touchstart', startDrag, { passive: false });
+  }
   
   window.addEventListener('mousemove', moveDrag);
   window.addEventListener('mouseup', endDrag);
-  
-  dom.playheadHead?.addEventListener('touchstart', startDrag, { passive: false });
-  dom.timeRuler?.addEventListener('touchstart', startDrag, { passive: false });
   window.addEventListener('touchmove', moveDrag, { passive: false });
   window.addEventListener('touchend', endDrag);
 }

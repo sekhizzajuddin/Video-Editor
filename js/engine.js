@@ -412,15 +412,20 @@ export function setPlayheadX(px) {
   if (dom.playheadEl) {
     dom.playheadEl.style.left = `${px}px`;
   }
-  if (dom.timecodeDisplay) {
-    const current = pxToTimecode(px);
-    const lastClipEnd = getLastClipEndTime();
-    const total = lastClipEnd > 0 ? lastClipEnd : TOTAL_DURATION;
-    dom.timecodeDisplay.textContent = `${current} / ${formatTimecode(total)}`;
+  
+  const current = pxToTimecode(px);
+  if (dom.currentTimecode) {
+    dom.currentTimecode.textContent = current;
   }
-  // Update ruler time display too
+  
   if (dom.rulerTimeDisplay) {
-    dom.rulerTimeDisplay.textContent = pxToTimecode(px);
+    dom.rulerTimeDisplay.textContent = current;
+  }
+
+  // Update total duration if it changed or on every seek
+  if (dom.totalTimecode) {
+    const lastClipEnd = getLastClipEndTime();
+    dom.totalTimecode.textContent = formatTimecode(lastClipEnd);
   }
 }
 
