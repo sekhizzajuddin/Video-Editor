@@ -19,18 +19,20 @@ function formatTime(seconds: number): string {
 }
 
 export default function PreviewCanvas() {
-  const { project: { tracks, duration: projectDuration }, currentTime, isPlaying, aspectRatio, volume, setVolume } = useEditorStore();
+  const {
+    project: { tracks, duration: projectDuration },
+    currentTime, isPlaying, aspectRatio, volume, setVolume, renderTick,
+  } = useEditorStore();
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<RenderEngine | null>(null);
-  const mutedRef = useRef(false);
   const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
 
   const canvasWidth = 480;
-  const canvasHeight = (canvasWidth * aspectRatio.h) / aspectRatio.w;
+  const canvasHeight = Math.round((canvasWidth * aspectRatio.h) / aspectRatio.w);
 
   const { getUrl } = useMediaManager();
-
-  const { renderTick } = useEditorStore();
 
   const drawFrame = useCallback((time: number) => {
     const engine = engineRef.current;
@@ -39,44 +41,45 @@ export default function PreviewCanvas() {
     engine.renderFrame({ time, tracks: state.project.tracks, getMediaUrl: getUrl });
   }, [getUrl]);
 
-  const onFrame = useCallback((time: number) => {
-    drawFrame(time);
-  }, [drawFrame]);
-
+  const onFrame = useCallback((time: number) => { drawFrame(time); }, [drawFrame]);
   const engine = usePlaybackEngine(onFrame);
 
-  // Sync store.isPlaying → engine play/pause (bridges keyboard shortcuts from App.tsx)
+  // Sync isPlaying → engine + RenderEngine playback mode
   useEffect(() => {
-    if (isPlaying) engine.play();
-    else engine.pause();
+    if (!engineRef.current) return;
+    engineRef.current.setPlaybackMode(isPlaying);
+    if (isPlaying) {
+      // Gather all video clips and start them playing
+      const state = useEditorStore.getState();
+      const allClips = state.project.tracks.flatMap(t => t.clips);
+      engineRef.current.startLivePlayback(allClips, getUrl);
+      engine.play();
+    } else {
+      engine.pause();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying]);
 
+  // Initialize render engine
   useEffect(() => {
     if (!canvasRef.current) return;
     engineRef.current = new RenderEngine(canvasRef.current);
     engineRef.current.setSize(canvasWidth, canvasHeight);
-    drawFrame(currentTime);
+    drawFrame(0);
     return () => { engineRef.current?.destroy(); engineRef.current = null; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasWidth, canvasHeight]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!engineRef.current) return;
     engineRef.current.setSize(canvasWidth, canvasHeight);
   }, [canvasWidth, canvasHeight]);
 
-  // Re-render on visual property changes (renderTick) when paused
+  // Re-render when paused and time/properties change
   useEffect(() => {
     if (isPlaying || !engineRef.current) return;
     drawFrame(currentTime);
   }, [renderTick, currentTime, isPlaying, drawFrame]);
-
-  useEffect(() => {
-    if (!isPlaying && engineRef.current) {
-      drawFrame(currentTime);
-    }
-  }, [currentTime, isPlaying, drawFrame]);
 
   const skipBackward = () => engine.seek(Math.max(0, currentTime - 5));
   const skipForward = () => engine.seek(Math.min(projectDuration, currentTime + 5));
@@ -87,13 +90,19 @@ export default function PreviewCanvas() {
   };
 
   const effectiveVolume = muted ? 0 : (volume ?? 1);
+  const hasContent = tracks.some(t => t.visible && t.clips.length > 0);
 
   return (
     <div className="preview-player">
       <div className="preview-canvas-wrap">
         <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="preview-canvas" />
-        {!tracks.some((t) => t.visible && t.clips.length > 0) && (
-          <div className="preview-placeholder">Start by importing your media</div>
+        {!hasContent && (
+          <div className="preview-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
+              <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+            <span>Import media and add to timeline</span>
+          </div>
         )}
       </div>
       <div className="preview-control-bar">
@@ -113,20 +122,18 @@ export default function PreviewCanvas() {
         </div>
         <div className="preview-control-right">
           <div className="preview-volume-group">
-            <button className="preview-btn" onClick={() => { setMuted(!muted); mutedRef.current = !muted; }}>{muted ? <MuteIcon /> : <VolumeIcon />}</button>
-            <input
-              type="range"
-              className="preview-volume-slider"
-              min={0}
-              max={100}
+            <button className="preview-btn" onClick={() => { setMuted(!muted); mutedRef.current = !muted; }}>
+              {muted ? <MuteIcon /> : <VolumeIcon />}
+            </button>
+            <input type="range" className="preview-volume-slider" min={0} max={100}
               value={Math.round(effectiveVolume * 100)}
-              onChange={(e) => { setVolume(parseInt(e.target.value) / 100); setMuted(false); mutedRef.current = false; }}
+              onChange={e => { setVolume(parseInt(e.target.value) / 100); setMuted(false); mutedRef.current = false; }}
             />
           </div>
         </div>
       </div>
       <div className="preview-seekbar" onClick={seekBar}>
-        <div className="preview-seekbar-fill" style={{ width: `${(currentTime / projectDuration) * 100}%` }} />
+        <div className="preview-seekbar-fill" style={{ width: `${(currentTime / Math.max(projectDuration, 0.01)) * 100}%` }} />
       </div>
     </div>
   );
