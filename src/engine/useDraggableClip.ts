@@ -84,24 +84,26 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
       const snap = calculateSnap(newStart, endTime, 'both', candidates, snapThreshold);
       if (snap.snapped) newStart = snap.targetTime;
 
-      // Cross-track detection: find which row the cursor is over
+      // Cross-track detection with TYPE SAFETY
       const relY = clientY - tracksAreaTop;
       const trackIndex = Math.max(0, Math.floor(relY / trackHeight));
       const tracks = store.project.tracks;
       const targetTrack = tracks[trackIndex];
 
       if (targetTrack && targetTrack.id !== clip.trackId) {
-        // Try to move to the new track
-        const moved = store.moveClip(s.clipId, targetTrack.id, newStart);
-        if (moved) {
-          // Update the drag ref so subsequent moves continue from new track
+        // Only allow compatible track types
+        const compatible = targetTrack.type === clip.trackType;
+        if (compatible) {
+          store.moveClipDrag(s.clipId, targetTrack.id, newStart);
           dragRef.current.origTrackId = targetTrack.id;
         }
+        // If incompatible, just update position on same track
+        else store.updateClip(s.clipId, { startAt: newStart });
       } else {
         store.updateClip(s.clipId, { startAt: newStart });
       }
-
       setSnapLine(snapLinePx(snap));
+
     } else if (zone === 'trim-start') {
       const rawStart = origStartAt + deltaTime;
       const durationDelta = origStartAt - rawStart;

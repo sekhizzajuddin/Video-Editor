@@ -8,9 +8,10 @@ export interface MediaFile {
   blob: Blob;
   duration?: number;
   thumbnail?: string;
+  thumbnails?: string[];   // filmstrip frames for video
   width?: number;
   height?: number;
-  waveform?: number[];
+  waveform?: number[];     // normalised 0-1 amplitude buckets
 }
 
 export interface TextOverlay {
@@ -36,8 +37,14 @@ export interface ClipFilters {
   preset: 'none' | 'bw' | 'sepia' | 'invert' | 'warm' | 'cool' | 'contrast';
 }
 
+export type TransitionType =
+  | 'none' | 'fade' | 'dissolve'
+  | 'wipe-left' | 'wipe-right'
+  | 'slide-left' | 'slide-right'
+  | 'zoom' | 'spin' | 'blur' | 'flash';
+
 export interface ClipTransition {
-  type: 'none' | 'fadein' | 'fadeout' | 'dissolve' | 'crossfade';
+  type: TransitionType;
   duration: number;
 }
 

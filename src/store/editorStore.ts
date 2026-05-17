@@ -89,6 +89,8 @@ export interface EditorState {
   updateClip: (id: string, patch: Partial<Clip>) => void;
   removeClip: (id: string, ripple?: boolean) => void;
   moveClip: (id: string, toTrackId: string, toStartAt: number) => boolean;
+  /** Like moveClip but skips pushHistory — for use during drag */
+  moveClipDrag: (id: string, toTrackId: string, toStartAt: number) => boolean;
   splitClip: (id: string, splitAt: number) => void;
   removeSelectedClips: () => void;
 
@@ -310,12 +312,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (!clip) return false;
       const destTrack = state.project.tracks.find((t) => t.id === toTrackId);
       if (!destTrack || destTrack.locked) return false;
-
       const snap = get().findSnapTime(toTrackId, toStartAt);
       const finalTime = snap >= 0 ? snap : Math.max(0, toStartAt);
       const overlap = get().getClipsInRange(toTrackId, finalTime, finalTime + clip.duration).filter((o) => o.id !== id);
       if (overlap.length > 0) return false;
-
       get().pushHistory();
       set((st) => ({
         project: {
@@ -332,6 +332,33 @@ export const useEditorStore = create<EditorState>((set, get) => {
         isDirty: true,
       }));
       get().recalcDuration();
+      return true;
+    },
+
+    moveClipDrag: (id, toTrackId, toStartAt) => {
+      const state = get();
+      const sourceTrack = state.project.tracks.find((t) => t.clips.some((c) => c.id === id));
+      if (!sourceTrack) return false;
+      const clip = sourceTrack.clips.find((c) => c.id === id);
+      if (!clip) return false;
+      const destTrack = state.project.tracks.find((t) => t.id === toTrackId);
+      if (!destTrack || destTrack.locked) return false;
+      const finalTime = Math.max(0, toStartAt);
+      // No overlap check during drag — allow ghost positioning
+      set((st) => ({
+        project: {
+          ...st.project,
+          tracks: st.project.tracks.map((t) => ({
+            ...t,
+            clips: t.id === sourceTrack.id
+              ? t.clips.filter((c) => c.id !== id)
+              : t.id === toTrackId
+                ? [...t.clips, { ...clip, trackId: toTrackId, startAt: finalTime }]
+                : t.clips,
+          })),
+        },
+        isDirty: true,
+      }));
       return true;
     },
 

@@ -25,7 +25,8 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
 }
 
 export default function App() {
-  const { currentTime, cropToMarkers, newProject, saveToast, showOpenProject } = useEditorStore();
+  const { currentTime, cropToMarkers, newProject, showOpenProject } = useEditorStore();
+  const saveToast = useEditorStore(s => s.saveToast);
   const [activeTool, setActiveTool] = useState('media');
 
   // Auto-load most recent project on startup

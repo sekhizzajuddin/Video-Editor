@@ -1,19 +1,24 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { getMediaDuration } from '../utils/fileUtils';
-import { generateWaveformData, generateThumbnail } from '../engine/useMediaManager';
+import { generateWaveformData, generateThumbnail, generateFilmstrip, registerMediaUrl } from '../engine/useMediaManager';
 import type { MediaFile } from '../types';
+import { v4 as uuid } from 'uuid';
 
-function UploadIcon() { return <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
+// ─── Icons ───────────────────────────────────────────────────────
+function UploadIcon() { return <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
+function VideoIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>; }
+function AudioIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>; }
+function ImageIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>; }
+function TrashIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>; }
 
-function formatDuration(sec?: number): string {
-  if (!sec) return '--:--';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+function formatDur(sec?: number) {
+  if (!sec) return '';
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ─── Text Presets ───────────────────────────────────────────────
+// ─── Text Presets ─────────────────────────────────────────────────
 const TEXT_PRESETS = [
   { label: 'Big Title', fontSize: 72, fontWeight: 700, color: '#ffffff', fontFamily: 'Inter, sans-serif' },
   { label: 'Subtitle', fontSize: 42, fontWeight: 600, color: '#e2e8f0', fontFamily: 'Inter, sans-serif' },
@@ -23,27 +28,158 @@ const TEXT_PRESETS = [
   { label: 'Neon', fontSize: 56, fontWeight: 700, color: '#a78bfa', fontFamily: 'Inter, sans-serif' },
 ];
 
+// ─── Stickers ─────────────────────────────────────────────────────
+const STICKER_GROUPS = [
+  { label: 'Reactions', items: ['😂', '❤️', '🔥', '👏', '😍', '🎉', '😮', '👍', '💯', '✨', '🚀', '⭐'] },
+  { label: 'Symbols',   items: ['▶️', '⏸️', '⏹️', '🔴', '🟢', '🔵', '⚡', '💥', '🌟', '💫', '🎵', '📍'] },
+  { label: 'Arrows',    items: ['⬆️', '⬇️', '⬅️', '➡️', '↗️', '↘️', '🔄', '↩️', '↪️', '🔃', '⤴️', '⤵️'] },
+];
+
+// ─── Effects ──────────────────────────────────────────────────────
+const EFFECT_PRESETS = [
+  { label: 'None',     preset: 'none',     color: '#64748b' },
+  { label: 'B&W',      preset: 'bw',       color: '#94a3b8' },
+  { label: 'Sepia',    preset: 'sepia',    color: '#b45309' },
+  { label: 'Warm',     preset: 'warm',     color: '#f59e0b' },
+  { label: 'Cool',     preset: 'cool',     color: '#3b82f6' },
+  { label: 'Contrast', preset: 'contrast', color: '#e2e8f0' },
+  { label: 'Invert',   preset: 'invert',   color: '#a78bfa' },
+] as const;
+
+// ─── Transitions ──────────────────────────────────────────────────
+const TRANSITIONS = [
+  { id: 'fade',        label: 'Fade',       preview: '⬛→⬜' },
+  { id: 'dissolve',    label: 'Dissolve',   preview: '◈' },
+  { id: 'wipe-left',   label: 'Wipe ←',    preview: '◁▮' },
+  { id: 'wipe-right',  label: 'Wipe →',    preview: '▮▷' },
+  { id: 'slide-left',  label: 'Slide ←',   preview: '⟵' },
+  { id: 'slide-right', label: 'Slide →',   preview: '⟶' },
+  { id: 'zoom',        label: 'Zoom',       preview: '⊕' },
+  { id: 'spin',        label: 'Spin',       preview: '↻' },
+  { id: 'blur',        label: 'Blur',       preview: '≋' },
+  { id: 'flash',       label: 'Flash',      preview: '⚡' },
+] as const;
+
+// ─── Media Panel ──────────────────────────────────────────────────
+function MediaPanel() {
+  const { project: { media }, addMedia, removeMedia, addClip, updateClip } = useEditorStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const processFiles = useCallback(async (files: File[]) => {
+    setImporting(true);
+    for (const file of files) {
+      const type = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'image';
+      const id = uuid();
+      const blob = file;
+      const mf: MediaFile = { id, name: file.name, type, mimeType: file.type, blob, duration: 0 };
+      try {
+        if (type !== 'image') mf.duration = await getMediaDuration(file);
+        mf.thumbnail = await generateThumbnail(mf, 320, 180).catch(() => undefined);
+        // Waveform: for audio AND video (extracts audio track)
+        if (type === 'audio' || type === 'video') {
+          mf.waveform = await generateWaveformData(mf, 80).catch(() => []);
+        }
+        // Filmstrip: video only
+        if (type === 'video') {
+          mf.thumbnails = await generateFilmstrip(mf, 8).catch(() => []);
+        }
+        registerMediaUrl(id, blob);
+      } catch {}
+      addMedia(mf);
+    }
+    setImporting(false);
+  }, [addMedia]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f =>
+      f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/')
+    );
+    if (files.length) processFiles(files);
+  }, [processFiles]);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) processFiles(files);
+    e.target.value = '';
+  }, [processFiles]);
+
+  const handleAddToTimeline = (mf: MediaFile) => {
+    const clip = addClip(mf.type === 'audio' ? 'audio' : 'video', mf.id);
+    if (!clip) return;
+    if (mf.duration) updateClip(clip.id, { duration: mf.duration });
+  };
+
+  const ICON_MAP = { video: <VideoIcon />, audio: <AudioIcon />, image: <ImageIcon /> };
+
+  return (
+    <div className="media-panel">
+      {/* Drop Zone */}
+      <div
+        className={`media-dropzone ${dragOver ? 'drag-over' : ''} ${importing ? 'importing' : ''}`}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <UploadIcon />
+        <span className="dropzone-title">{importing ? 'Importing...' : 'Drop files or click'}</span>
+        <span className="dropzone-sub">Video · Audio · Images</span>
+        <input ref={fileInputRef} type="file" multiple accept="video/*,audio/*,image/*"
+          style={{ display: 'none' }} onChange={handleFileInput} />
+      </div>
+
+      {/* Media Grid */}
+      {media.length > 0 && (
+        <div className="media-grid">
+          {media.map(mf => (
+            <div key={mf.id} className="media-card"
+              draggable
+              onDragStart={e => e.dataTransfer.setData('text/plain', mf.id)}
+              onClick={() => handleAddToTimeline(mf)}
+              title={`${mf.name}\n${formatDur(mf.duration)}`}
+            >
+              <div className="media-card-thumb">
+                {mf.thumbnail
+                  ? <img src={mf.thumbnail} alt={mf.name} />
+                  : <div className="media-card-icon">{ICON_MAP[mf.type]}</div>
+                }
+                {mf.waveform && mf.type === 'audio' && (
+                  <div className="media-card-waveform">
+                    {mf.waveform.slice(0, 32).map((a, i) => (
+                      <div key={i} className="mc-wave-bar" style={{ height: `${Math.max(10, a * 100)}%` }} />
+                    ))}
+                  </div>
+                )}
+                <div className="media-card-badge">{ICON_MAP[mf.type]}</div>
+                {mf.duration ? <div className="media-card-dur">{formatDur(mf.duration)}</div> : null}
+              </div>
+              <div className="media-card-info">
+                <span className="media-card-name">{mf.name.replace(/\.[^.]+$/, '')}</span>
+                <button className="media-card-del" onClick={e => { e.stopPropagation(); removeMedia(mf.id); }} title="Remove">
+                  <TrashIcon />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Text Panel ───────────────────────────────────────────────────
 function TextPanel() {
   const { addClip, updateClip } = useEditorStore();
-  const handleAddText = (preset: typeof TEXT_PRESETS[number]) => {
+  const handleAddText = (p: typeof TEXT_PRESETS[number]) => {
     const clip = addClip('text');
-    if (clip) {
-      updateClip(clip.id, {
-        textOverlay: {
-          text: preset.label,
-          fontFamily: preset.fontFamily,
-          fontSize: preset.fontSize,
-          color: preset.color,
-          fontWeight: preset.fontWeight,
-          textAlign: 'center',
-        },
-        duration: 4,
-      });
-    }
+    if (clip) updateClip(clip.id, { textOverlay: { text: p.label, fontFamily: p.fontFamily, fontSize: p.fontSize, color: p.color, fontWeight: p.fontWeight, textAlign: 'center' }, duration: 4 });
   };
   return (
     <div className="panel-content">
-      <p className="panel-hint">Click a preset to add text to the timeline</p>
+      <p className="panel-hint">Click a preset to add text to timeline</p>
       <div className="text-preset-list">
         {TEXT_PRESETS.map(p => (
           <button key={p.label} className="text-preset-btn" onClick={() => handleAddText(p)}>
@@ -56,70 +192,38 @@ function TextPanel() {
   );
 }
 
-// ─── Sticker Panel ──────────────────────────────────────────────
-const STICKER_GROUPS = [
-  { label: 'Reactions', items: ['😂', '❤️', '🔥', '👏', '😍', '🎉', '😮', '👍', '💯', '✨', '🚀', '⭐'] },
-  { label: 'Symbols', items: ['▶️', '⏸️', '⏹️', '🔴', '🟢', '🔵', '⚡', '💥', '🌟', '💫', '🎵', '📍'] },
-  { label: 'Arrows', items: ['⬆️', '⬇️', '⬅️', '➡️', '↗️', '↘️', '🔄', '↩️', '↪️', '🔃', '⤴️', '⤵️'] },
-];
-
+// ─── Stickers Panel ───────────────────────────────────────────────
 function StickersPanel() {
   const { addClip, updateClip } = useEditorStore();
-  const handleAddSticker = (emoji: string) => {
-    const clip = addClip('sticker', undefined, emoji);
-    if (clip) updateClip(clip.id, { duration: 3 });
-  };
+  const add = (emoji: string) => { const c = addClip('sticker', undefined, emoji); if (c) updateClip(c.id, { duration: 3 }); };
   return (
     <div className="panel-content">
-      <p className="panel-hint">Click a sticker to add it to the timeline</p>
       {STICKER_GROUPS.map(g => (
         <div key={g.label} className="sticker-group">
           <div className="sticker-group-label">{g.label}</div>
-          <div className="sticker-grid">
-            {g.items.map(s => (
-              <button key={s} className="sticker-btn" onClick={() => handleAddSticker(s)} title={s}>{s}</button>
-            ))}
-          </div>
+          <div className="sticker-grid">{g.items.map(s => <button key={s} className="sticker-btn" onClick={() => add(s)}>{s}</button>)}</div>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Effects Panel ──────────────────────────────────────────────
-const EFFECT_PRESETS = [
-  { label: 'None', preset: 'none', color: '#64748b', desc: 'Remove all filters' },
-  { label: 'B&W', preset: 'bw', color: '#94a3b8', desc: 'Black & white' },
-  { label: 'Sepia', preset: 'sepia', color: '#b45309', desc: 'Warm vintage tone' },
-  { label: 'Warm', preset: 'warm', color: '#f59e0b', desc: 'Warm golden hues' },
-  { label: 'Cool', preset: 'cool', color: '#3b82f6', desc: 'Cool blue tones' },
-  { label: 'Contrast', preset: 'contrast', color: '#e2e8f0', desc: 'High contrast' },
-  { label: 'Invert', preset: 'invert', color: '#a78bfa', desc: 'Invert colors' },
-] as const;
-
+// ─── Effects Panel ────────────────────────────────────────────────
 function EffectsPanel() {
   const { activeClipId, getClip, updateClip } = useEditorStore();
   const clip = activeClipId ? getClip(activeClipId) : null;
-  const currentPreset = clip?.filters?.preset || 'none';
-  const handleApply = (preset: string) => {
-    if (!clip) return;
-    updateClip(clip.id, { filters: { brightness: 0, contrast: 0, saturation: 0, preset: preset as any } });
+  const apply = (preset: string) => {
+    if (clip) updateClip(clip.id, { filters: { brightness: clip.filters?.brightness ?? 0, contrast: clip.filters?.contrast ?? 0, saturation: clip.filters?.saturation ?? 0, preset: preset as any } });
   };
   return (
     <div className="panel-content">
-      {!clip && <p className="panel-hint">Select a clip on the timeline to apply effects</p>}
-      {clip && <p className="panel-hint">Applying to: <strong style={{ color: '#a78bfa' }}>{clip.textOverlay?.text || clip.mediaId || 'Clip'}</strong></p>}
+      <p className="panel-hint">{clip ? `Applying to: ${clip.id.slice(0,8)}…` : 'Select a clip to apply effects'}</p>
       <div className="effect-grid">
         {EFFECT_PRESETS.map(e => (
-          <button
-            key={e.preset}
-            className={`effect-btn ${currentPreset === e.preset ? 'active' : ''}`}
-            onClick={() => handleApply(e.preset)}
-            disabled={!clip}
-          >
-            <div className="effect-swatch" style={{ background: e.preset === 'none' ? 'var(--bg-tertiary)' : `linear-gradient(135deg, ${e.color}66, ${e.color}22)`, borderColor: currentPreset === e.preset ? e.color : 'transparent' }} />
+          <button key={e.preset} className={`effect-btn ${(clip?.filters?.preset || 'none') === e.preset ? 'active' : ''}`}
+            onClick={() => apply(e.preset)} disabled={!clip}>
+            <div className="effect-swatch" style={{ background: e.color }} />
             <span className="effect-name">{e.label}</span>
-            <span className="effect-desc">{e.desc}</span>
           </button>
         ))}
       </div>
@@ -127,101 +231,60 @@ function EffectsPanel() {
   );
 }
 
-// ─── Media / Audio Panel ─────────────────────────────────────────
-interface Props { activeTool: string; }
-
-export default function AssetLibrary({ activeTool }: Props) {
-  const { project: { media }, addMedia, addClip, removeMedia } = useEditorStore();
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = useCallback(async (files: FileList | null) => {
-    if (!files) return;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const type: MediaFile['type'] | null =
-        file.type.startsWith('video/') ? 'video' :
-        file.type.startsWith('audio/') ? 'audio' :
-        file.type.startsWith('image/') ? 'image' : null;
-      if (!type) continue;
-      const id = `media_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      let thumbnail: string | undefined;
-      let duration: number | undefined;
-      let waveform: number[] | undefined;
-      try { duration = await getMediaDuration(file); } catch {}
-      const mf: MediaFile = { id, name: file.name, type, mimeType: file.type, blob: file, duration };
-      if (type === 'video' || type === 'image') { try { thumbnail = await generateThumbnail(mf, 320, 180); } catch {} }
-      if (type === 'audio' || type === 'video') { try { waveform = await generateWaveformData(mf, 128); } catch {} }
-      addMedia({ id, name: file.name, type, mimeType: file.type, blob: file, duration, thumbnail, waveform });
-    }
-  }, [addMedia]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); handleFile(e.dataTransfer.files); }, [handleFile]);
-
-  // Panels that don't show the media grid
-  if (activeTool === 'text') return (
-    <div className="asset-library"><div className="asset-library-header"><span className="asset-library-title">Text</span></div><TextPanel /></div>
-  );
-  if (activeTool === 'stickers') return (
-    <div className="asset-library"><div className="asset-library-header"><span className="asset-library-title">Stickers</span></div><StickersPanel /></div>
-  );
-  if (activeTool === 'effects') return (
-    <div className="asset-library"><div className="asset-library-header"><span className="asset-library-title">Effects</span></div><EffectsPanel /></div>
-  );
-
-  // Media / Audio panel
-  const filteredMedia = activeTool === 'audio'
-    ? media.filter(m => m.type === 'audio')
-    : media;
-
-  const accept = activeTool === 'audio' ? 'audio/*' : 'video/*,audio/*,image/*';
-  const title = activeTool === 'audio' ? 'Audio' : 'Media';
-
+// ─── Transitions Panel ────────────────────────────────────────────
+function TransitionsPanel() {
   return (
-    <div className="asset-library" onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
-      <div className="asset-library-header">
-        <span className="asset-library-title">{title}</span>
-        <button className="asset-import-btn" onClick={() => fileRef.current?.click()}>+ Import</button>
-      </div>
-      <input ref={fileRef} type="file" accept={accept} multiple hidden onChange={e => handleFile(e.target.files)} />
-      <div className="asset-library-body">
-        {filteredMedia.length === 0 ? (
-          <div className="asset-empty-state" onClick={() => fileRef.current?.click()}>
-            <UploadIcon />
-            <span className="asset-empty-text">
-              {activeTool === 'audio' ? 'Drop audio files or click to import' : 'Drop files or click to import'}
-            </span>
+    <div className="panel-content">
+      <p className="panel-hint">
+        <strong>Drag</strong> a transition between two adjacent clips on the timeline to apply it. The <strong>⊕</strong> marker appears where clips meet.
+      </p>
+      <div className="transition-grid">
+        {TRANSITIONS.map(t => (
+          <div
+            key={t.id}
+            className="transition-card"
+            draggable
+            onDragStart={e => { e.dataTransfer.setData('transition', t.id); e.dataTransfer.effectAllowed = 'copy'; }}
+            title={t.label}
+          >
+            <div className="transition-preview">{t.preview}</div>
+            <span className="transition-label">{t.label}</span>
           </div>
-        ) : (
-          <div className="asset-grid">
-            {filteredMedia.map(m => (
-              <div
-                key={m.id}
-                className="asset-item"
-                draggable
-                onDragStart={e => { e.dataTransfer.setData('text/plain', m.id); e.dataTransfer.effectAllowed = 'copy'; }}
-                onDoubleClick={() => addClip(m.type === 'audio' ? 'audio' : 'video', m.id)}
-              >
-                <button className="asset-remove" onClick={e => { e.stopPropagation(); removeMedia(m.id); }}>×</button>
-                {m.thumbnail ? (
-                  <img src={m.thumbnail} alt={m.name} className="asset-thumb" />
-                ) : m.type === 'audio' && m.waveform ? (
-                  <div className="asset-audio-preview">
-                    {m.waveform.slice(0, 40).map((v, i) => (
-                      <div key={i} className="asset-wave-bar" style={{ height: `${Math.max(2, v * 28)}px` }} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="asset-icon">{m.type === 'audio' ? '♪' : '🎬'}</div>
-                )}
-                <div className="asset-item-info">
-                  <span className="asset-item-name">{m.name}</span>
-                  <span className="asset-item-duration">{formatDuration(m.duration)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        ))}
       </div>
     </div>
+  );
+}
+
+// ─── Root ─────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'media',       label: '🎬 Media' },
+  { id: 'text',        label: '𝐓 Text' },
+  { id: 'stickers',    label: '😀 Stickers' },
+  { id: 'effects',     label: '✨ Effects' },
+  { id: 'transitions', label: '⟷ Transitions' },
+];
+
+export default function AssetLibrary({ activeTool }: { activeTool: string }) {
+  const [tab, setTab] = useState(activeTool === 'media' ? 'media' : activeTool);
+
+  return (
+    <aside className="asset-library">
+      <div className="asset-tabs">
+        {TABS.map(t => (
+          <button key={t.id} className={`asset-tab ${tab === t.id ? 'active' : ''}`}
+            onClick={() => setTab(t.id)} title={t.label.replace(/^.\s/, '')}>
+            <span className="asset-tab-text">{t.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="asset-panel">
+        {tab === 'media'       && <MediaPanel />}
+        {tab === 'text'        && <TextPanel />}
+        {tab === 'stickers'    && <StickersPanel />}
+        {tab === 'effects'     && <EffectsPanel />}
+        {tab === 'transitions' && <TransitionsPanel />}
+      </div>
+    </aside>
   );
 }

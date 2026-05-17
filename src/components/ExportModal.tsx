@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { startExport } from '../engine/exportEngine';
 
@@ -14,6 +14,11 @@ export default function ExportModal() {
 
   const [eta, setEta] = useState<string>('');
   const abortRef = useRef<AbortController | null>(null);
+
+  // Reset state every time modal opens
+  useEffect(() => {
+    if (showExport) { setExportProgress(0); setExportStage(''); setExportError(null); setEta(''); }
+  }, [showExport, setExportProgress, setExportStage, setExportError]);
 
   const handleExport = useCallback(async () => {
     setExportProgress(0);

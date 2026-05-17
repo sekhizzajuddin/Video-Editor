@@ -28,7 +28,11 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
       </div>
       <div className="inspector-section">
         <Sec>TIMING</Sec>
-        <Row label="Start"><span className="inspector-field-value">{clip.startAt.toFixed(2)}s</span></Row>
+        <Row label="Start">
+          <input className="inspector-input" type="number" min={0} step={0.1}
+            value={parseFloat(clip.startAt.toFixed(2))}
+            onChange={e => update({ startAt: Math.max(0, parseFloat(e.target.value) || 0) })} />
+        </Row>
         <Row label="Duration">
           <input className="inspector-input" type="number" min={0.1} step={0.1} value={parseFloat(clip.duration.toFixed(2))}
             onChange={e => update({ duration: Math.max(0.1, parseFloat(e.target.value) || 0.1) })} />

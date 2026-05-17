@@ -124,9 +124,9 @@ export async function generateThumbnail(media: MediaFile, width = 320, height = 
   return undefined;
 }
 
-export async function generateWaveformData(media: MediaFile, buckets = 128): Promise<number[]> {
+export async function generateWaveformData(media: MediaFile, buckets = 80): Promise<number[]> {
+  // Works for BOTH audio AND video files
   if (media.type !== 'audio' && media.type !== 'video') return [];
-
   const audioCtx = new AudioContext();
   try {
     const arrayBuffer = await media.blob.arrayBuffer();
@@ -136,9 +136,7 @@ export async function generateWaveformData(media: MediaFile, buckets = 128): Pro
     const waveform: number[] = [];
     for (let i = 0; i < buckets; i++) {
       let sum = 0;
-      for (let j = 0; j < samplesPerBucket; j++) {
-        sum += Math.abs(channel[i * samplesPerBucket + j]);
-      }
+      for (let j = 0; j < samplesPerBucket; j++) sum += Math.abs(channel[i * samplesPerBucket + j]);
       waveform.push(sum / samplesPerBucket);
     }
     audioCtx.close();
@@ -149,6 +147,36 @@ export async function generateWaveformData(media: MediaFile, buckets = 128): Pro
     return [];
   }
 }
+
+/** Generate N evenly-spaced filmstrip frames from a video MediaFile */
+export async function generateFilmstrip(media: MediaFile, numFrames = 8): Promise<string[]> {
+  if (media.type !== 'video') return [];
+  const url = registerMediaUrl(media.id, media.blob);
+  return new Promise<string[]>(resolve => {
+    const video = document.createElement('video');
+    video.muted = true; video.crossOrigin = 'anonymous'; video.preload = 'metadata';
+    const frames: string[] = [];
+    let idx = 0;
+    const timeout = setTimeout(() => resolve(frames), 12000);
+
+    const captureFrame = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 80; canvas.height = 45;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(video, 0, 0, 80, 45);
+      frames.push(canvas.toDataURL('image/jpeg', 0.55));
+      idx++;
+      if (idx >= numFrames) { clearTimeout(timeout); video.pause(); video.removeAttribute('src'); resolve(frames); }
+      else video.currentTime = (idx / numFrames) * (video.duration || 10);
+    };
+
+    video.onseeked = captureFrame;
+    video.onloadedmetadata = () => { video.currentTime = 0; };
+    video.onerror = () => { clearTimeout(timeout); resolve(frames); };
+    video.src = url;
+  });
+}
+
 
 export function useMediaManager() {
   const cleanupRef = useRef(false);
