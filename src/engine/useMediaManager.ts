@@ -93,10 +93,20 @@ export async function generateThumbnail(media: MediaFile, width = 320, height = 
       await video.load();
       video.currentTime = Math.min(media.duration || 0, 1);
       await new Promise<void>((resolve) => {
-        video.onseeked = () => resolve();
-        video.onseeked = null;
-        if (video.readyState >= 2) resolve();
-        else video.oncanplay = () => resolve();
+        const onSeeked = () => {
+          video.onseeked = null;
+          video.oncanplay = null;
+          resolve();
+        };
+        if (video.readyState >= 2) {
+          video.onseeked = onSeeked;
+        } else {
+          video.oncanplay = () => {
+            video.oncanplay = null;
+            video.currentTime = Math.min(media.duration || 0, 1);
+            video.onseeked = onSeeked;
+          };
+        }
       });
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -117,8 +127,8 @@ export async function generateThumbnail(media: MediaFile, width = 320, height = 
 export async function generateWaveformData(media: MediaFile, buckets = 128): Promise<number[]> {
   if (media.type !== 'audio' && media.type !== 'video') return [];
 
+  const audioCtx = new AudioContext();
   try {
-    const audioCtx = new AudioContext();
     const arrayBuffer = await media.blob.arrayBuffer();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
     const channel = audioBuffer.getChannelData(0);
@@ -132,9 +142,10 @@ export async function generateWaveformData(media: MediaFile, buckets = 128): Pro
       waveform.push(sum / samplesPerBucket);
     }
     audioCtx.close();
-    const max = Math.max(...waveform, 0.001);
+    const max = waveform.reduce((a, b) => Math.max(a, b), 0.001);
     return waveform.map((v) => v / max);
   } catch {
+    audioCtx.close();
     return [];
   }
 }

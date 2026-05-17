@@ -102,11 +102,9 @@ export class RenderEngine {
     // --- Render media onto the layer canvas ---
     if (mediaUrl && clip.mediaId) {
       const el = this.mediaCache.get(clip.mediaId);
-      if (el instanceof HTMLVideoElement) {
+      if (el instanceof HTMLVideoElement && el.readyState >= 2) {
         if (Math.abs(el.currentTime - sourceTime) > 0.1) el.currentTime = sourceTime;
-        if (el.readyState >= 2) {
-          renderVideoFrame(layerCtx, layerCanvas, el);
-        }
+        renderVideoFrame(layerCtx, layerCanvas, el);
       } else if (el instanceof HTMLImageElement && el.complete) {
         renderImageFrame(layerCtx, layerCanvas, el);
       } else {
@@ -134,7 +132,7 @@ export class RenderEngine {
 
     // --- Apply filters to the layer ---
     if (clip.filters && clip.filters.preset !== 'none') {
-      applyFilter(layerCtx, layerCanvas, 'bw');
+      applyFilter(layerCtx, layerCanvas, clip.filters.preset);
     }
 
     // --- Composite this layer onto the main context with transform, alpha, blend ---
@@ -186,6 +184,10 @@ export class RenderEngine {
       el.preload = 'auto';
       el.src = url;
       el.load();
+      await new Promise<void>((resolve) => {
+        if (el.readyState >= 2) resolve();
+        else el.oncanplay = () => resolve();
+      });
       this.mediaCache.set(mediaId, el);
       return el;
     }

@@ -28,12 +28,6 @@ function u32(arr: Uint8Array, off: number, v: number) {
   arr[off + 3] = v & 0xff;
 }
 
-/** Write a 64-bit big-endian integer */
-function u64(arr: Uint8Array, off: number, v: number) {
-  u32(arr, off, Math.floor(v / 0x100000000));
-  u32(arr, off + 4, v >>> 0);
-}
-
 /** Write four-character code */
 function fcc(arr: Uint8Array, off: number, str: string) {
   for (let i = 0; i < 4; i++) arr[off + i] = str.charCodeAt(i);
@@ -107,28 +101,40 @@ function stsdAudio(sampleRate: number, channelCount: number, esds: Uint8Array): 
 }
 
 function esdsAAC(aacConfig: Uint8Array): Uint8Array {
-  const len = 3 + aacConfig.length + 13;
-  const buf = new Uint8Array(len + 8);
-  u32(buf, 0, len + 8);
+  const configLen = aacConfig.length;
+  const desc = new Uint8Array(50);
+  let off = 0;
+  desc[off++] = 0x03;                            // ES_DescrTag
+  const esLenOff = off++;
+  u16(desc, off, 0x0002); off += 2;              // ES_ID
+  desc[off++] = 0;                                // flags + streamPriority
+  desc[off++] = 0x04;                             // DecoderConfigDescrTag
+  const dcLenOff = off++;
+  desc[off++] = 0x40;                             // objectType: AAC
+  desc[off++] = 0x15;                             // streamType: Audio
+  u24(desc, off, 0); off += 3;                    // bufferSizeDB
+  u32(desc, off, 0); off += 4;                    // maxBitrate
+  u32(desc, off, 0); off += 4;                    // avgBitrate
+  desc[off++] = 0x05;                             // DecSpecificInfoTag
+  desc[off++] = configLen;                        // DSI length
+  desc.set(aacConfig, off); off += configLen;
+  desc[off++] = 0x06;                             // SLConfigDescrTag
+  const slLenOff = off++;
+  desc[off++] = 0x02;                             // SLConfig value
+
+  // Fill in lengths
+  const dcLen = off - dcLenOff - 1;
+  desc[dcLenOff] = dcLen;
+  const esPayloadLen = off - esLenOff - 1;
+  desc[esLenOff] = esPayloadLen;
+  const slLen = off - slLenOff - 1;
+  desc[slLenOff] = slLen;
+
+  const totalLen = off;
+  const buf = new Uint8Array(8 + totalLen);
+  u32(buf, 0, 8 + totalLen);
   fcc(buf, 4, 'esds');
-  buf[8] = 3;
-  const esDescLen = len - 3;
-  buf[9 + 3] = esDescLen;
-  u16(buf, 14, 0x0002); // streamPriority
-  buf[16] = 4; // DecoderConfigDescriptor
-  buf[17 + 3] = 15 + aacConfig.length;
-  buf[21] = 0x40; // objectType: AAC
-  buf[22] = 0x15; // streamType: Audio
-  u24(buf, 23, 0); // bufferSize
-  u32(buf, 26, 0); // maxBitrate
-  u32(buf, 30, 0); // avgBitrate
-  buf[34] = 5; // DecoderSpecificInfo
-  buf[35] = aacConfig.length;
-  buf.set(aacConfig, 36);
-  const sl = 40 + aacConfig.length;
-  buf[sl] = 6; // SLConfigDescriptor
-  buf[sl + 1] = 1;
-  buf[sl + 2] = 2;
+  buf.set(desc.subarray(0, totalLen), 8);
   return buf;
 }
 
@@ -155,11 +161,11 @@ function makeStblSamples(samples: EncodedSample[], _timescale: number, width: nu
   u32(keyframes, 0, sampleCount);
 
   // ctts: decode time = composition time (no B-frames)
-  const ctts = new Uint8Array(12);
-  u32(ctts, 0, 1); // version+flags
+  const ctts = new Uint8Array(16);
+  u32(ctts, 0, 0); // version+flags
   u32(ctts, 4, 1); // entry count
   u32(ctts, 8, sampleCount); // sample count
-  // sample offset = 0
+  u32(ctts, 12, 0); // sample offset = 0
 
   // stss: sync sample table
   const syncSamples: number[] = [];
@@ -363,15 +369,25 @@ function moov(
     tracks.push(trakAudio(audioSamples, audioTimescale, sampleRate, channels, adur, aacConfig, audioTrackId));
   }
 
-  const mvhd = new Uint8Array(28 + tracks.length * 4);
-  u32(mvhd, 0, 0x01000000); // version=1, flags=0
-  u64(mvhd, 4, 0); u64(mvhd, 12, 0);
-  u32(mvhd, 20, 1000);
-  u32(mvhd, 24, mvhdDuration * 1000);
-  u32(mvhd, 28, 0x00010000); // rate
-  mvhd[32] = 1; mvhd[33] = 0; // volume
-  for (let i = 34; i < 74; i++) mvhd[i] = i >= 38 && i < 74 ? 0 : 0;
-  u32(mvhd, 74, 1); // next track ID
+  // Build mvhd (version 0)
+  const mvhd = new Uint8Array(108);
+  u32(mvhd, 0, 0); // version=0, flags=0
+  u32(mvhd, 4, 0); // creation time
+  u32(mvhd, 8, 0); // modification time
+  u32(mvhd, 12, 1000); // timescale
+  u32(mvhd, 16, Math.round(mvhdDuration * 1000)); // duration
+  u32(mvhd, 20, 0x00010000); // rate (1.0 fixed-point 16.16)
+  mvhd[24] = 0x01; mvhd[25] = 0x00; // volume (1.0 fixed-point 8.8)
+  // reserved 10 bytes (indices 26-35): already zero
+  // matrix (indices 36-71): identity
+  u32(mvhd, 36, 0x00010000); // a
+  u32(mvhd, 40, 0); mvhd[44] = 0; mvhd[45] = 0; mvhd[46] = 0; mvhd[47] = 0; // b
+  u32(mvhd, 48, 0); mvhd[52] = 0; mvhd[53] = 0; mvhd[54] = 0; mvhd[55] = 0; // u
+  u32(mvhd, 56, 0x00010000); // c
+  u32(mvhd, 60, 0); mvhd[64] = 0; mvhd[65] = 0; mvhd[66] = 0; mvhd[67] = 0; // v
+  u32(mvhd, 68, 0x40000000); // w
+  // pre-defined (indices 72-95): already zero
+  u32(mvhd, 96, tracks.length + 1); // next track ID
 
   return box('moov', box('mvhd', mvhd), ...tracks);
 }
@@ -388,31 +404,31 @@ export function muxMP4(
   channelCount?: number,
   aacConfig?: Uint8Array,
 ): Blob {
-  const timescale = Math.max(fps, 1);
-  const videoSamplesNorm = videoSamples.map((s) => ({
+  const videoTimescale = Math.max(fps, 1);
+  const videoSamplesNorm = videoSamples.map((s, i) => ({
     ...s,
-    pts: Math.round(s.pts * timescale / fps),
-    duration: Math.round((s.duration || (1 / fps)) * timescale / fps),
+    pts: i,        // frame index in video timescale units
+    duration: 1,   // 1 timescale unit per frame
   }));
 
-  const audioSamplesNorm = (audioSamples || []).map((s) => ({
+  const audioTimescale = sampleRate || 44100;
+  const audioSamplesNorm = (audioSamples || []).map((s, i) => ({
     ...s,
-    pts: Math.round(s.pts * (sampleRate || 44100) / (sampleRate || 44100)),
-    duration: Math.round((s.duration || 1024) * (sampleRate || 44100) / (sampleRate || 44100)),
+    pts: i * 1024, // AAC frames in sample-rate timescale units
+    duration: 1024,
   }));
-  const audioTs = sampleRate || 44100;
 
   const avcCBox = avcC(sps, pps);
 
   const mvhdDuration = Math.max(
     videoSamplesNorm.length > 0 ? videoSamplesNorm.length / fps : 0,
-    audioSamplesNorm.length > 0 ? audioSamplesNorm.length * 1024 / audioTs : 0,
+    audioSamplesNorm.length > 0 ? audioSamplesNorm.length * 1024 / (sampleRate || 44100) : 0,
   );
 
   const moovBox = moov(
-    videoSamplesNorm, timescale,
+    videoSamplesNorm, videoTimescale,
     width, height, avcCBox, mvhdDuration,
-    audioSamplesNorm, audioTs,
+    audioSamplesNorm, audioTimescale,
     sampleRate || 44100, channelCount || 2,
     aacConfig || null,
   );
@@ -434,13 +450,12 @@ export function muxMP4(
   const moovStart = ftypBox.length;
   const mdatStart = moovStart + moovBox.length;
   const patchedMoov = new Uint8Array(moovBox);
-  // Find stco box (starts with 4 byte size + 'stco')
-  for (let i = 0; i < patchedMoov.length - 12; i++) {
+  // Find all stco boxes (video + audio) and patch chunk_offset at i+16
+  // stco box layout: size(4) + 'stco'(4) + version+flags(4) + entry_count(4) + chunk_offset(4)
+  for (let i = 0; i < patchedMoov.length - 16; i++) {
     if (patchedMoov[i + 4] === 0x73 && patchedMoov[i + 5] === 0x74 &&
         patchedMoov[i + 6] === 0x63 && patchedMoov[i + 7] === 0x6f) {
-      // stco found at i, chunk offset is at i+12
-      u32(patchedMoov, i + 12, mdatStart);
-      break;
+      u32(patchedMoov, i + 16, mdatStart);
     }
   }
 

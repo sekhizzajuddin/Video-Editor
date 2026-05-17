@@ -45,6 +45,13 @@ export default function PreviewCanvas() {
 
   const engine = usePlaybackEngine(onFrame);
 
+  // Sync store.isPlaying → engine play/pause (bridges keyboard shortcuts from App.tsx)
+  useEffect(() => {
+    if (isPlaying) engine.play();
+    else engine.pause();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
     engineRef.current = new RenderEngine(canvasRef.current);

@@ -1,4 +1,5 @@
 import { useEditorStore } from '../store/editorStore';
+import type { Clip } from '../types';
 
 function SelectionIcon() { return <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="12" x2="15" y2="12"/></svg>; }
 
@@ -104,7 +105,7 @@ export default function InspectorPanel() {
 
         <div className="inspector-section">
           <div className="inspector-section-header">FILTERS</div>
-          <select className="inspector-select" value={clip.filters?.preset || 'none'} onChange={(e) => updateClip(clip.id, { filters: { ...clip.filters || { brightness: 0, contrast: 0, saturation: 0, preset: 'none' }, preset: e.target.value } })}>
+          <select className="inspector-select" value={clip.filters?.preset || 'none'} onChange={(e) => updateClip(clip.id, { filters: { ...clip.filters || { brightness: 0, contrast: 0, saturation: 0, preset: 'none' }, preset: e.target.value as NonNullable<Clip['filters']>['preset'] } })}>
             {FILTER_PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
           <div className="inspector-field">

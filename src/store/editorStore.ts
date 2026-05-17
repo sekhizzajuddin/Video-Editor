@@ -163,15 +163,12 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setSaveToast: (s) => set({ saveToast: s }),
     setCopiedClip: (c) => set({ copiedClip: c }),
     setExportSettings: (s) => set({ exportSettings: s }),
-    setActiveClipId: (id) => set({ activeClipId: id, selectedClipIds: id ? [id] : [] }),
+    setActiveClipId: (id) => set({ activeClipId: id }),
     setSelectedClipIds: (ids) => set({ selectedClipIds: ids }),
     setDirty: (d) => set({ isDirty: d }),
 
     commitDrag: () => {
-      const s = get();
-      const snapshot = clone(s.project);
-      snapshot.id = s.project.id || '';
-      set((st) => ({ undoStack: [...st.undoStack.slice(-49), snapshot], redoStack: [] }));
+      get().pushHistory();
     },
 
     pushHistory: () => {
@@ -433,14 +430,17 @@ export const useEditorStore = create<EditorState>((set, get) => {
     })),
 
     addMedia: (m) => set((st) => ({ project: { ...st.project, media: [...st.project.media, m] }, isDirty: true })),
-    removeMedia: (id) => set((st) => ({
-      project: {
-        ...st.project,
-        media: st.project.media.filter((m) => m.id !== id),
-        tracks: st.project.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => c.mediaId !== id) })),
-      },
-      isDirty: true,
-    })),
+    removeMedia: (id) => {
+      get().pushHistory();
+      set((st) => ({
+        project: {
+          ...st.project,
+          media: st.project.media.filter((m) => m.id !== id),
+          tracks: st.project.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => c.mediaId !== id) })),
+        },
+        isDirty: true,
+      }));
+    },
 
     addMarker: (m) => set((st) => ({ project: { ...st.project, markers: [...st.project.markers, m] }, isDirty: true })),
     removeMarker: (id) => set((st) => ({
@@ -450,6 +450,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     toggleMarker: (time) => {
       const { project: { markers } } = get();
+      get().pushHistory();
       const existing = markers.find((m) => Math.abs(m.time - time) < 0.1);
       if (existing) get().removeMarker(existing.id);
       else {
@@ -493,7 +494,14 @@ export const useEditorStore = create<EditorState>((set, get) => {
               if (clipEnd <= start || c.startAt >= end) return null;
               const newStart = Math.max(c.startAt, start);
               const newEnd = Math.min(clipEnd, end);
-              return { ...c, startAt: newStart - start, duration: newEnd - newStart, sourceStart: c.sourceStart + (newStart - c.startAt) * c.speed };
+              const newDuration = newEnd - newStart;
+              return {
+                ...c,
+                startAt: newStart - start,
+                duration: newDuration,
+                sourceStart: c.sourceStart + (newStart - c.startAt) * c.speed,
+                sourceEnd: Math.max(0, c.sourceEnd + (c.duration - newDuration) * c.speed),
+              };
             }).filter(Boolean) as Clip[],
           })),
           markers: [],

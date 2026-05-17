@@ -1,7 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
-import { generateThumbnail, getMediaDuration } from '../utils/fileUtils';
-import { generateWaveformData } from '../engine/useMediaManager';
+import { getMediaDuration } from '../utils/fileUtils';
+import { generateWaveformData, generateThumbnail } from '../engine/useMediaManager';
 import type { MediaFile } from '../types';
 
 function UploadIcon() { return <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
@@ -36,16 +36,14 @@ export default function AssetLibrary({ activeTool }: Props) {
       const type: MediaFile['type'] | null = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : file.type.startsWith('image/') ? 'image' : null;
       if (!type) continue;
       const id = `media_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      let thumbnail = '';
+      let thumbnail: string | undefined;
       let duration: number | undefined;
       let waveform: number[] | undefined;
       try { duration = await getMediaDuration(file); } catch {}
-      if (type === 'video' || type === 'image') { try { thumbnail = await generateThumbnail(file); } catch {} }
+      const mf: MediaFile = { id, name: file.name, type, mimeType: file.type, blob: file, duration };
+      if (type === 'video' || type === 'image') { try { thumbnail = await generateThumbnail(mf, 320, 180); } catch {} }
       if (type === 'audio' || type === 'video') {
-        try {
-          const mf: MediaFile = { id, name: file.name, type, mimeType: file.type, blob: file, duration };
-          waveform = await generateWaveformData(mf, 128);
-        } catch {}
+        try { waveform = await generateWaveformData(mf, 128); } catch {}
       }
       addMedia({ id, name: file.name, type, mimeType: file.type, blob: file, duration, thumbnail, waveform });
     }
@@ -71,8 +69,15 @@ export default function AssetLibrary({ activeTool }: Props) {
             <span className="asset-empty-text">Drop files or click to import</span>
           </div>
         ) : (
-          <div className="asset-grid">
-            {filteredMedia.map((m) => (
+      <div className="asset-grid">
+        {filteredMedia
+          .filter((m) => {
+            if (activeTool === 'media' || activeTool === 'all') return true;
+            if (activeTool === 'audio') return m.type === 'audio';
+            if (activeTool === 'text' || activeTool === 'sticker') return m.type === 'image';
+            return m.type === activeTool;
+          })
+          .map((m) => (
               <div
                 key={m.id}
                 className="asset-item"

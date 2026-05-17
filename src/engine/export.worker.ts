@@ -146,9 +146,9 @@ ctx.onmessage = async (e: MessageEvent<WorkerStartMessage | WorkerCancelMessage>
         timestamp: frameIdx * frameDurationUs,
         duration: frameDurationUs,
       });
-      imageBitmap.close();
 
       videoEncoder.encode(videoFrame);
+      imageBitmap.close();
       videoFrame.close();
 
       // Flush every 30 frames to get output chunks
@@ -316,12 +316,12 @@ async function encodeAudio(mix: AudioMixResult): Promise<{
     for (let j = start; j < end; j++) frame[j - start] = interleaved[j];
 
     const audioData = new AudioData({
-      format: 'f32-planar',
+      format: 'f32',
       sampleRate: mix.sampleRate,
       numberOfFrames: frame.length / mix.channels,
       numberOfChannels: mix.channels,
       timestamp: i * frameSize / mix.sampleRate * 1_000_000,
-      data: interleaved,
+      data: frame,
     });
 
     audioEncoder.encode(audioData);
@@ -331,8 +331,8 @@ async function encodeAudio(mix: AudioMixResult): Promise<{
   await audioEncoder.flush();
   audioEncoder.close();
 
-  // Find AAC DecoderConfigDesc (magic bytes for AAC LC)
-  aacConfig = new Uint8Array([0x12, 0x10]);
+  // Build AAC config from sample rate / channel count
+  aacConfig = makeAacConfig(mix.sampleRate, mix.channels);
 
   return { chunks, config: aacConfig, sampleRate: mix.sampleRate, channels: mix.channels };
 }
@@ -433,6 +433,23 @@ function renderMediaFrame(
 }
 
 // ========== Utility: Extract SPS/PPS from H.264 Annex B ==========
+
+// ========== AAC Config Builder ==========
+
+/** Build 2-byte AAC DecoderSpecificInfo from sample rate and channel count */
+function makeAacConfig(sampleRate: number, channels: number): Uint8Array {
+  const srIndex = sampleRateIndex(sampleRate);
+  const aot = 2; // AAC LC
+  const byte1 = (aot << 3) | (srIndex >> 1);
+  const byte2 = ((srIndex & 1) << 7) | (channels << 3);
+  return new Uint8Array([byte1 & 0xff, byte2 & 0xff]);
+}
+
+function sampleRateIndex(sr: number): number {
+  const rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+  const idx = rates.indexOf(Math.round(sr));
+  return idx >= 0 ? idx : 4; // default to 44100 index (4)
+}
 
 function extractSpsPps(data: Uint8Array): { sps: Uint8Array; pps: Uint8Array } | null {
   let sps: Uint8Array | null = null;

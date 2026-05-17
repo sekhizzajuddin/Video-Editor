@@ -33,7 +33,7 @@ export interface ClipFilters {
   brightness: number;
   contrast: number;
   saturation: number;
-  preset: string;
+  preset: 'none' | 'bw' | 'sepia' | 'invert' | 'warm' | 'cool' | 'contrast';
 }
 
 export interface ClipTransition {

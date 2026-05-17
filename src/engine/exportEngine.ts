@@ -13,14 +13,21 @@ export interface ExportProgress {
 
 export type ExportResult = { type: 'complete'; blob: Blob } | { type: 'cancelled' };
 
+interface EncodedChunkData {
+  data: ArrayBuffer;
+  pts: number;
+  duration: number;
+  isKeyframe: boolean;
+}
+
 /** Interface for messages FROM the worker TO main thread */
 interface WorkerResponse {
   type: 'progress' | 'complete' | 'error' | 'cancelled';
   stage?: string;
   percent?: number;
   error?: string;
-  videoChunks?: ArrayBuffer[];
-  audioChunks?: ArrayBuffer[];
+  videoChunks?: EncodedChunkData[];
+  audioChunks?: EncodedChunkData[];
   sps?: ArrayBuffer;
   pps?: ArrayBuffer;
   width?: number;
@@ -101,26 +108,20 @@ export async function startExport(
         try {
           onProgress({ stage: 'Muxing final file...', percent: 98 });
 
-          // Reconstruct chunks from transferred ArrayBuffers
-          const videoChunks: EncodedSample[] = (msg.videoChunks || []).map((buf: ArrayBuffer, i: number) => ({
-            data: new Uint8Array(buf),
-            pts: 0,
-            duration: 0,
-            isKeyframe: i === 0,
+          // Reconstruct chunks from worker's EncodedChunkData objects
+          // Each chunk: { data: ArrayBuffer, pts: µs, duration: µs, isKeyframe }
+          const videoChunks: EncodedSample[] = (msg.videoChunks || []).map((chunk, i) => ({
+            data: new Uint8Array(chunk.data),
+            pts: i,          // frame index = video timescale units
+            duration: 1,     // 1 timescale unit per frame
+            isKeyframe: chunk.isKeyframe,
           }));
 
-          // Calculate proper PTS/duration from frame index
-          const frameDuration = 1 / (msg.fps || 30);
-          for (let i = 0; i < videoChunks.length; i++) {
-            videoChunks[i].pts = i * frameDuration;
-            videoChunks[i].duration = frameDuration;
-          }
-
-          const audioChunks: EncodedSample[] = (msg.audioChunks || []).map((buf: ArrayBuffer) => ({
-            data: new Uint8Array(buf),
-            pts: 0,
-            duration: 0,
-            isKeyframe: true,
+          const audioChunks: EncodedSample[] = (msg.audioChunks || []).map((chunk, i) => ({
+            data: new Uint8Array(chunk.data),
+            pts: i * 1024,   // AAC frame index in sample-rate timescale units
+            duration: 1024,  // each AAC frame = 1024 samples
+            isKeyframe: chunk.isKeyframe,
           }));
 
           const sps = msg.sps ? new Uint8Array(msg.sps) : undefined;

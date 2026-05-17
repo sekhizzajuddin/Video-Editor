@@ -141,9 +141,9 @@ export async function extractVideoFrame(
 }
 
 export async function extractAudioWaveform(blob: Blob): Promise<number[]> {
+  const audioCtx = new AudioContext();
   try {
     const arrayBuffer = await blob.arrayBuffer();
-    const audioCtx = new AudioContext();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     const channelData = audioBuffer.getChannelData(0);
     const samples = 200;
@@ -156,9 +156,11 @@ export async function extractAudioWaveform(blob: Blob): Promise<number[]> {
       }
       waveform.push(sum / blockSize);
     }
-    const max = Math.max(...waveform, 0.01);
+    audioCtx.close();
+    const max = waveform.reduce((a, b) => Math.max(a, b), 0.01);
     return waveform.map((v) => v / max);
   } catch {
+    audioCtx.close();
     return [];
   }
 }

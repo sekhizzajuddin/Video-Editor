@@ -20,7 +20,6 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   const speedRef = useRef(1);
   const durationRef = useRef(10);
   const lastFrameRef = useRef(0);
-  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const store = useEditorStore;
 
@@ -33,6 +32,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
       isPlayingRef.current = false;
       store.getState().setCurrentTime(projectTime);
       store.getState().setIsPlaying(false);
+      if (rAF.current) cancelAnimationFrame(rAF.current);
       return;
     }
     currentTimeRef.current = projectTime;
@@ -57,10 +57,6 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     durationRef.current = state.project.duration;
     lastFrameRef.current = 0;
     store.getState().setIsPlaying(true);
-
-    if (audioCtxRef.current?.state === 'suspended') {
-      audioCtxRef.current.resume();
-    }
 
     rAF.current = requestAnimationFrame(tick);
   }, [tick, store]);

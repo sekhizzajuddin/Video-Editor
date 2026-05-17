@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
+import { useRef, useState, useMemo, useEffect } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { useTimelineMath } from '../engine/useTimelineMath';
 import { useDraggableClip, detectDragZone } from '../engine/useDraggableClip';
@@ -33,7 +33,9 @@ export default function Timeline() {
   } = useEditorStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const tracksAreaRef = useRef<HTMLDivElement>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const activeDragRef = useRef<'none' | 'move' | 'trim-start' | 'trim-end'>('none');
   const [activeDrag, setActiveDrag] = useState<'none' | 'move' | 'trim-start' | 'trim-end'>('none');
 
   const { scale, pixelsToTime } = useTimelineMath(tracks, zoom, projectDuration);
@@ -44,8 +46,9 @@ export default function Timeline() {
 
   // Auto-scroll playhead into view during playback
   useEffect(() => {
-    if (!isPlaying || !containerRef.current) return;
-    const el = containerRef.current;
+    if (!isPlaying) return;
+    const el = tracksAreaRef.current || containerRef.current;
+    if (!el) return;
     const playheadPos = currentTime * pxPerSec;
     const viewLeft = el.scrollLeft;
     const viewRight = viewLeft + el.clientWidth;
@@ -66,9 +69,11 @@ export default function Timeline() {
   // === Mouse handlers ===
 
   const handleRulerClick = (e: React.MouseEvent) => {
+    const tracksArea = tracksAreaRef.current;
+    const scrollLeft = tracksArea?.scrollLeft ?? 0;
     const rect = (e.currentTarget as HTMLElement).closest('.timeline-tracks-area')?.getBoundingClientRect()
       || e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left + (containerRef.current?.scrollLeft || 0);
+    const x = e.clientX - rect.left + scrollLeft;
     const time = pixelsToTime(x);
     if (e.shiftKey) toggleMarker(time);
     else setCurrentTime(Math.max(0, Math.min(time, projectDuration)));
@@ -101,31 +106,35 @@ export default function Timeline() {
 
     // Detect drag zone via pixel coordinates
     const zone = detectDragZone(e.clientX, rect);
+    activeDragRef.current = zone;
     onDragStart(clip, zone, e.clientX);
     setActiveDrag(zone);
   };
 
-  // Global mouse move / up listeners
-  const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
-    if (activeDrag === 'none') return;
-    onDragMove(e.clientX);
-  }, [activeDrag, onDragMove]);
-
-  const handleGlobalMouseUp = useCallback(() => {
-    if (activeDrag === 'none') return;
-    onDragEnd();
-    setActiveDrag('none');
-  }, [activeDrag, onDragEnd]);
-
+  // Global mouse move / up listeners — use ref to avoid race on React state update
   useEffect(() => {
-    if (activeDrag === 'none') return;
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (activeDragRef.current === 'none') return;
+      onDragMove(e.clientX);
+    };
+    const handleGlobalMouseUp = () => {
+      if (activeDragRef.current === 'none') return;
+      onDragEnd();
+      activeDragRef.current = 'none';
+      setActiveDrag('none');
+    };
     window.addEventListener('mousemove', handleGlobalMouseMove);
     window.addEventListener('mouseup', handleGlobalMouseUp);
     return () => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [activeDrag, handleGlobalMouseMove, handleGlobalMouseUp]);
+  }, [onDragMove, onDragEnd]);
+
+  // De-sync activeDragRef from React state after effect-less transitions
+  useEffect(() => {
+    if (activeDrag === 'none') activeDragRef.current = 'none';
+  }, [activeDrag]);
 
   // Context menu
   useEffect(() => {
@@ -165,8 +174,10 @@ export default function Timeline() {
     if (!mediaId) return;
     const mediaItem = media.find((m) => m.id === mediaId);
     if (!mediaItem) return;
+    const tracksArea = tracksAreaRef.current;
+    const scrollLeft = tracksArea?.scrollLeft ?? 0;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = e.clientX - rect.left + (containerRef.current?.scrollLeft || 0);
+    const x = e.clientX - rect.left + scrollLeft;
     const time = pixelsToTime(x);
     const trackIndex = Math.floor((e.clientY - rect.top) / TRACK_HEIGHT);
     const track = tracks[trackIndex];
@@ -230,7 +241,7 @@ export default function Timeline() {
         </div>
 
         {/* Tracks area */}
-        <div className="timeline-tracks-area" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+        <div className="timeline-tracks-area" ref={tracksAreaRef} style={{ overflowX: 'auto', overflowY: 'hidden' }}>
           {/* Ruler */}
           <div className="timeline-ruler" style={{ width: totalWidth, height: RULER_HEIGHT }} onClick={handleRulerClick}>
             <div className="ruler-marks">

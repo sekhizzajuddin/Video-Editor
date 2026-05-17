@@ -108,7 +108,7 @@ export function renderTextOverlay(
   const lines = text.split('\n');
   const lineHeight = fontSize * 1.2;
   const startY = lines.length === 1 ? y : y - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((line, idx) => ctx.fillText(line, startY + idx * lineHeight, x, maxWidth));
+  lines.forEach((line, idx) => ctx.fillText(line, x, startY + idx * lineHeight, maxWidth));
   ctx.restore();
 }
 

@@ -40,6 +40,12 @@ export function clampTrim(
   let duration = newDuration;
   let sourceStart = newSourceStart;
 
+  if (startAt < 0) {
+    const excess = -startAt;
+    startAt = 0;
+    duration = Math.max(MIN_CLIP_DURATION, duration - excess);
+  }
+
   if (sourceStart < 0) {
     const excess = -sourceStart;
     sourceStart = 0;
@@ -138,6 +144,12 @@ export function useDraggableClip(pxPerSec: number) {
       store.updateClip(s.clipId, { startAt: newStart, duration: newDuration, sourceStart: newSourceStart });
     } else if (zone === 'trim-end') {
       let newDuration = Math.max(MIN_CLIP_DURATION, origDuration + deltaTime);
+      // Clamp against source media duration
+      const mf = clip.mediaId ? store.project.media.find((m) => m.id === clip.mediaId) : undefined;
+      if (mf?.duration) {
+        const maxDur = (mf.duration - clip.sourceStart) / (clip.speed || 1);
+        newDuration = Math.min(newDuration, maxDur);
+      }
       const end = origStartAt + newDuration;
       const snap = calculateSnap(origStartAt, end, 'end', candidates, snapThreshold);
       if (snap.snapped) {

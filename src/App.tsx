@@ -1,6 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { useEditorStore } from './store/editorStore';
-import { usePlaybackEngine } from './engine/usePlaybackEngine';
 import Header from './components/Header';
 import LeftSidebar from './components/LeftSidebar';
 import AssetLibrary from './components/AssetLibrary';
@@ -32,7 +31,10 @@ export default function App() {
   const { currentTime, cropToMarkers, newProject } = useEditorStore();
   const [activeTool, setActiveTool] = useState('media');
 
-  const engine = usePlaybackEngine();
+  const togglePlayback = useCallback(() => {
+    const s = useEditorStore.getState();
+    s.setIsPlaying(!s.isPlaying);
+  }, []);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const store = useEditorStore.getState();
@@ -40,7 +42,7 @@ export default function App() {
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
     const meta = e.ctrlKey || e.metaKey;
 
-    if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); engine.toggle(); return; }
+    if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlayback(); return; }
     if (e.key === 'Escape') {
       store.setSelectedClipIds([]); store.setActiveClipId(null);
       store.setShowExport(false); store.setShowShorcuts(false); store.setShowOpenProject(false); return;
@@ -56,13 +58,20 @@ export default function App() {
     }
     if (meta && e.key === 'v') {
       const { copiedClip, currentTime: ct } = store;
-      if (copiedClip) { const newClip = store.addClip(copiedClip.trackType, copiedClip.mediaId, copiedClip.sticker); if (newClip) store.updateClip(newClip.id, { ...copiedClip, id: newClip.id, startAt: Math.max(0, ct) }); } return;
+      if (copiedClip) {
+        const newClip = store.addClip(copiedClip.trackType, copiedClip.mediaId, copiedClip.sticker);
+        if (newClip) {
+          const { trackId, ...clipData } = copiedClip;
+          store.updateClip(newClip.id, { ...clipData, id: newClip.id, startAt: Math.max(0, ct) });
+        }
+      }
+      return;
     }
     if (e.key === 'i') { store.toggleMarker(currentTime); return; }
     if (e.key === 'o') { cropToMarkers(); return; }
     if (e.key === '?' || (meta && e.key === '/')) { store.setShowShorcuts(!store.showShorcuts); return; }
     if (e.key === 'n' && meta && e.shiftKey) { e.preventDefault(); newProject(); return; }
-  }, [currentTime, cropToMarkers, newProject, engine]);
+  }, [currentTime, cropToMarkers, newProject, togglePlayback]);
 
   useEffect(() => { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); }, [handleKeyDown]);
   useEffect(() => { const autoSave = setInterval(() => { const store = useEditorStore.getState(); if (store.isDirty && store.project.id) store.saveToDB(); }, 30000); return () => clearInterval(autoSave); }, []);
