@@ -1,359 +1,147 @@
 import { useEditorStore } from '../store/editorStore';
 
-const FONTS = [
-  'Plus Jakarta Sans',
-  'Arial',
-  'Helvetica',
-  'Georgia',
-  'Times New Roman',
-  'Courier New',
-  'Impact',
-  'Comic Sans MS',
-];
+function SelectionIcon() { return <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="12" x2="15" y2="12"/></svg>; }
 
-const FILTER_PRESETS = [
-  { name: 'None', value: 'none' },
-  { name: 'Vintage', value: 'vintage' },
-  { name: 'Cool', value: 'cool' },
-  { name: 'Warm', value: 'warm' },
-  { name: 'B&W', value: 'bw' },
-];
+const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge'];
+const FILTER_PRESETS = ['none', 'vintage', 'cool', 'warm', 'bw'];
 
-const SPEEDS = [0.25, 0.5, 1, 1.5, 2];
-
-const TRANSITION_TYPES = [
-  { name: 'None', value: 'none' },
-  { name: 'Fade In', value: 'fadein' },
-  { name: 'Fade Out', value: 'fadeout' },
-  { name: 'Dissolve', value: 'dissolve' },
-  { name: 'Crossfade', value: 'crossfade' },
-];
-
-export function InspectorPanel() {
-  const { getSelectedClip, updateClip, removeClip } = useEditorStore();
-  const clip = getSelectedClip();
+export default function InspectorPanel() {
+  const { project: { tracks }, activeClipId, getClip, updateClip, updateTrack } = useEditorStore();
+  const clip = activeClipId ? getClip(activeClipId) : null;
+  const track = clip ? tracks.find((t) => t.id === clip.trackId) : null;
 
   if (!clip) {
     return (
       <div className="inspector-panel">
-        <div className="panel-header">
-          <span className="panel-title">Inspector</span>
-        </div>
-        <div className="empty-inspector">
-          Select a clip on the timeline to edit its properties
+        <div className="inspector-empty">
+          <SelectionIcon />
+          <span className="inspector-empty-text">No selection — Select a clip on the timeline to edit its properties</span>
         </div>
       </div>
     );
   }
 
-  const updateFilters = (updates: Partial<NonNullable<typeof clip.filters>>) => {
-    updateClip(clip.id, {
-      filters: { brightness: 0, contrast: 0, saturation: 0, preset: 'none', ...clip.filters, ...updates }
-    });
-  };
-
-  const updateTransition = (updates: Partial<NonNullable<typeof clip.transition>>) => {
-    updateClip(clip.id, {
-      transition: { type: 'none', duration: 0.5, ...clip.transition, ...updates }
-    });
-  };
+  const mf = [...useEditorStore.getState().project.media].find((m) => m.id === clip.mediaId);
 
   return (
     <div className="inspector-panel">
-      <div className="panel-header">
-        <span className="panel-title">Inspector</span>
-        <button className="btn btn-sm btn-ghost" onClick={() => removeClip(clip.id)}>
-          🗑
-        </button>
-      </div>
-
-      {clip.trackType === 'video' && (
-        <>
+      <div className="inspector-scroll">
+        {mf && (
           <div className="inspector-section">
-            <div className="inspector-section-title">Filters</div>
-            <div className="inspector-row">
-              <span className="inspector-label">Brightness</span>
-              <div className="inspector-value">
-                <input
-                  type="range"
-                  className="slider"
-                  min={-100}
-                  max={100}
-                  value={clip.filters?.brightness || 0}
-                  onChange={(e) => updateFilters({ brightness: parseInt(e.target.value) })}
-                />
-                <span className="slider-value">{clip.filters?.brightness || 0}</span>
-              </div>
+            <div className="inspector-section-header">SELECTED VIDEO</div>
+            <div className="inspector-file-name">{mf.name}</div>
+          </div>
+        )}
+
+        <div className="inspector-section">
+          <div className="inspector-section-header">TIMING</div>
+          <div className="inspector-grid-2">
+            <div className="inspector-field">
+              <label className="inspector-field-label">Start</label>
+              <span className="inspector-field-value">{clip.startAt.toFixed(2)}s</span>
             </div>
-            <div className="inspector-row">
-              <span className="inspector-label">Contrast</span>
-              <div className="inspector-value">
-                <input
-                  type="range"
-                  className="slider"
-                  min={-100}
-                  max={100}
-                  value={clip.filters?.contrast || 0}
-                  onChange={(e) => updateFilters({ contrast: parseInt(e.target.value) })}
-                />
-                <span className="slider-value">{clip.filters?.contrast || 0}</span>
-              </div>
-            </div>
-            <div className="inspector-row">
-              <span className="inspector-label">Saturation</span>
-              <div className="inspector-value">
-                <input
-                  type="range"
-                  className="slider"
-                  min={-100}
-                  max={100}
-                  value={clip.filters?.saturation || 0}
-                  onChange={(e) => updateFilters({ saturation: parseInt(e.target.value) })}
-                />
-                <span className="slider-value">{clip.filters?.saturation || 0}</span>
-              </div>
-            </div>
-            <div className="inspector-row">
-              <span className="inspector-label">Preset</span>
-              <div className="preset-grid">
-                {FILTER_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    className={`preset-btn ${clip.filters?.preset === preset.value ? 'active' : ''}`}
-                    onClick={() => updateFilters({ preset: preset.value })}
-                  >
-                    {preset.name}
-                  </button>
-                ))}
-              </div>
+            <div className="inspector-field">
+              <label className="inspector-field-label">Duration</label>
+              <input className="inspector-input" type="number" min={0.3} step={0.1} value={parseFloat(clip.duration.toFixed(2))} onChange={(e) => updateClip(clip.id, { duration: Math.max(0.3, parseFloat(e.target.value) || 0.3) })} />
             </div>
           </div>
+        </div>
 
+        <div className="inspector-section">
+          <div className="inspector-section-header">TRANSFORM</div>
+          <div className="inspector-field">
+            <label className="inspector-field-label">Scale</label>
+            <input className="inspector-range" type="range" min={0.1} max={3} step={0.01} value={clip.transform.scale} onChange={(e) => updateClip(clip.id, { transform: { ...clip.transform, scale: parseFloat(e.target.value) } })} />
+            <span className="inspector-range-value">{clip.transform.scale.toFixed(2)}</span>
+          </div>
+          <div className="inspector-field">
+            <label className="inspector-field-label">Position X</label>
+            <input className="inspector-range" type="range" min={-500} max={500} step={1} value={clip.transform.x} onChange={(e) => updateClip(clip.id, { transform: { ...clip.transform, x: parseInt(e.target.value) } })} />
+            <span className="inspector-range-value">{clip.transform.x.toFixed(0)}</span>
+          </div>
+          <div className="inspector-field">
+            <label className="inspector-field-label">Position Y</label>
+            <input className="inspector-range" type="range" min={-500} max={500} step={1} value={clip.transform.y} onChange={(e) => updateClip(clip.id, { transform: { ...clip.transform, y: parseInt(e.target.value) } })} />
+            <span className="inspector-range-value">{clip.transform.y.toFixed(0)}</span>
+          </div>
+          <div className="inspector-field">
+            <label className="inspector-field-label">Rotation</label>
+            <input className="inspector-range" type="range" min={-180} max={180} step={1} value={clip.transform.rotation} onChange={(e) => updateClip(clip.id, { transform: { ...clip.transform, rotation: parseInt(e.target.value) } })} />
+            <span className="inspector-range-value">{clip.transform.rotation}°</span>
+          </div>
+        </div>
+
+        <div className="inspector-section">
+          <div className="inspector-section-header">VOLUME</div>
+          <div className="inspector-field">
+            <input className="inspector-range" type="range" min={0} max={2} step={0.05} value={clip.volume} onChange={(e) => updateClip(clip.id, { volume: parseFloat(e.target.value) })} />
+            <span className="inspector-range-value">{Math.round(clip.volume * 100)}%</span>
+          </div>
+        </div>
+
+        <div className="inspector-section">
+          <div className="inspector-section-header">SPEED</div>
+          <div className="inspector-field">
+            <input className="inspector-range" type="range" min={0.5} max={3} step={0.1} value={clip.speed} onChange={(e) => updateClip(clip.id, { speed: parseFloat(e.target.value) })} />
+            <span className="inspector-range-value">{clip.speed.toFixed(1)}x</span>
+          </div>
+        </div>
+
+        <div className="inspector-section">
+          <div className="inspector-section-header">OPACITY</div>
+          <div className="inspector-field">
+            <input className="inspector-range" type="range" min={0} max={100} step={1} value={clip.opacity} onChange={(e) => updateClip(clip.id, { opacity: parseInt(e.target.value) })} />
+            <span className="inspector-range-value">{clip.opacity}%</span>
+          </div>
+        </div>
+
+        <div className="inspector-section">
+          <div className="inspector-section-header">BLEND MODE</div>
+          <select className="inspector-select" value={clip.blendMode || 'normal'} onChange={(e) => updateClip(clip.id, { blendMode: e.target.value })}>
+            {BLEND_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <div className="inspector-section">
+          <div className="inspector-section-header">FILTERS</div>
+          <select className="inspector-select" value={clip.filters?.preset || 'none'} onChange={(e) => updateClip(clip.id, { filters: { ...clip.filters || { brightness: 0, contrast: 0, saturation: 0, preset: 'none' }, preset: e.target.value } })}>
+            {FILTER_PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <div className="inspector-field">
+            <label className="inspector-field-label">Brightness</label>
+            <input className="inspector-range" type="range" min={-100} max={100} value={clip.filters?.brightness || 0} onChange={(e) => updateClip(clip.id, { filters: { ...clip.filters || { brightness: 0, contrast: 0, saturation: 0, preset: 'none' }, brightness: parseInt(e.target.value) } })} />
+          </div>
+          <div className="inspector-field">
+            <label className="inspector-field-label">Contrast</label>
+            <input className="inspector-range" type="range" min={-100} max={100} value={clip.filters?.contrast || 0} onChange={(e) => updateClip(clip.id, { filters: { ...clip.filters || { brightness: 0, contrast: 0, saturation: 0, preset: 'none' }, contrast: parseInt(e.target.value) } })} />
+          </div>
+          <div className="inspector-field">
+            <label className="inspector-field-label">Saturation</label>
+            <input className="inspector-range" type="range" min={-100} max={100} value={clip.filters?.saturation || 0} onChange={(e) => updateClip(clip.id, { filters: { ...clip.filters || { brightness: 0, contrast: 0, saturation: 0, preset: 'none' }, saturation: parseInt(e.target.value) } })} />
+          </div>
+        </div>
+
+        {clip.trackType === 'text' && clip.textOverlay && (
           <div className="inspector-section">
-            <div className="inspector-section-title">Speed</div>
-            <div className="speed-btns">
-              {SPEEDS.map((speed) => (
-                <button
-                  key={speed}
-                  className={`speed-btn ${clip.speed === speed ? 'active' : ''}`}
-                  onClick={() => updateClip(clip.id, { speed })}
-                >
-                  {speed}x
-                </button>
-              ))}
+            <div className="inspector-section-header">TEXT</div>
+            <input className="inspector-input" value={clip.textOverlay.text} onChange={(e) => updateClip(clip.id, { textOverlay: { ...clip.textOverlay!, text: e.target.value } })} />
+            <div className="inspector-field">
+              <label className="inspector-field-label">Font Size</label>
+              <input className="inspector-input" type="number" min={8} max={200} value={clip.textOverlay.fontSize} onChange={(e) => updateClip(clip.id, { textOverlay: { ...clip.textOverlay!, fontSize: parseInt(e.target.value) } })} />
+            </div>
+            <div className="inspector-field">
+              <label className="inspector-field-label">Color</label>
+              <input className="inspector-input" type="color" value={clip.textOverlay.color} onChange={(e) => updateClip(clip.id, { textOverlay: { ...clip.textOverlay!, color: e.target.value } })} />
             </div>
           </div>
+        )}
 
+        {track && (
           <div className="inspector-section">
-            <div className="inspector-section-title">Transition</div>
-            <div className="inspector-row">
-              <span className="inspector-label">Type</span>
-              <select
-                className="select"
-                value={clip.transition?.type || 'none'}
-                onChange={(e) => updateTransition({ type: e.target.value as any })}
-              >
-                {TRANSITION_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="inspector-row">
-              <span className="inspector-label">Duration</span>
-              <div className="inspector-value">
-                <input
-                  type="range"
-                  className="slider"
-                  min={0.1}
-                  max={2}
-                  step={0.1}
-                  value={clip.transition?.duration || 0.5}
-                  onChange={(e) => updateTransition({ duration: parseFloat(e.target.value) })}
-                />
-                <span className="slider-value">{clip.transition?.duration || 0.5}s</span>
-              </div>
-            </div>
+            <div className="inspector-section-header">TRACK</div>
+            <input className="inspector-input" value={track.name} onChange={(e) => updateTrack(track.id, { name: e.target.value })} />
           </div>
-        </>
-      )}
-
-      {(clip.trackType === 'video' || clip.trackType === 'audio') && (
-        <div className="inspector-section">
-          <div className="inspector-section-title">Audio</div>
-          <div className="inspector-row">
-            <span className="inspector-label">Volume</span>
-            <div className="inspector-value">
-              <input
-                type="range"
-                className="slider"
-                min={0}
-                max={200}
-                value={clip.volume}
-                onChange={(e) => updateClip(clip.id, { volume: parseInt(e.target.value) })}
-              />
-              <span className="slider-value">{clip.volume}%</span>
-            </div>
-          </div>
-          <div className="inspector-row">
-            <span className="inspector-label">Mute</span>
-            <button
-              className={`btn btn-sm ${clip.muted ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => updateClip(clip.id, { muted: !clip.muted })}
-            >
-              {clip.muted ? 'Muted' : 'On'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {clip.trackType === 'text' && (
-        <div className="inspector-section">
-          <div className="inspector-section-title">Text Content</div>
-          <textarea
-            className="text-input-area"
-            value={clip.text || ''}
-            onChange={(e) => updateClip(clip.id, { text: e.target.value })}
-            placeholder="Enter your text..."
-          />
-
-          <div className="inspector-section-title" style={{ marginTop: 16 }}>Typography</div>
-          <div className="inspector-row">
-            <span className="inspector-label">Font</span>
-            <select
-              className="select"
-              value={clip.textStyle?.fontFamily || 'Plus Jakarta Sans'}
-              onChange={(e) => updateClip(clip.id, {
-                textStyle: { ...clip.textStyle!, fontFamily: e.target.value }
-              })}
-            >
-              {FONTS.map((font) => (
-                <option key={font} value={font}>{font}</option>
-              ))}
-            </select>
-          </div>
-          <div className="inspector-row">
-            <span className="inspector-label">Size</span>
-            <div className="inspector-value">
-              <input
-                type="range"
-                className="slider"
-                min={12}
-                max={120}
-                value={clip.textStyle?.fontSize || 48}
-                onChange={(e) => updateClip(clip.id, {
-                  textStyle: { ...clip.textStyle!, fontSize: parseInt(e.target.value) }
-                })}
-              />
-              <span className="slider-value">{clip.textStyle?.fontSize || 48}px</span>
-            </div>
-          </div>
-          <div className="inspector-row">
-            <span className="inspector-label">Color</span>
-            <div className="color-picker">
-              <input
-                type="color"
-                value={clip.textStyle?.color || '#FFFFFF'}
-                onChange={(e) => updateClip(clip.id, {
-                  textStyle: { ...clip.textStyle!, color: e.target.value }
-                })}
-              />
-            </div>
-          </div>
-          <div className="inspector-row">
-            <span className="inspector-label">Weight</span>
-            <select
-              className="select"
-              value={clip.textStyle?.fontWeight || 600}
-              onChange={(e) => updateClip(clip.id, {
-                textStyle: { ...clip.textStyle!, fontWeight: parseInt(e.target.value) }
-              })}
-            >
-              <option value={400}>Normal</option>
-              <option value={500}>Medium</option>
-              <option value={600}>Semi Bold</option>
-              <option value={700}>Bold</option>
-            </select>
-          </div>
-          <div className="inspector-row">
-            <span className="inspector-label">Align</span>
-            <div className="speed-btns">
-              {['left', 'center', 'right'].map((align) => (
-                <button
-                  key={align}
-                  className={`speed-btn ${clip.textStyle?.textAlign === align ? 'active' : ''}`}
-                  onClick={() => updateClip(clip.id, {
-                    textStyle: { ...clip.textStyle!, textAlign: align as any }
-                  })}
-                >
-                  {align === 'left' ? '⫷' : align === 'center' ? '⫶' : '⫸'}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {clip.trackType === 'sticker' && (
-        <div className="inspector-section">
-          <div className="inspector-section-title">Sticker Position</div>
-          <div className="inspector-row">
-            <span className="inspector-label">X Position</span>
-            <div className="inspector-value">
-              <input
-                type="range"
-                className="slider"
-                min={0}
-                max={100}
-                value={clip.x || 50}
-                onChange={(e) => updateClip(clip.id, { x: parseInt(e.target.value) })}
-              />
-              <span className="slider-value">{clip.x || 50}%</span>
-            </div>
-          </div>
-          <div className="inspector-row">
-            <span className="inspector-label">Y Position</span>
-            <div className="inspector-value">
-              <input
-                type="range"
-                className="slider"
-                min={0}
-                max={100}
-                value={clip.y || 50}
-                onChange={(e) => updateClip(clip.id, { y: parseInt(e.target.value) })}
-              />
-              <span className="slider-value">{clip.y || 50}%</span>
-            </div>
-          </div>
-          <div style={{ fontSize: 32, textAlign: 'center', marginTop: 16 }}>
-            {clip.sticker}
-          </div>
-        </div>
-      )}
-
-      <div className="inspector-section">
-        <div className="inspector-section-title">Clip Timing</div>
-        <div className="inspector-row">
-          <span className="inspector-label">Start</span>
-          <input
-            type="number"
-            className="input"
-            style={{ width: 80 }}
-            value={clip.startTime.toFixed(1)}
-            onChange={(e) => updateClip(clip.id, { startTime: Math.max(0, parseFloat(e.target.value) || 0) })}
-            step={0.1}
-          />
-        </div>
-        <div className="inspector-row">
-          <span className="inspector-label">Duration</span>
-          <input
-            type="number"
-            className="input"
-            style={{ width: 80 }}
-            value={clip.duration.toFixed(1)}
-            onChange={(e) => updateClip(clip.id, { duration: Math.max(0.1, parseFloat(e.target.value) || 0.1) })}
-            step={0.1}
-          />
-        </div>
+        )}
       </div>
     </div>
   );

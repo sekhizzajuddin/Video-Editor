@@ -1,145 +1,175 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
-import { exportVideo, downloadBlob } from '../utils/exportUtils';
-import type { ExportSettings, ExportFormat, ExportResolution } from '../types';
+import { startExport } from '../engine/exportEngine';
 
-interface ExportModalProps {
-  onClose: () => void;
-}
+export default function ExportModal() {
+  const {
+    showExport, setShowExport,
+    exportSettings, setExportSettings,
+    exportProgress, setExportProgress, exportStage, setExportStage,
+    setExportError, exportError,
+    project,
+  } = useEditorStore();
+  const { tracks, duration: projectDuration, media, name: projectName } = project;
 
-export function ExportModal({ onClose }: ExportModalProps) {
-  const { project } = useEditorStore();
-  const [settings, setSettings] = useState<ExportSettings>({
-    format: 'webm',
-    resolution: '1080p',
-    quality: 'high',
-  });
-  const [exporting, setExporting] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [eta, setEta] = useState<string>('');
+  const abortRef = useRef<AbortController | null>(null);
 
-  const handleExport = async () => {
-    setExporting(true);
-    setProgress(0);
-    setError(null);
+  const handleExport = useCallback(async () => {
+    setExportProgress(0);
+    setExportStage('Preparing...');
+    setExportError(null);
+
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    const startTime = Date.now();
 
     try {
-      const blob = await exportVideo(
-        project,
-        project.media,
-        settings,
-        setProgress
+      const result = await startExport(
+        {
+          id: project.id,
+          fps: project.fps,
+          resolution: project.resolution,
+          duration: projectDuration,
+          tracks,
+          media: media.map((m) => ({
+            id: m.id,
+            blob: m.blob,
+            mimeType: m.mimeType,
+            type: m.type,
+            duration: m.duration,
+          })),
+        },
+        { format: exportSettings.format, quality: exportSettings.quality },
+        (p) => {
+          setExportProgress(p.percent);
+          setExportStage(p.stage);
+          const elapsed = (Date.now() - startTime) / 1000;
+          if (p.percent > 0) {
+            const total = (elapsed / p.percent) * 100;
+            const remaining = Math.max(0, total - elapsed);
+            setEta(`${Math.round(remaining)}s remaining`);
+          }
+        },
+        abort.signal,
       );
 
-      const filename = `${project.name.replace(/\s+/g, '_')}.${settings.format}`;
-      downloadBlob(blob, filename);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Export failed');
+      if (result.type === 'cancelled') {
+        setExportStage('Cancelled');
+        setExportProgress(0);
+        return;
+      }
+
+      setExportProgress(100);
+      setExportStage('Done');
+
+      const ext = exportSettings.format;
+      const blobUrl = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${projectName || 'export'}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+
+      setTimeout(() => setShowExport(false), 1500);
+    } catch (err: any) {
+      setExportError(err.message || 'Export failed');
+      setExportStage('Failed');
+    } finally {
+      abortRef.current = null;
     }
+  }, [project, projectDuration, tracks, media, projectName, exportSettings, setExportProgress, setExportStage, setExportError, setShowExport]);
 
-    setExporting(false);
-  };
+  const handleCancel = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setExportProgress(0);
+    setExportStage('Cancelled');
+  }, [setExportProgress, setExportStage]);
 
-  const isValid = project.tracks.some(t => t.type === 'video' && t.clips.length > 0);
+  if (!showExport) return null;
+
+  const isExporting = exportProgress > 0 && exportProgress < 100;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 className="modal-title">Export Video</h2>
-        
-        <div className="modal-content">
-          {!isValid && (
-            <div style={{ 
-              padding: 16, 
-              background: 'rgba(239, 68, 68, 0.1)', 
-              borderRadius: 8, 
-              marginBottom: 16,
-              color: '#EF4444',
-              fontSize: 14
-            }}>
-              Add at least one video clip to export
-            </div>
+    <div className="modal-overlay" onClick={() => { if (!isExporting) setShowExport(false); }}>
+      <div className="modal export-modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Export</h2>
+
+        <div className="export-settings">
+          <label className="export-label">
+            Format
+            <select
+              className="export-select"
+              value={exportSettings.format}
+              onChange={(e) => setExportSettings({ ...exportSettings, format: e.target.value as any })}
+              disabled={isExporting}
+            >
+              <option value="mp4">MP4 (H.264)</option>
+              <option value="webm">WebM (VP9)</option>
+              <option value="mp3">MP3 (Audio only)</option>
+              <option value="wav">WAV (Audio only)</option>
+            </select>
+          </label>
+
+          {exportSettings.format !== 'mp3' && exportSettings.format !== 'wav' && (
+            <label className="export-label">
+              Resolution
+              <select
+                className="export-select"
+                value={exportSettings.resolution}
+                onChange={(e) => setExportSettings({ ...exportSettings, resolution: e.target.value as any })}
+                disabled={isExporting}
+              >
+                <option value="720p">720p</option>
+                <option value="1080p">1080p</option>
+                <option value="4k">4K</option>
+              </select>
+            </label>
           )}
 
-          <div className="export-options">
-            <div className="export-option">
-              <label>Format</label>
-              <select
-                className="select"
-                value={settings.format}
-                onChange={(e) => setSettings({ ...settings, format: e.target.value as ExportFormat })}
-                disabled={exporting}
-              >
-                <option value="webm">WebM (Fast, browser-native)</option>
-                <option value="mp4">MP4 (More compatible)</option>
-              </select>
-            </div>
-
-            <div className="export-option">
-              <label>Resolution</label>
-              <select
-                className="select"
-                value={settings.resolution}
-                onChange={(e) => setSettings({ ...settings, resolution: e.target.value as ExportResolution })}
-                disabled={exporting}
-              >
-                <option value="720p">720p (HD)</option>
-                <option value="1080p">1080p (Full HD)</option>
-                <option value="4k">4K (Ultra HD)</option>
-              </select>
-            </div>
-
-            <div className="export-option">
-              <label>Quality</label>
-              <select
-                className="select"
-                value={settings.quality}
-                onChange={(e) => setSettings({ ...settings, quality: e.target.value as any })}
-                disabled={exporting}
-              >
-                <option value="low">Low (Smaller file)</option>
-                <option value="medium">Medium</option>
-                <option value="high">High (Best quality)</option>
-              </select>
-            </div>
-
-            {exporting && (
-              <div className="export-progress">
-                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-                  Exporting... {Math.round(progress)}%
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div style={{ 
-                padding: 12, 
-                background: 'rgba(239, 68, 68, 0.1)', 
-                borderRadius: 8,
-                color: '#EF4444',
-                fontSize: 13
-              }}>
-                {error}
-              </div>
-            )}
-          </div>
+          <label className="export-label">
+            Quality
+            <select
+              className="export-select"
+              value={exportSettings.quality}
+              onChange={(e) => setExportSettings({ ...exportSettings, quality: e.target.value as any })}
+              disabled={isExporting}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
         </div>
 
-        <div className="modal-actions">
-          <button className="btn btn-secondary" onClick={onClose} disabled={exporting}>
-            Cancel
-          </button>
-          <button 
-            className="btn btn-primary" 
-            onClick={handleExport}
-            disabled={exporting || !isValid}
-          >
-            {exporting ? 'Exporting...' : 'Export'}
-          </button>
+        <div className="export-progress">
+          <div className="progress-bar">
+            <div className="progress-fill" style={{ width: `${exportProgress}%` }} />
+          </div>
+          <span className="progress-text">{exportStage}</span>
+          {eta && <span className="eta-text">{eta}</span>}
+          {exportProgress > 0 && <span className="progress-pct">{exportProgress}%</span>}
+        </div>
+
+        {exportError && <div className="export-error">{exportError}</div>}
+
+        <div className="export-actions">
+          {isExporting ? (
+            <button className="btn danger" onClick={handleCancel}>
+              Cancel Export
+            </button>
+          ) : (
+            <>
+              <button className="btn secondary" onClick={() => setShowExport(false)}>Close</button>
+              <button className="btn primary" onClick={handleExport} disabled={exportProgress >= 100}>
+                {exportProgress >= 100 ? 'Done' : 'Export'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -10,9 +10,11 @@ export interface MediaFile {
   thumbnail?: string;
   width?: number;
   height?: number;
+  waveform?: number[];
 }
 
-export interface TextStyle {
+export interface TextOverlay {
+  text: string;
   fontFamily: string;
   fontSize: number;
   color: string;
@@ -20,34 +22,49 @@ export interface TextStyle {
   textAlign: 'left' | 'center' | 'right';
 }
 
+export interface Transform {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+}
+
+export interface ClipFilters {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  preset: string;
+}
+
+export interface ClipTransition {
+  type: 'none' | 'fadein' | 'fadeout' | 'dissolve' | 'crossfade';
+  duration: number;
+}
+
 export interface Clip {
   id: string;
   mediaId?: string;
   trackType: TrackType;
   trackId: string;
-  startTime: number;
+  /** Timeline position in seconds */
+  startAt: number;
+  /** Duration in seconds */
   duration: number;
-  trimStart: number;
-  trimEnd: number;
+  /** Source media trim start in seconds */
+  sourceStart: number;
+  /** Source media trim end offset in seconds */
+  sourceEnd: number;
   volume: number;
   speed: number;
   muted: boolean;
-  text?: string;
-  textStyle?: TextStyle;
+  opacity: number;
+  blendMode: string;
+  transform: Transform;
+  textOverlay?: TextOverlay;
   sticker?: string;
   thumbnailFrame?: string;
-  filters?: {
-    brightness: number;
-    contrast: number;
-    saturation: number;
-    preset: string;
-  };
-  transition?: {
-    type: 'none' | 'fadein' | 'fadeout' | 'dissolve' | 'crossfade';
-    duration: number;
-  };
-  x?: number;
-  y?: number;
+  filters?: ClipFilters;
+  transition?: ClipTransition;
 }
 
 export interface Track {
@@ -59,17 +76,27 @@ export interface Track {
   clips: Clip[];
 }
 
+export interface Marker {
+  id: string;
+  time: number;
+  label: string;
+  color: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   createdAt: number;
   updatedAt: number;
   duration: number;
+  fps: number;
+  resolution: { w: number; h: number };
   tracks: Track[];
   media: MediaFile[];
+  markers: Marker[];
 }
 
-export type ExportFormat = 'webm' | 'mp4';
+export type ExportFormat = 'webm' | 'mp4' | 'mp3' | 'wav';
 export type ExportResolution = '720p' | '1080p' | '4k';
 
 export interface ExportSettings {
@@ -81,3 +108,5 @@ export interface ExportSettings {
 export const SNAP_THRESHOLD = 0.3;
 export const MIN_CLIP_DURATION = 0.3;
 export const CLIP_GRID = 0.1;
+export const DEFAULT_FPS = 30;
+export const DEFAULT_RESOLUTION = { w: 1920, h: 1080 };
