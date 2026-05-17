@@ -1,4 +1,4 @@
-import { Clip, Track } from '../types';
+import { Clip, Track, TransitionType } from '../types';
 import { renderVideoFrame, renderImageFrame, renderTextOverlay, applyFilter } from '../utils/codec';
 
 export interface FrameRequest {
@@ -7,7 +7,16 @@ export interface FrameRequest {
   getMediaUrl: (mediaId: string) => string | undefined;
 }
 
-interface LayeredClip { clip: Clip; trackIndex: number; }
+interface LayeredClip {
+  clip: Clip;
+  trackIndex: number;
+  transition?: {
+    type: TransitionType;
+    duration: number;
+    progress: number;
+    nextClip: Clip;
+  };
+}
 
 export class RenderEngine {
   private output: HTMLCanvasElement;
@@ -68,8 +77,21 @@ export class RenderEngine {
     offCtx.clearRect(0, 0, width, height);
     ctx.clearRect(0, 0, width, height);
     const layers = this.collectLayers(req.tracks, req.time);
-    for (const { clip } of layers) {
-      await this.renderLayer(clip, req, offCtx, width, height);
+    for (const layer of layers) {
+      if (layer.transition) {
+        await this.renderTransitionLayer(
+          layer.clip,
+          layer.transition.nextClip,
+          layer.transition.type,
+          layer.transition.progress,
+          req,
+          offCtx,
+          width,
+          height
+        );
+      } else {
+        await this.renderLayer(layer.clip, req, offCtx, width, height);
+      }
     }
     ctx.drawImage(this.offscreen, 0, 0);
   }
@@ -79,8 +101,31 @@ export class RenderEngine {
     for (let ti = 0; ti < tracks.length; ti++) {
       const t = tracks[ti];
       if (!t.visible) continue;
-      for (const c of t.clips) {
+      
+      const sortedClips = [...t.clips].sort((a, b) => a.startAt - b.startAt);
+      for (let ci = 0; ci < sortedClips.length; ci++) {
+        const c = sortedClips[ci];
+        const next = sortedClips[ci + 1];
+
         if (time >= c.startAt && time < c.startAt + c.duration) {
+          const trans = c.transition;
+          if (trans && trans.type !== 'none' && trans.duration > 0 && next) {
+            const transStart = c.startAt + c.duration - trans.duration;
+            if (time >= transStart) {
+              const progress = (time - transStart) / trans.duration;
+              layers.push({
+                clip: c,
+                trackIndex: ti,
+                transition: {
+                  type: trans.type,
+                  duration: trans.duration,
+                  progress: Math.min(1, Math.max(0, progress)),
+                  nextClip: next
+                }
+              });
+              continue;
+            }
+          }
           layers.push({ clip: c, trackIndex: ti });
         }
       }
@@ -160,6 +205,135 @@ export class RenderEngine {
     ctx.rotate((tr.rotation * Math.PI) / 180);
     ctx.translate(-w / 2, -h / 2);
     ctx.drawImage(source, 0, 0);
+    ctx.restore();
+  }
+
+  private async renderTransitionLayer(
+    clipA: Clip, clipB: Clip, type: TransitionType, progress: number,
+    req: FrameRequest, ctx: CanvasRenderingContext2D, w: number, h: number
+  ): Promise<void> {
+    // 1. Render Clip A to temporary canvas
+    const canvasA = document.createElement('canvas');
+    canvasA.width = w; canvasA.height = h;
+    const ctxA = canvasA.getContext('2d')!;
+    ctxA.clearRect(0, 0, w, h);
+    await this.renderLayer(clipA, req, ctxA, w, h);
+
+    // 2. Render Clip B to temporary canvas
+    const canvasB = document.createElement('canvas');
+    canvasB.width = w; canvasB.height = h;
+    const ctxB = canvasB.getContext('2d')!;
+    ctxB.clearRect(0, 0, w, h);
+
+    const originalTime = req.time;
+    // Calculate B's source timeline alignment so it starts at 0 during transition
+    const transOffset = progress * clipA.transition!.duration;
+    req.time = clipB.startAt + transOffset;
+    await this.renderLayer(clipB, req, ctxB, w, h);
+    req.time = originalTime; // restore original time
+
+    // 3. Blending transitions
+    ctx.save();
+    switch (type) {
+      case 'fade':
+      case 'dissolve': {
+        ctx.globalAlpha = 1 - progress;
+        ctx.drawImage(canvasA, 0, 0);
+        ctx.globalAlpha = progress;
+        ctx.drawImage(canvasB, 0, 0);
+        break;
+      }
+      case 'wipe-left': {
+        const boundary = w * (1 - progress);
+        ctx.drawImage(canvasA, 0, 0, boundary, h, 0, 0, boundary, h);
+        ctx.drawImage(canvasB, boundary, 0, w - boundary, h, boundary, 0, w - boundary, h);
+        break;
+      }
+      case 'wipe-right': {
+        const boundary = w * progress;
+        ctx.drawImage(canvasB, 0, 0, boundary, h, 0, 0, boundary, h);
+        ctx.drawImage(canvasA, boundary, 0, w - boundary, h, boundary, 0, w - boundary, h);
+        break;
+      }
+      case 'slide-left': {
+        const offsetX = -w * progress;
+        ctx.drawImage(canvasA, offsetX, 0);
+        ctx.drawImage(canvasB, offsetX + w, 0);
+        break;
+      }
+      case 'slide-right': {
+        const offsetX = w * progress;
+        ctx.drawImage(canvasA, offsetX, 0);
+        ctx.drawImage(canvasB, offsetX - w, 0);
+        break;
+      }
+      case 'zoom': {
+        ctx.globalAlpha = 1 - progress;
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        const scaleA = 1 + progress * 0.5;
+        ctx.scale(scaleA, scaleA);
+        ctx.translate(-w / 2, -h / 2);
+        ctx.drawImage(canvasA, 0, 0);
+        ctx.restore();
+
+        ctx.globalAlpha = progress;
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        const scaleB = 0.5 + progress * 0.5;
+        ctx.scale(scaleB, scaleB);
+        ctx.translate(-w / 2, -h / 2);
+        ctx.drawImage(canvasB, 0, 0);
+        ctx.restore();
+        break;
+      }
+      case 'spin': {
+        ctx.globalAlpha = 1 - progress;
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(progress * Math.PI);
+        const scaleA = 1 - progress;
+        ctx.scale(scaleA, scaleA);
+        ctx.translate(-w / 2, -h / 2);
+        ctx.drawImage(canvasA, 0, 0);
+        ctx.restore();
+
+        ctx.globalAlpha = progress;
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate((progress - 1) * Math.PI);
+        const scaleB = progress;
+        ctx.scale(scaleB, scaleB);
+        ctx.translate(-w / 2, -h / 2);
+        ctx.drawImage(canvasB, 0, 0);
+        ctx.restore();
+        break;
+      }
+      case 'blur': {
+        const blurAmt = Math.sin(progress * Math.PI) * 20;
+        ctx.filter = `blur(${blurAmt}px)`;
+        ctx.globalAlpha = 1 - progress;
+        ctx.drawImage(canvasA, 0, 0);
+        ctx.globalAlpha = progress;
+        ctx.drawImage(canvasB, 0, 0);
+        break;
+      }
+      case 'flash': {
+        ctx.drawImage(canvasA, 0, 0);
+        ctx.globalAlpha = progress;
+        ctx.drawImage(canvasB, 0, 0);
+
+        const flashAlpha = Math.sin(progress * Math.PI);
+        ctx.globalAlpha = flashAlpha;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        break;
+      }
+      default: {
+        ctx.drawImage(canvasA, 0, 0);
+        break;
+      }
+    }
     ctx.restore();
   }
 

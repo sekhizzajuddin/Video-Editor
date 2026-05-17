@@ -134,14 +134,37 @@ export async function generateWaveformData(media: MediaFile, buckets = 80): Prom
     const channel = audioBuffer.getChannelData(0);
     const samplesPerBucket = Math.floor(channel.length / buckets);
     const waveform: number[] = [];
+    const vocalFlags: boolean[] = [];
+
     for (let i = 0; i < buckets; i++) {
       let sum = 0;
-      for (let j = 0; j < samplesPerBucket; j++) sum += Math.abs(channel[i * samplesPerBucket + j]);
-      waveform.push(sum / samplesPerBucket);
+      let crossings = 0;
+      for (let j = 0; j < samplesPerBucket; j++) {
+        const idx = i * samplesPerBucket + j;
+        sum += Math.abs(channel[idx]);
+        if (j > 0) {
+          const prevIdx = idx - 1;
+          if ((channel[idx] >= 0 && channel[prevIdx] < 0) || (channel[idx] < 0 && channel[prevIdx] >= 0)) {
+            crossings++;
+          }
+        }
+      }
+      const amp = sum / samplesPerBucket;
+      waveform.push(amp);
+
+      // Vocal ZCR heuristic:
+      // Zero crossings/sec corresponding to vocal frequencies (typically 120Hz to 2000Hz)
+      const crossingsPerSec = (crossings / samplesPerBucket) * audioBuffer.sampleRate;
+      const hasVocal = crossingsPerSec >= 150 && crossingsPerSec <= 2200 && amp > 0.015;
+      vocalFlags.push(hasVocal);
     }
     audioCtx.close();
+
     const max = waveform.reduce((a, b) => Math.max(a, b), 0.001);
-    return waveform.map((v) => v / max);
+    return waveform.map((v, i) => {
+      const norm = v / max;
+      return vocalFlags[i] ? -norm : norm;
+    });
   } catch {
     audioCtx.close();
     return [];

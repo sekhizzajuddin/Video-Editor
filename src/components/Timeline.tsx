@@ -13,9 +13,10 @@ const TRACK_COLORS: Record<string, string> = {
   video: '#3b82f6', audio: '#22c55e', text: '#a855f7', sticker: '#f59e0b',
 };
 
-/** Amplitude → waveform bar colour: loud=orange, medium=blue, quiet=dim */
-function waveColor(amp: number): string {
-  if (amp > 0.72) return '#f59e0b';  // vocal / loud
+/** Amplitude → waveform bar colour: vocals=pink/coral, loud=orange, medium=blue, quiet=dim */
+function waveColor(amp: number, isVocal: boolean): string {
+  if (isVocal) return '#f43f5e';     // bright rose for vocal presence!
+  if (amp > 0.72) return '#f59e0b';  // loud
   if (amp > 0.42) return '#60a5fa';  // medium
   return 'rgba(96,165,250,0.35)';    // quiet / background
 }
@@ -40,10 +41,14 @@ interface CtxMenu { x: number; y: number; clipId: string; }
 function WaveformBars({ waveform, height }: { waveform: number[]; height: number }) {
   return (
     <div className="clip-waveform" style={{ height }}>
-      {waveform.map((amp, i) => (
-        <div key={i} className="waveform-bar"
-          style={{ height: `${Math.max(4, amp * 92)}%`, background: waveColor(amp) }} />
-      ))}
+      {waveform.map((val, i) => {
+        const amp = Math.abs(val);
+        const isVocal = val < 0;
+        return (
+          <div key={i} className="waveform-bar"
+            style={{ height: `${Math.max(4, amp * 92)}%`, background: waveColor(amp, isVocal) }} />
+        );
+      })}
     </div>
   );
 }
