@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { useEditorStore } from './store/editorStore';
+import { getAllProjects, loadMediaForProject } from './utils/fileUtils';
 import Header from './components/Header';
 import LeftSidebar from './components/LeftSidebar';
 import AssetLibrary from './components/AssetLibrary';
@@ -8,28 +9,37 @@ import InspectorPanel from './components/InspectorPanel';
 import Timeline from './components/Timeline';
 import ExportModal from './components/ExportModal';
 import ShorcutsModal from './components/ShorcutsModal';
-
-function ErrorFallback({ error }: { error: Error }) {
-  return (
-    <div style={{ padding: 40, color: '#EF4444', background: '#111111', minHeight: '100vh', fontFamily: 'Inter, monospace' }}>
-      <h2>Something went wrong</h2>
-      <pre>{error.message}</pre>
-    </div>
-  );
-}
+import ProjectManagerModal from './components/ProjectManagerModal';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode }) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
-    if (this.state.error) return <ErrorFallback error={this.state.error} />;
+    if (this.state.error) return (
+      <div style={{ padding: 40, color: '#EF4444', background: '#111', minHeight: '100vh', fontFamily: 'Inter, monospace' }}>
+        <h2>Something went wrong</h2><pre>{this.state.error.message}</pre>
+      </div>
+    );
     return this.props.children;
   }
 }
 
 export default function App() {
-  const { currentTime, cropToMarkers, newProject } = useEditorStore();
+  const { currentTime, cropToMarkers, newProject, saveToast, showOpenProject } = useEditorStore();
   const [activeTool, setActiveTool] = useState('media');
+
+  // Auto-load most recent project on startup
+  useEffect(() => {
+    const lastId = localStorage.getItem('vidforge_last_project_id');
+    if (!lastId) return;
+    getAllProjects().then(async (projects) => {
+      const proj = projects.find(p => p.id === lastId);
+      if (!proj) return;
+      const media = await loadMediaForProject(proj.media.map(m => m.id));
+      const restoredProj = { ...proj, media: media.length > 0 ? media : proj.media };
+      useEditorStore.getState().loadProject(restoredProj);
+    }).catch(() => {});
+  }, []);
 
   const togglePlayback = useCallback(() => {
     const s = useEditorStore.getState();
@@ -60,10 +70,7 @@ export default function App() {
       const { copiedClip, currentTime: ct } = store;
       if (copiedClip) {
         const newClip = store.addClip(copiedClip.trackType, copiedClip.mediaId, copiedClip.sticker);
-        if (newClip) {
-          const { trackId, ...clipData } = copiedClip;
-          store.updateClip(newClip.id, { ...clipData, id: newClip.id, startAt: Math.max(0, ct) });
-        }
+        if (newClip) store.updateClip(newClip.id, { ...copiedClip, id: newClip.id, startAt: Math.max(0, ct) });
       }
       return;
     }
@@ -74,7 +81,19 @@ export default function App() {
   }, [currentTime, cropToMarkers, newProject, togglePlayback]);
 
   useEffect(() => { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); }, [handleKeyDown]);
-  useEffect(() => { const autoSave = setInterval(() => { const store = useEditorStore.getState(); if (store.isDirty && store.project.id) store.saveToDB(); }, 30000); return () => clearInterval(autoSave); }, []);
+
+  // Auto-save every 30s if dirty
+  useEffect(() => {
+    const autoSave = setInterval(() => {
+      const store = useEditorStore.getState();
+      if (store.isDirty && store.project.id) {
+        store.saveToDB().then(() => {
+          localStorage.setItem('vidforge_last_project_id', store.project.id);
+        });
+      }
+    }, 30000);
+    return () => clearInterval(autoSave);
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -89,7 +108,8 @@ export default function App() {
         <Timeline />
         <ExportModal />
         <ShorcutsModal />
-        {useEditorStore.getState().saveToast && <div className="toast">Project saved</div>}
+        {showOpenProject && <ProjectManagerModal />}
+        {saveToast && <div className="toast">✓ Project saved</div>}
       </div>
     </ErrorBoundary>
   );

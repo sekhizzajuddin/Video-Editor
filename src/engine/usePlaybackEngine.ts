@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { useEditorStore } from '../store/editorStore';
+import { getMediaUrl } from './useMediaManager';
 
 export interface PlaybackEngine {
   play: () => void;
@@ -21,7 +22,66 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   const durationRef = useRef(10);
   const lastFrameRef = useRef(0);
 
+  // Audio playback: one <audio> element per active clip
+  const audioEls = useRef<{ el: HTMLAudioElement; clipId: string }[]>([]);
+
   const store = useEditorStore;
+
+  const stopAllAudio = useCallback(() => {
+    for (const { el } of audioEls.current) {
+      el.pause();
+      el.src = '';
+    }
+    audioEls.current = [];
+  }, []);
+
+  const startAudio = useCallback((fromTime: number) => {
+    stopAllAudio();
+    const state = store.getState();
+    const tracks = state.project.tracks;
+    const speed = state.speed || 1;
+
+    for (const track of tracks) {
+      for (const clip of track.clips) {
+        if (!clip.mediaId || clip.muted) continue;
+        const isAudio = track.type === 'audio';
+        const isVideo = track.type === 'video';
+        if (!isAudio && !isVideo) continue;
+
+        const clipEnd = clip.startAt + clip.duration;
+        if (fromTime >= clipEnd || fromTime < clip.startAt - 0.05) {
+          // clip hasn't started or already ended — but schedule if it starts in future
+          // For simplicity only play clips active now or starting within 0.1s
+          if (clip.startAt > fromTime + 0.1) continue;
+        }
+
+        const url = getMediaUrl(clip.mediaId);
+        if (!url) continue;
+
+        const el = document.createElement('audio');
+        el.src = url;
+        el.volume = Math.max(0, Math.min(1, clip.volume ?? 1));
+        el.playbackRate = speed * (clip.speed || 1);
+        el.muted = clip.muted;
+        el.preload = 'auto';
+
+        // currentTime within the source file
+        const localTime = Math.max(0, fromTime - clip.startAt);
+        const sourceTime = clip.sourceStart + localTime * (clip.speed || 1);
+        el.currentTime = sourceTime;
+
+        // If the clip starts in the future, delay playback
+        const delay = Math.max(0, clip.startAt - fromTime) / speed;
+        if (delay > 0) {
+          setTimeout(() => { if (isPlayingRef.current) el.play().catch(() => {}); }, delay * 1000);
+        } else {
+          el.play().catch(() => {});
+        }
+
+        audioEls.current.push({ el, clipId: clip.id });
+      }
+    }
+  }, [stopAllAudio, store]);
 
   const tick = useCallback((now: number) => {
     if (!isPlayingRef.current) return;
@@ -33,6 +93,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
       store.getState().setCurrentTime(projectTime);
       store.getState().setIsPlaying(false);
       if (rAF.current) cancelAnimationFrame(rAF.current);
+      stopAllAudio();
       return;
     }
     currentTimeRef.current = projectTime;
@@ -41,7 +102,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     lastFrameRef.current = now;
     onFrame?.(projectTime, dt);
     rAF.current = requestAnimationFrame(tick);
-  }, [onFrame, store]);
+  }, [onFrame, store, stopAllAudio]);
 
   const play = useCallback(() => {
     if (isPlayingRef.current) return;
@@ -57,15 +118,16 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     durationRef.current = state.project.duration;
     lastFrameRef.current = 0;
     store.getState().setIsPlaying(true);
-
+    startAudio(currentTimeRef.current);
     rAF.current = requestAnimationFrame(tick);
-  }, [tick, store]);
+  }, [tick, store, startAudio]);
 
   const pause = useCallback(() => {
     isPlayingRef.current = false;
     if (rAF.current) cancelAnimationFrame(rAF.current);
     store.getState().setIsPlaying(false);
-  }, [store]);
+    stopAllAudio();
+  }, [store, stopAllAudio]);
 
   const toggle = useCallback(() => {
     if (isPlayingRef.current) pause();
@@ -79,6 +141,10 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     if (isPlayingRef.current) {
       startWallRef.current = performance.now();
       startTimeRef.current = clamped;
+      // Re-sync audio
+      for (const { el } of audioEls.current) {
+        try { el.currentTime = clamped; } catch {}
+      }
     }
   }, [store]);
 
@@ -89,12 +155,16 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   }, [pause, store]);
 
   useEffect(() => {
-    const unsub = useEditorStore.subscribe((s) => {
+    const unsub = useEditorStore.subscribe(s => {
       speedRef.current = s.speed;
       durationRef.current = s.project.duration;
     });
-    return () => { unsub(); if (rAF.current) cancelAnimationFrame(rAF.current); };
-  }, []);
+    return () => {
+      unsub();
+      if (rAF.current) cancelAnimationFrame(rAF.current);
+      stopAllAudio();
+    };
+  }, [stopAllAudio]);
 
   return {
     play, pause, toggle, seek, stop,
