@@ -598,6 +598,7 @@ class WebGLFilterPipeline {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers.get(sourceFb) || null);
     gl.uniform2f(gl.getUniformLocation(program, 'u_direction'), 0, 1);
     const intermediateTex = this.textures.get(targetFb);
+    if (!intermediateTex) return;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, intermediateTex);
     this.drawQuad();

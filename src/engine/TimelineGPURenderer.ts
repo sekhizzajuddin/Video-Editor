@@ -110,8 +110,6 @@ class TimelineGPURenderer {
   private buffers: Map<string, WebGLBuffer> = new Map();
   private textures: Map<string, WebGLTexture> = new Map();
   private initialized = false;
-  private width = 0;
-  private height = 0;
 
   init(canvas: HTMLCanvasElement, config: TimelineGPUConfig): boolean {
     const gl = canvas.getContext('webgl', {
@@ -123,8 +121,6 @@ class TimelineGPURenderer {
     if (!gl) return false;
 
     this.gl = gl;
-    this.width = config.width;
-    this.height = config.height;
 
     // Compile shaders
     this.compileProgram('filmstrip', TIMELINE_VERTEX_SHADER, FILMSTRIP_FRAGMENT_SHADER);
@@ -139,67 +135,13 @@ class TimelineGPURenderer {
        1,  1, 1, 1,
     ]);
     const buffer = gl.createBuffer();
+    if (!buffer) return false;
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
     this.buffers.set('quad', buffer);
 
     this.initialized = true;
     return true;
-  }
-
-  private compileProgram(name: string, vertexSrc: string, fragmentSrc: string): void {
-    if (!this.gl) return;
-    const gl = this.gl;
-
-    const vs = gl.createShader(gl.VERTEX_SHADER)!;
-    gl.shaderSource(vs, vertexSrc);
-    gl.compileShader(vs);
-
-    const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(fs, fragmentSrc);
-    gl.compileShader(fs);
-
-    const program = gl.createProgram()!;
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-    gl.deleteShader(vs);
-    gl.deleteShader(fs);
-
-    this.programs.set(name, program);
-  }
-
-  private useProgram(name: string): WebGLProgram | null {
-    if (!this.gl) return null;
-    const program = this.programs.get(name);
-    if (program) this.gl.useProgram(program);
-    return program || null;
-  }
-
-  private bindQuad(): void {
-    if (!this.gl || !this.buffers.get('quad')) return;
-    const gl = this.gl;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('quad')!);
-
-    const program = gl.getParameter(gl.CURRENT_PROGRAM);
-    if (!program) return;
-
-    const posLoc = gl.getAttribLocation(program, 'a_position');
-    const texLoc = gl.getAttribLocation(program, 'a_texCoord');
-
-    if (posLoc >= 0) {
-      gl.enableVertexAttribArray(posLoc);
-      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 0);
-    }
-    if (texLoc >= 0) {
-      gl.enableVertexAttribArray(texLoc);
-      gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 16, 8);
-    }
-  }
-
-  private drawQuad(): void {
-    if (!this.gl) return;
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
   }
 
   /** Render filmstrip thumbnails for a video clip */
@@ -210,7 +152,6 @@ class TimelineGPURenderer {
     clipHeight: number
   ): void {
     if (!this.gl || !this.initialized || thumbnails.length === 0) return;
-    const gl = this.gl;
 
     // Create composite texture from thumbnails
     const thumbCanvas = document.createElement('canvas');

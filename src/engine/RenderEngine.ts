@@ -156,7 +156,7 @@ export class RenderEngine {
   private async renderFrameGPU(
     layers: LayeredClip[],
     req: FrameRequest,
-    ctx: CanvasRenderingContext2D,
+    _ctx: CanvasRenderingContext2D,
     w: number,
     h: number
   ): Promise<void> {
@@ -188,7 +188,6 @@ export class RenderEngine {
     if (layerTextures.length === 0) return;
 
     // First layer goes to output directly
-    const firstLayer = layerTextures[0];
     this.gpu.readToCanvas(this.output, 'fb_a');
 
     // Composite remaining layers
@@ -250,7 +249,7 @@ export class RenderEngine {
     // Render text overlay
     if (clip.textOverlay) {
       const to = clip.textOverlay;
-      renderTextOverlay(layerCtx, layerCanvas, clip.textOverlay.text, {
+      renderTextOverlay(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, clip.textOverlay.text, {
         fontSize: clip.textOverlay.fontSize,
         fontFamily: clip.textOverlay.fontFamily,
         color: clip.textOverlay.color,
@@ -287,7 +286,8 @@ export class RenderEngine {
 
     // Create temp video element from canvas for GPU upload
     const tempVideo = document.createElement('video');
-    tempVideo.srcObject = layerCanvas.captureStream(0) as MediaStream;
+    const stream = (layerCanvas as HTMLCanvasElement).captureStream(0);
+    tempVideo.srcObject = stream as MediaStream;
     await new Promise<void>(resolve => {
       tempVideo.onloadeddata = () => resolve();
       tempVideo.load();
