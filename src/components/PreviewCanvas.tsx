@@ -30,7 +30,7 @@ export default function PreviewCanvas() {
   const engineRef = useRef<RenderEngine | null>(null);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [_, setIsFullscreen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(480);

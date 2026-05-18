@@ -50,7 +50,7 @@ const TRANSITIONS = [
 ];
 
 function MediaPanel() {
-  const { project: { media }, addMedia, removeMedia, addClip, updateClip } = useEditorStore();
+  const { project: { media }, addMedia, addClip, updateClip } = useEditorStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
