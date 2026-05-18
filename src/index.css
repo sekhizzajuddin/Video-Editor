@@ -133,12 +133,8 @@ body {
 /* Asset Library             */
 /* ======================== */
 .asset-library {
-  width: var(--asset-w);
-  min-width: var(--asset-w);
-  background: var(--bg-primary);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
+  width: var(--asset-w); min-width: var(--asset-w); display: flex; flex-direction: column;
+  background: var(--bg-secondary); border-right: 1px solid var(--border); overflow: hidden;
 }
 
 .asset-library-header {
@@ -522,20 +518,13 @@ body {
 .trim-handle.right { right: 0; }
 .trim-handle:hover { background: rgba(255,255,255,0.15); }
 
-.snap-line {
-  position: absolute; top: 0; width: 1px; height: 100%;
-  background: #a78bfa; z-index: 19; pointer-events: none;
-}
+.snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warning); z-index: 25; pointer-events: none; }
 
 /* Context Menu */
-.context-menu {
-  background: var(--bg-secondary); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 4px 0; min-width: 140px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-}
-.context-item { padding: 6px 14px; font-size: 12px; color: var(--text-primary); cursor: pointer; transition: background var(--transition); }
+.context-menu { position: fixed; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px; min-width: 160px; z-index: 999; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+.context-item { padding: 7px 12px; font-size: 12px; color: var(--text-primary); cursor: pointer; border-radius: var(--radius); transition: all var(--transition); }
 .context-item:hover { background: var(--bg-hover); }
-.context-separator { height: 1px; background: var(--border); margin: 4px 0; }
+.context-separator { height: 1px; background: var(--border); margin: 3px 0; }
 
 /* ======================== */
 /* Modal                     */
@@ -609,10 +598,14 @@ body {
 
 /* Open project modal */
 .project-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.project-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--bg-tertiary); border-radius: var(--radius); cursor: pointer; transition: background var(--transition); }
-.project-item:hover { background: var(--bg-hover); }
-.project-item-name { font-size: 13px; font-weight: 500; }
-.project-item-date { font-size: 11px; color: var(--text-dim); }
+.project-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg-tertiary); border-radius: var(--radius); cursor: pointer; transition: background var(--transition); border: 1px solid transparent; }
+.project-item:hover { background: var(--bg-hover); border-color: var(--accent); }
+.project-item-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.project-item-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.project-item-meta { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); }
+.project-item-date { font-size: 10px; color: var(--text-dim); }
+.project-item-delete { background: transparent; border: none; color: var(--text-dim); cursor: pointer; padding: 4px 8px; border-radius: var(--radius); font-size: 14px; transition: all var(--transition); flex-shrink: 0; margin-left: 8px; }
+.project-item-delete:hover { background: var(--danger); color: #fff; }
 
 /* ======================== */
 /* Timeline extras           */
@@ -689,7 +682,6 @@ body {
 /* ======================== */
 /* Asset Library Tabs       */
 /* ======================== */
-.asset-library { width: var(--asset-w); min-width: var(--asset-w); display: flex; flex-direction: column; background: var(--bg-secondary); border-right: 1px solid var(--border); overflow: hidden; }
 .asset-tabs { display: flex; flex-direction: column; gap: 1px; padding: 6px 4px; border-bottom: 1px solid var(--border); }
 .asset-tab { background: transparent; border: none; color: var(--text-secondary); padding: 6px 10px; border-radius: var(--radius); cursor: pointer; font-size: 11px; font-weight: 500; text-align: left; transition: all var(--transition); width: 100%; }
 .asset-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -788,13 +780,6 @@ body {
 .track-del-btn:hover { color: var(--danger); }
 .tl-row-bg.locked { opacity: 0.5; }
 
-/* ======================== */
-/* Context Menu             */
-/* ======================== */
-.context-menu { position: fixed; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px; min-width: 160px; z-index: 999; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
-.context-item { padding: 7px 12px; font-size: 12px; color: var(--text-primary); cursor: pointer; border-radius: var(--radius); transition: all var(--transition); }
-.context-item:hover { background: var(--bg-hover); }
-.context-separator { height: 1px; background: var(--border); margin: 3px 0; }
 .context-danger { color: var(--danger) !important; }
 .context-danger:hover { background: rgba(239,68,68,0.1) !important; }
 
@@ -812,11 +797,6 @@ body {
 .transition-card:active { cursor: grabbing; }
 .transition-preview { font-size: 20px; line-height: 1; }
 .transition-label { font-size: 10px; font-weight: 600; color: var(--text-secondary); text-align: center; }
-
-/* ======================== */
-/* Snap line                */
-/* ======================== */
-.snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warning); z-index: 25; pointer-events: none; }
 
 /* ======================== */
 /* Interactive Transform Box */

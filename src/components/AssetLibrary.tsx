@@ -268,6 +268,14 @@ const TABS = [
 export default function AssetLibrary({ activeTool }: { activeTool: string }) {
   const [tab, setTab] = useState(activeTool === 'media' ? 'media' : activeTool);
 
+  useEffect(() => {
+    if (activeTool === 'audio') {
+      setTab('transitions');
+    } else {
+      setTab(activeTool);
+    }
+  }, [activeTool]);
+
   return (
     <aside className="asset-library">
       <div className="asset-tabs">
