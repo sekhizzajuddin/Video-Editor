@@ -30,7 +30,7 @@ export default function PreviewCanvas() {
   const engineRef = useRef<RenderEngine | null>(null);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
-  const [_, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(480);
@@ -253,8 +253,8 @@ export default function PreviewCanvas() {
   const hasContent = tracks.some(t => t.visible && t.clips.length > 0);
 
   return (
-    <div className="preview-player">
-      <div className="preview-canvas-wrap" style={{ width: canvasWidth, height: canvasHeight }}>
+    <div className="preview-area">
+      <div className={`preview-canvas-wrap ${isFullscreen ? 'fullscreen' : ''}`} style={{ width: canvasWidth, height: canvasHeight }}>
         <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="preview-canvas" />
 
         {/* Dynamic Bounding Box Overlay for Active Clip Manipulation */}

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import type { Clip } from '../types';
 
@@ -5,6 +6,7 @@ const FONT_FAMILIES = ['Inter, sans-serif', 'Georgia, serif', 'JetBrains Mono, m
 const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'hard-light', 'soft-light', 'difference'];
 const FILTER_PRESETS = ['none', 'bw', 'sepia', 'warm', 'cool', 'contrast', 'invert'];
 const TRANSITION_TYPES = ['none', 'fade', 'wipe', 'slide', 'zoom'];
+const SPEED_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 function Row({ label, children }: { label: string; children?: React.ReactNode }) {
   return (
@@ -14,8 +16,18 @@ function Row({ label, children }: { label: string; children?: React.ReactNode })
     </div>
   );
 }
-function Sec({ title }: { title?: string; children?: React.ReactNode }) {
-  return <div className="inspector-section-header">{title}</div>;
+
+function CollapsibleSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <div className="inspector-section">
+      <div className="inspector-section-header" onClick={() => setIsOpen(!isOpen)} style={{ cursor: 'pointer' }}>
+        <span>{title}</span>
+        <span style={{ fontSize: 10, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+      </div>
+      {isOpen && children}
+    </div>
+  );
 }
 
 /* ─── AUDIO INSPECTOR ─── */
@@ -23,11 +35,11 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
   return (
     <div className="inspector-scroll">
       <div className="inspector-section">
-        <Sec>SELECTED AUDIO</Sec>
+        <div className="inspector-section-header">SELECTED AUDIO</div>
         <div className="inspector-filename">{clip.mediaId ? clip.mediaId.split('_').slice(0, -1).join(' ') || 'Audio Clip' : 'Audio Clip'}</div>
       </div>
-      <div className="inspector-section">
-        <Sec>TIMING</Sec>
+
+      <CollapsibleSection title="TIMING">
         <Row label="Start">
           <input className="inspector-input" type="number" min={0} step={0.1}
             value={parseFloat(clip.startAt.toFixed(2))}
@@ -37,25 +49,14 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
           <input className="inspector-input" type="number" min={0.1} step={0.1} value={parseFloat(clip.duration.toFixed(2))}
             onChange={e => update({ duration: Math.max(0.1, parseFloat(e.target.value) || 0.1) })} />
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec>VOLUME</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="VOLUME">
         <Row label={`${Math.round((clip.volume ?? 1) * 100)}%`}>
           <input className="inspector-range" type="range" min={0} max={200} step={1}
             value={Math.round((clip.volume ?? 1) * 100)}
             onChange={e => update({ volume: parseInt(e.target.value) / 100 })} />
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec>SPEED</Sec>
-        <Row label={`${(clip.speed || 1).toFixed(2)}×`}>
-          <input className="inspector-range" type="range" min={10} max={400} step={5}
-            value={Math.round((clip.speed || 1) * 100)}
-            onChange={e => update({ speed: parseInt(e.target.value) / 100 })} />
-        </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec>AUDIO OPTIONS</Sec>
         <Row label="Muted">
           <label className="inspector-toggle">
             <input type="checkbox" checked={clip.muted} onChange={e => update({ muted: e.target.checked })} />
@@ -74,7 +75,26 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             onChange={e => update({ audioFadeOut: Math.max(0, parseFloat(e.target.value) || 0) })} />
           <span className="inspector-field-value">s</span>
         </Row>
-      </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="SPEED">
+        <div className="speed-presets">
+          {SPEED_PRESETS.map(speed => (
+            <button
+              key={speed}
+              className={`speed-preset-btn ${Math.abs((clip.speed || 1) - speed) < 0.01 ? 'active' : ''}`}
+              onClick={() => update({ speed })}
+            >
+              {speed}x
+            </button>
+          ))}
+        </div>
+        <Row label={`${(clip.speed || 1).toFixed(2)}×`}>
+          <input className="inspector-range" type="range" min={10} max={400} step={5}
+            value={Math.round((clip.speed || 1) * 100)}
+            onChange={e => update({ speed: parseInt(e.target.value) / 100 })} />
+        </Row>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -85,11 +105,11 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
   return (
     <div className="inspector-scroll">
       <div className="inspector-section">
-        <Sec>SELECTED VIDEO</Sec>
+        <div className="inspector-section-header">SELECTED VIDEO</div>
         <div className="inspector-filename">{clip.mediaId?.split('_')[0] || 'Video Clip'}</div>
       </div>
-      <div className="inspector-section">
-        <Sec>TIMING</Sec>
+
+      <CollapsibleSection title="TIMING">
         <div className="inspector-grid-2">
           <Row label="Start"><span className="inspector-field-value">{clip.startAt.toFixed(2)}s</span></Row>
           <Row label="Duration">
@@ -97,9 +117,9 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
               onChange={e => update({ duration: Math.max(0.1, parseFloat(e.target.value) || 0.1) })} />
           </Row>
         </div>
-      </div>
-      <div className="inspector-section">
-        <Sec>TRANSFORM</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="TRANSFORM">
         <Row label="Scale">
           <input className="inspector-range" type="range" min={10} max={300} step={1}
             value={Math.round(clip.transform.scale * 100)}
@@ -124,9 +144,9 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             onChange={e => update({ transform: { ...tr, rotation: parseInt(e.target.value) } })} />
           <span className="inspector-range-value">{clip.transform.rotation}°</span>
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec>VOLUME</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="AUDIO">
         <Row label={`${Math.round((clip.volume ?? 1) * 100)}%`}>
           <input className="inspector-range" type="range" min={0} max={200} step={1}
             value={Math.round((clip.volume ?? 1) * 100)}
@@ -150,31 +170,42 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             onChange={e => update({ audioFadeOut: Math.max(0, parseFloat(e.target.value) || 0) })} />
           <span className="inspector-field-value">s</span>
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec>SPEED</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="SPEED">
+        <div className="speed-presets">
+          {SPEED_PRESETS.map(speed => (
+            <button
+              key={speed}
+              className={`speed-preset-btn ${Math.abs((clip.speed || 1) - speed) < 0.01 ? 'active' : ''}`}
+              onClick={() => update({ speed })}
+            >
+              {speed}x
+            </button>
+          ))}
+        </div>
         <Row label={`${(clip.speed || 1).toFixed(2)}×`}>
           <input className="inspector-range" type="range" min={10} max={400} step={5}
             value={Math.round((clip.speed || 1) * 100)}
             onChange={e => update({ speed: parseInt(e.target.value) / 100 })} />
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec>OPACITY</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="OPACITY">
         <Row label={`${Math.round(clip.opacity ?? 100)}%`}>
           <input className="inspector-range" type="range" min={0} max={100}
             value={Math.round(clip.opacity ?? 100)}
             onChange={e => update({ opacity: parseInt(e.target.value) })} />
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec title="BLEND MODE" />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="BLEND MODE">
         <select className="inspector-select" value={clip.blendMode} onChange={e => update({ blendMode: e.target.value as any })}>
           {BLEND_MODES.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-      </div>
-      <div className="inspector-section">
-        <Sec title="FILTERS" />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="FILTERS">
         <div className="filter-pill-row">
           {FILTER_PRESETS.map(f => (
             <button key={f} className={`filter-pill ${(clip.filters?.preset || 'none') === f ? 'active' : ''}`}
@@ -207,9 +238,9 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             onChange={e => update({ filters: { brightness: clip.filters?.brightness ?? 0, contrast: clip.filters?.contrast ?? 0, saturation: clip.filters?.saturation ?? 0, preset: clip.filters?.preset ?? 'none', chromaKey: clip.filters?.chromaKey, vignette: clip.filters?.vignette, blur: parseInt(e.target.value) } })} />
           <span className="inspector-range-value">{clip.filters?.blur ?? 0}px</span>
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec title="CHROMA KEY" />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="CHROMA KEY" defaultOpen={false}>
         <Row label="Enabled">
           <label className="inspector-toggle">
             <input type="checkbox" checked={clip.filters?.chromaKey?.enabled || false}
@@ -237,9 +268,9 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             </Row>
           </>
         )}
-      </div>
-      <div className="inspector-section">
-        <Sec title="VIGNETTE" />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="VIGNETTE" defaultOpen={false}>
         <Row label="Enabled">
           <label className="inspector-toggle">
             <input type="checkbox" checked={clip.filters?.vignette?.enabled || false}
@@ -255,9 +286,9 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             <span className="inspector-range-value">{Math.round(clip.filters!.vignette!.intensity * 100)}%</span>
           </Row>
         )}
-      </div>
-      <div className="inspector-section">
-        <Sec title="TRANSITION" />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="TRANSITION">
         <select className="inspector-select" value={clip.transition?.type || 'none'}
           onChange={e => update({ transition: { type: e.target.value as any, duration: clip.transition?.duration || 0.5 } })}>
           {TRANSITION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -269,7 +300,7 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
               onChange={e => update({ transition: { type: clip.transition!.type, duration: parseInt(e.target.value) / 10 } })} />
           </Row>
         )}
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -281,10 +312,10 @@ function TextInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>
   return (
     <div className="inspector-scroll">
       <div className="inspector-section">
-        <Sec>SELECTED TEXT</Sec>
+        <div className="inspector-section-header">SELECTED TEXT</div>
       </div>
-      <div className="inspector-section">
-        <Sec>TIMING</Sec>
+
+      <CollapsibleSection title="TIMING">
         <div className="inspector-grid-2">
           <Row label="Start"><span className="inspector-field-value">{clip.startAt.toFixed(2)}s</span></Row>
           <Row label="Duration">
@@ -292,14 +323,14 @@ function TextInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>
               onChange={e => update({ duration: Math.max(0.1, parseFloat(e.target.value) || 0.1) })} />
           </Row>
         </div>
-      </div>
-      <div className="inspector-section">
-        <Sec>TEXT CONTENT</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="TEXT CONTENT">
         <textarea className="inspector-textarea" rows={3} value={to.text}
           onChange={e => update({ textOverlay: { ...to, text: e.target.value } })} />
-      </div>
-      <div className="inspector-section">
-        <Sec>TYPOGRAPHY</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="TYPOGRAPHY">
         <Row label="Font">
           <select className="inspector-select" value={to.fontFamily}
             onChange={e => update({ textOverlay: { ...to, fontFamily: e.target.value } })}>
@@ -348,9 +379,9 @@ function TextInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>
             onChange={e => update({ textOverlay: { ...to, backgroundOpacity: parseFloat(e.target.value) || 0 } })}
             style={{ width: 50 }} />
         </Row>
-      </div>
-      <div className="inspector-section">
-        <Sec>POSITION</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="POSITION">
         <Row label="X">
           <input className="inspector-range" type="range" min={-960} max={960}
             value={tr.x} onChange={e => update({ transform: { ...tr, x: parseInt(e.target.value) } })} />
@@ -373,7 +404,7 @@ function TextInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>
             onChange={e => update({ opacity: parseInt(e.target.value) })} />
           <span className="inspector-range-value">{clip.opacity ?? 100}%</span>
         </Row>
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -384,11 +415,11 @@ function StickerInspector({ clip, update }: { clip: Clip; update: (p: Partial<Cl
   return (
     <div className="inspector-scroll">
       <div className="inspector-section">
-        <Sec>SELECTED STICKER</Sec>
+        <div className="inspector-section-header">SELECTED STICKER</div>
         <div style={{ fontSize: 40, textAlign: 'center', padding: '8px 0' }}>{clip.sticker}</div>
       </div>
-      <div className="inspector-section">
-        <Sec>TIMING</Sec>
+
+      <CollapsibleSection title="TIMING">
         <div className="inspector-grid-2">
           <Row label="Start"><span className="inspector-field-value">{clip.startAt.toFixed(2)}s</span></Row>
           <Row label="Duration">
@@ -396,9 +427,9 @@ function StickerInspector({ clip, update }: { clip: Clip; update: (p: Partial<Cl
               onChange={e => update({ duration: Math.max(0.1, parseFloat(e.target.value) || 0.1) })} />
           </Row>
         </div>
-      </div>
-      <div className="inspector-section">
-        <Sec>POSITION & SIZE</Sec>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="POSITION & SIZE">
         <Row label="Scale">
           <input className="inspector-range" type="range" min={10} max={300}
             value={Math.round(tr.scale * 100)}
@@ -425,7 +456,7 @@ function StickerInspector({ clip, update }: { clip: Clip; update: (p: Partial<Cl
             value={clip.opacity ?? 100} onChange={e => update({ opacity: parseInt(e.target.value) })} />
           <span className="inspector-range-value">{clip.opacity ?? 100}%</span>
         </Row>
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -439,7 +470,7 @@ export default function InspectorPanel() {
 
   if (!clip) {
     return (
-      <aside className="inspector-panel">
+      <aside className="inspector-panel collapsed">
         <div className="inspector-empty">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.3 }}>
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>

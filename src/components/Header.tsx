@@ -25,22 +25,22 @@ export default function Header() {
   };
 
   return (
-    <header className="navbar">
-      <div className="navbar-left">
-        <div className="navbar-logo">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="20" height="20" x="2" y="2" rx="5" fill="#6366F1"/><polygon points="10,8 10,16 17,12" fill="#fff"/></svg>
-          <span className="navbar-brand">VidForge Pro</span>
+    <header className="top-bar">
+      <div className="top-bar-left">
+        <div className="top-bar-logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="20" height="20" x="2" y="2" rx="5" fill="#00d4ff"/><polygon points="10,8 10,16 17,12" fill="#fff"/></svg>
+          <span className="top-bar-brand">VidForge Pro</span>
         </div>
-        <div className="navbar-divider" />
+        <div className="top-bar-divider" />
         <input
           id="project-name-input"
-          className="navbar-project-name"
+          className="top-bar-project-name"
           value={projectName}
           onChange={e => setProjectName(e.target.value)}
           title="Project name"
         />
-        {isDirty && <span className="navbar-dirty" title="Unsaved changes">●</span>}
-        <div className="navbar-divider" />
+        {isDirty && <span className="top-bar-dirty" title="Unsaved changes">●</span>}
+        <div className="top-bar-divider" />
         <div className="aspect-ratio-selector">
           <AspectRatioIcon />
           <select
@@ -58,14 +58,14 @@ export default function Header() {
           </select>
         </div>
       </div>
-      <div className="navbar-right">
-        <button className="navbar-btn" onClick={() => setShowOpenProject(true)} title="Open Project"><FolderOpenIcon /></button>
-        <button className="navbar-btn" onClick={() => newProject()} title="New Project (Ctrl+Shift+N)"><PlusIcon /></button>
-        <div className="navbar-divider" />
-        <button className="navbar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)"><UndoIcon /></button>
-        <button className="navbar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
-        <button className="navbar-btn navbar-save" onClick={handleSave} title="Save (Ctrl+S)"><SaveIcon /></button>
-        <button className="navbar-export-btn" onClick={() => setShowExport(true)}>
+      <div className="top-bar-right">
+        <button className="top-bar-btn" onClick={() => setShowOpenProject(true)} title="Open Project"><FolderOpenIcon /></button>
+        <button className="top-bar-btn" onClick={() => newProject()} title="New Project (Ctrl+Shift+N)"><PlusIcon /></button>
+        <div className="top-bar-divider" />
+        <button className="top-bar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)"><UndoIcon /></button>
+        <button className="top-bar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
+        <button className="top-bar-btn top-bar-save" onClick={handleSave} title="Save (Ctrl+S)"><SaveIcon /></button>
+        <button className="top-bar-export-btn" onClick={() => setShowExport(true)}>
           <DownloadIcon />
           <span>Export</span>
         </button>

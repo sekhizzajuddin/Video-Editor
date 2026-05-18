@@ -5,9 +5,19 @@ import { useDraggableClip, detectDragZone } from '../engine/useDraggableClip';
 import { formatTime } from '../utils/fileUtils';
 import type { Clip, TransitionType, Marker } from '../types';
 
-const TRACK_HEIGHT = 56;
+const TRACK_HEIGHTS: Record<string, number> = {
+  video: 64,
+  audio: 48,
+  text: 40,
+  sticker: 40,
+};
+const DEFAULT_TRACK_HEIGHT = 56;
 const RULER_HEIGHT = 28;
 const HEADER_WIDTH = 120;
+
+function getTrackHeight(type: string): number {
+  return TRACK_HEIGHTS[type] ?? DEFAULT_TRACK_HEIGHT;
+}
 
 const TRACK_COLORS: Record<string, string> = {
   video: '#3b82f6', audio: '#22c55e', text: '#a855f7', sticker: '#f59e0b',
@@ -128,7 +138,9 @@ export default function Timeline() {
   const { scale, pixelsToTime } = useTimelineMath(tracks, zoom, projectDuration);
   const { pxPerSec } = scale;
   const totalWidth = Math.max(projectDuration * pxPerSec + 160, 800);
-  const totalTracksH = Math.max(tracks.length * TRACK_HEIGHT, 80);
+  const totalTracksH = useMemo(() => {
+    return tracks.reduce((sum, t) => sum + getTrackHeight(t.type), 0);
+  }, [tracks]);
 
   const { snapLine, onDragStart, onDragMove, onDragEnd } = useDraggableClip(pxPerSec, TRACK_HEIGHT);
 
@@ -221,10 +233,11 @@ export default function Timeline() {
       if (!isSelecting || !selectionBox) { setIsSelecting(false); setSelectionBox(null); return; }
       // Find clips within selection box
       const selected: string[] = [];
+      let trackTopOffset = 0;
       tracks.forEach((track, ti) => {
-        const trackTop = ti * TRACK_HEIGHT;
-        const trackBottom = trackTop + TRACK_HEIGHT;
-        if (selectionBox.y < trackBottom && selectionBox.y + selectionBox.h > trackTop) {
+        const trackH = getTrackHeight(track.type);
+        const trackBottom = trackTopOffset + trackH;
+        if (selectionBox.y < trackBottom && selectionBox.y + selectionBox.h > trackTopOffset) {
           track.clips.forEach(clip => {
             const clipLeft = clip.startAt * pxPerSec;
             const clipRight = clipLeft + clip.duration * pxPerSec;
@@ -233,6 +246,7 @@ export default function Timeline() {
             }
           });
         }
+        trackTopOffset += trackH;
       });
       if (selected.length > 0) {
         setSelectedClipIds(selected);
@@ -339,8 +353,21 @@ export default function Timeline() {
     const x = e.clientX - rect.left + (tracksRef.current?.scrollLeft ?? 0);
     const y = e.clientY - rect.top;
     const time = Math.max(0, pixelsToTime(x));
-    const ti   = Math.max(0, Math.floor(y / TRACK_HEIGHT));
-    const track = tracks[ti];
+
+    // Find which track the drop is on using dynamic heights
+    let trackTopOffset = 0;
+    let targetTrackIndex = -1;
+    for (let i = 0; i < tracks.length; i++) {
+      const trackH = getTrackHeight(tracks[i].type);
+      if (y >= trackTopOffset && y < trackTopOffset + trackH) {
+        targetTrackIndex = i;
+        break;
+      }
+      trackTopOffset += trackH;
+    }
+    if (targetTrackIndex === -1) targetTrackIndex = tracks.length - 1;
+
+    const track = tracks[targetTrackIndex];
     if (!track) return;
     const targetType: 'video' | 'audio' = mf.type === 'audio' ? 'audio' : 'video';
     if (track.type !== targetType) return; // type safety
@@ -353,20 +380,6 @@ export default function Timeline() {
 
   const handleSplit  = () => { const id = activeClipId || selectedClipIds[0]; if (id) { pushHistory(); splitClip(id, currentTime); } };
   const handleDelete = () => { if (selectedClipIds.length) { pushHistory(); removeSelectedClips(); } };
-
-  // Transition zones: find adjacent clip pairs
-  const transitionZones = useMemo(() => {
-    const zones: { clipId: string; x: number; trackIdx: number; type?: TransitionType }[] = [];
-    tracks.forEach((track, ti) => {
-      const sorted = [...track.clips].sort((a, b) => a.startAt - b.startAt);
-      for (let ci = 0; ci < sorted.length - 1; ci++) {
-        const a = sorted[ci], b = sorted[ci + 1];
-        const gap = b.startAt - (a.startAt + a.duration);
-        if (gap < 0.6) zones.push({ clipId: a.id, x: (a.startAt + a.duration) * pxPerSec, trackIdx: ti, type: a.transition?.type });
-      }
-    });
-    return zones;
-  }, [tracks, pxPerSec]);
 
   // Clip count for status bar
   const clipCount = useMemo(() => tracks.reduce((sum, t) => sum + t.clips.length, 0), [tracks]);
@@ -429,31 +442,34 @@ export default function Timeline() {
         <div className="tl-tracks-row">
           {/* Track headers (sticky left column) */}
           <div className="tl-headers-col" ref={headersRef} style={{ width: HEADER_WIDTH }}>
-            {tracks.map(t => (
-              <div key={t.id} className="tl-track-header" style={{ height: TRACK_HEIGHT }}>
-                <div className="track-dot" style={{ background: TRACK_COLORS[t.type] || '#666' }} />
-                <div className="track-header-content">
-                  <span className="track-name">{t.name}</span>
-                  <span className="track-type-label">{t.type}</span>
+            {tracks.map(t => {
+              const trackH = getTrackHeight(t.type);
+              return (
+                <div key={t.id} className="tl-track-header" style={{ height: trackH }}>
+                  <div className="track-dot" style={{ background: TRACK_COLORS[t.type] || '#666' }} />
+                  <div className="track-header-content">
+                    <span className="track-name">{t.name}</span>
+                    <span className="track-type-label">{t.type}</span>
+                  </div>
+                  <div className="track-header-actions">
+                    <button className="track-icon-btn" title={t.visible ? 'Hide' : 'Show'}
+                      onClick={() => updateTrack(t.id, { visible: !t.visible })}>
+                      {t.visible ? Ico.eye : Ico.eyeOff}
+                    </button>
+                    <button className={`track-icon-btn ${(t as any).solo ? 'active' : ''}`} title={(t as any).solo ? 'Unsolo' : 'Solo'}
+                      onClick={() => updateTrack(t.id, { solo: !(t as any).solo } as any)}>
+                      {Ico.solo}
+                    </button>
+                    <button className="track-icon-btn" title={t.locked ? 'Unlock' : 'Lock'}
+                      onClick={() => updateTrack(t.id, { locked: !t.locked })}>
+                      {t.locked ? Ico.lock : Ico.unlock}
+                    </button>
+                    <button className="track-icon-btn track-del-btn" title="Remove track"
+                      onClick={() => removeTrack(t.id)}>×</button>
+                  </div>
                 </div>
-                <div className="track-header-actions">
-                  <button className="track-icon-btn" title={t.visible ? 'Hide' : 'Show'}
-                    onClick={() => updateTrack(t.id, { visible: !t.visible })}>
-                    {t.visible ? Ico.eye : Ico.eyeOff}
-                  </button>
-                  <button className={`track-icon-btn ${(t as any).solo ? 'active' : ''}`} title={(t as any).solo ? 'Unsolo' : 'Solo'}
-                    onClick={() => updateTrack(t.id, { solo: !(t as any).solo } as any)}>
-                    {Ico.solo}
-                  </button>
-                  <button className="track-icon-btn" title={t.locked ? 'Unlock' : 'Lock'}
-                    onClick={() => updateTrack(t.id, { locked: !t.locked })}>
-                    {t.locked ? Ico.lock : Ico.unlock}
-                  </button>
-                  <button className="track-icon-btn track-del-btn" title="Remove track"
-                    onClick={() => removeTrack(t.id)}>×</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Clip area */}
@@ -478,10 +494,18 @@ export default function Timeline() {
 
             <div style={{ width: totalWidth, height: totalTracksH, position: 'relative' }}>
               {/* Row backgrounds */}
-              {tracks.map((t, i) => (
-                <div key={`bg-${t.id}`} className={`tl-row-bg ${i % 2 ? 'alt' : ''} ${t.locked ? 'locked' : ''}`}
-                  style={{ top: i * TRACK_HEIGHT, height: TRACK_HEIGHT }} />
-              ))}
+              {(() => {
+                let trackTopOffset = 0;
+                return tracks.map((t, i) => {
+                  const trackH = getTrackHeight(t.type);
+                  const row = (
+                    <div key={`bg-${t.id}`} className={`tl-row-bg ${i % 2 ? 'alt' : ''} ${t.locked ? 'locked' : ''}`}
+                      style={{ top: trackTopOffset, height: trackH }} />
+                  );
+                  trackTopOffset += trackH;
+                  return row;
+                });
+              })()}
 
               {/* Selection box */}
               {selectionBox && (
@@ -494,59 +518,82 @@ export default function Timeline() {
               )}
 
               {/* Clips */}
-              {tracks.map((track, ti) =>
-                track.clips.map(clip => {
-                  const left  = clip.startAt * pxPerSec;
-                  const width = Math.max(6, clip.duration * pxPerSec);
-                  const sel   = selectedClipIds.includes(clip.id);
-                  const mf    = media.find(m => m.id === clip.mediaId);
-                  const top   = ti * TRACK_HEIGHT + 2;
-                  const h     = TRACK_HEIGHT - 4;
+              {(() => {
+                let trackTopOffset = 0;
+                return tracks.map((track, ti) => {
+                  const trackH = getTrackHeight(track.type);
+                  const top = trackTopOffset + 2;
+                  const h = trackH - 4;
+                  trackTopOffset += trackH;
 
-                  return (
-                    <div key={clip.id} id={`clip-${clip.id}`}
-                      className={`timeline-clip clip-${clip.trackType} ${sel ? 'selected' : ''} ${!track.visible ? 'hidden-clip' : ''}`}
-                      style={{ left, width, top, height: h }}
-                      onMouseDown={e => onClipMouseDown(e, clip)}
-                      onContextMenu={e => handleContextMenu(e, clip.id)}
-                      onMouseEnter={() => setHoverClip({ id: clip.id, mf, clip })}
-                      onMouseLeave={() => setHoverClip(null)}>
+                  return track.clips.map(clip => {
+                    const left  = clip.startAt * pxPerSec;
+                    const width = Math.max(6, clip.duration * pxPerSec);
+                    const sel   = selectedClipIds.includes(clip.id);
+                    const mf    = media.find(m => m.id === clip.mediaId);
 
-                      {/* Filmstrip for video clips */}
-                      {clip.trackType === 'video' && mf?.thumbnails?.length ? (
-                        <Filmstrip thumbnails={mf.thumbnails} clipWidth={width} height={h} />
-                      ) : null}
+                    return (
+                      <div key={clip.id} id={`clip-${clip.id}`}
+                        className={`timeline-clip clip-${clip.trackType} ${sel ? 'selected' : ''} ${!track.visible ? 'hidden-clip' : ''}`}
+                        style={{ left, width, top, height: h }}
+                        onMouseDown={e => onClipMouseDown(e, clip)}
+                        onContextMenu={e => handleContextMenu(e, clip.id)}
+                        onMouseEnter={() => setHoverClip({ id: clip.id, mf, clip })}
+                        onMouseLeave={() => setHoverClip(null)}>
 
-                      {/* Waveform for audio clips + video clips with audio */}
-                      {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? (
-                        <WaveformBars waveform={mf.waveform} height={h} />
-                      ) : null}
+                        {/* Filmstrip for video clips */}
+                        {clip.trackType === 'video' && mf?.thumbnails?.length ? (
+                          <Filmstrip thumbnails={mf.thumbnails} clipWidth={width} height={h} />
+                        ) : null}
 
-                      {/* Text / Sticker content */}
-                      {clip.textOverlay && <div className="clip-text-label">{clip.textOverlay.text}</div>}
-                      {clip.sticker     && <div className="clip-sticker-label">{clip.sticker}</div>}
+                        {/* Waveform for audio clips + video clips with audio */}
+                        {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? (
+                          <WaveformBars waveform={mf.waveform} height={h} />
+                        ) : null}
 
-                      {/* Overlay: name + duration */}
-                      <div className="clip-overlay">
-                        <span className="clip-label">
-                          {mf?.name?.replace(/\.[^.]+$/, '') || clip.textOverlay?.text || clip.sticker || 'Clip'}
-                        </span>
-                        <span className="clip-duration-label">{clip.duration.toFixed(1)}s</span>
+                        {/* Text / Sticker content */}
+                        {clip.textOverlay && <div className="clip-text-label">{clip.textOverlay.text}</div>}
+                        {clip.sticker     && <div className="clip-sticker-label">{clip.sticker}</div>}
+
+                        {/* Overlay: name + duration */}
+                        <div className="clip-overlay">
+                          <span className="clip-label">
+                            {mf?.name?.replace(/\.[^.]+$/, '') || clip.textOverlay?.text || clip.sticker || 'Clip'}
+                          </span>
+                          <span className="clip-duration-label">{clip.duration.toFixed(1)}s</span>
+                        </div>
+
+                        <div className="trim-handle left" />
+                        <div className="trim-handle right" />
                       </div>
-
-                      <div className="trim-handle left" />
-                      <div className="trim-handle right" />
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  });
+                });
+              })()}
 
               {/* Transition zones */}
-              {transitionZones.map(z => (
-                <TransitionZone key={`tz-${z.clipId}`}
-                  clipId={z.clipId} x={z.x}
-                  y={z.trackIdx * TRACK_HEIGHT} type={z.type} />
-              ))}
+              {(() => {
+                let trackTopOffset = 0;
+                return tracks.map((track, ti) => {
+                  const trackH = getTrackHeight(track.type);
+                  const y = trackTopOffset;
+                  trackTopOffset += trackH;
+
+                  const sorted = [...track.clips].sort((a, b) => a.startAt - b.startAt);
+                  return sorted.slice(0, -1).map((a, ci) => {
+                    const b = sorted[ci + 1];
+                    const gap = b.startAt - (a.startAt + a.duration);
+                    if (gap < 0.6) {
+                      return (
+                        <TransitionZone key={`tz-${a.id}`}
+                          clipId={a.id} x={(a.startAt + a.duration) * pxPerSec}
+                          y={y} type={a.transition?.type} />
+                      );
+                    }
+                    return null;
+                  });
+                });
+              })()}
 
               {/* Playhead */}
               <div className="playhead" style={{ left: currentTime * pxPerSec, height: totalTracksH }} />
