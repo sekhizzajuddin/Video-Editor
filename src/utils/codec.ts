@@ -19,6 +19,10 @@ export interface TextOverlayOptions {
   shadowOffsetX?: number;
   shadowOffsetY?: number;
   maxWidth?: number;
+  outlineColor?: string;
+  outlineWidth?: number;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
 }
 
 export interface WaveformOptions {

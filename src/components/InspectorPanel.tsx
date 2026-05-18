@@ -220,20 +220,20 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
         {clip.filters?.chromaKey?.enabled && (
           <>
             <Row label="Color">
-              <input className="inspector-input" type="color" value={clip.filters.chromaKey.color}
-                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters.chromaKey!, color: e.target.value } } })} />
+              <input className="inspector-input" type="color" value={clip.filters!.chromaKey!.color}
+                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters!.chromaKey!, color: e.target.value } } })} />
             </Row>
             <Row label="Similarity">
               <input className="inspector-range" type="range" min={0} max={1} step={0.05}
-                value={clip.filters.chromaKey.similarity}
-                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters.chromaKey!, similarity: parseFloat(e.target.value) } } })} />
-              <span className="inspector-range-value">{clip.filters.chromaKey.similarity.toFixed(2)}</span>
+                value={clip.filters!.chromaKey!.similarity}
+                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters!.chromaKey!, similarity: parseFloat(e.target.value) } } })} />
+              <span className="inspector-range-value">{clip.filters!.chromaKey!.similarity.toFixed(2)}</span>
             </Row>
             <Row label="Smoothness">
               <input className="inspector-range" type="range" min={0} max={1} step={0.05}
-                value={clip.filters.chromaKey.smoothness}
-                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters.chromaKey!, smoothness: parseFloat(e.target.value) } } })} />
-              <span className="inspector-range-value">{clip.filters.chromaKey.smoothness.toFixed(2)}</span>
+                value={clip.filters!.chromaKey!.smoothness}
+                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters!.chromaKey!, smoothness: parseFloat(e.target.value) } } })} />
+              <span className="inspector-range-value">{clip.filters!.chromaKey!.smoothness.toFixed(2)}</span>
             </Row>
           </>
         )}
@@ -250,9 +250,9 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
         {clip.filters?.vignette?.enabled && (
           <Row label="Intensity">
             <input className="inspector-range" type="range" min={0} max={1} step={0.05}
-              value={clip.filters.vignette.intensity}
-              onChange={e => update({ filters: { ...clip.filters!, vignette: { ...clip.filters.vignette!, intensity: parseFloat(e.target.value) } } })} />
-            <span className="inspector-range-value">{Math.round(clip.filters.vignette.intensity * 100)}%</span>
+              value={clip.filters!.vignette!.intensity}
+              onChange={e => update({ filters: { ...clip.filters!, vignette: { ...clip.filters!.vignette!, intensity: parseFloat(e.target.value) } } })} />
+            <span className="inspector-range-value">{Math.round(clip.filters!.vignette!.intensity * 100)}%</span>
           </Row>
         )}
       </div>

@@ -74,7 +74,7 @@ export default function App() {
     }
     if (e.key === 'Escape') {
       store.setSelectedClipIds([]); store.setActiveClipId(null);
-      store.setShowExport(false); store.setShowShortcuts(false); store.setShowOpenProject(false); return;
+      store.setShowExport(false);       store.setshowShortcuts(false); store.setShowOpenProject(false); return;
     }
     if (e.key === 'Delete' || e.key === 'Backspace') { if (store.selectedClipIds.length > 0) store.removeSelectedClips(); return; }
     if (meta && e.key === 'z') { e.preventDefault(); e.shiftKey ? store.redo() : store.undo(); return; }
@@ -95,7 +95,7 @@ export default function App() {
     }
     if (e.key === 'i') { store.toggleMarker(currentTime); return; }
     if (e.key === 'o') { cropToMarkers(); return; }
-    if (e.key === '?' || (meta && e.key === '/')) { store.setShowShortcuts(!store.showShortcuts); return; }
+    if (e.key === '?' || (meta && e.key === '/')) { store.setshowShortcuts(!store.showShortcuts); return; }
     if (e.key === 'n' && meta && e.shiftKey) { e.preventDefault(); newProject(); return; }
   }, [currentTime, cropToMarkers, newProject, togglePlayback]);
 

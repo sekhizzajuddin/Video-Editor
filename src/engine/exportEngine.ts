@@ -243,7 +243,7 @@ function renderProjectFrame(
 }
 
 function renderClipLayer(
-  ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, clip: any,
+  ctx: CanvasRenderingContext2D, _canvas: HTMLCanvasElement, clip: any,
   mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number, w: number, h: number,
 ) {
   const tr = clip.transform || { x: 0, y: 0, scale: 1, rotation: 0 };

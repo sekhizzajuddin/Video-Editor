@@ -19,11 +19,11 @@ const SHORTCUTS = [
 ];
 
 export default function ShortcutsModal() {
-  const { showShortcuts, setShowShortcuts } = useEditorStore();
+  const { showShortcuts, setshowShortcuts } = useEditorStore();
   if (!showShortcuts) return null;
 
   return (
-    <div className="modal-overlay" onClick={() => setShowShortcuts(false)}>
+    <div className="modal-overlay" onClick={() => setshowShortcuts(false)}>
       <div className="modal shortcuts-modal" onClick={(e) => e.stopPropagation()}>
         <h2>Keyboard Shortcuts</h2>
         <div className="shortcuts-list">
@@ -34,7 +34,7 @@ export default function ShortcutsModal() {
             </div>
           ))}
         </div>
-        <button className="btn secondary" onClick={() => setShowShortcuts(false)}>Close</button>
+        <button className="btn secondary" onClick={() => setshowShortcuts(false)}>Close</button>
       </div>
     </div>
   );
