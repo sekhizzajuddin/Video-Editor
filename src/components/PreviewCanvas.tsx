@@ -19,6 +19,39 @@ function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
 }
 
+// Performance monitor for FPS tracking
+class PerformanceMonitor {
+  private frames = 0;
+  private lastTime = performance.now();
+  private fps = 0;
+  private frameTimes: number[] = [];
+
+  tick(): number {
+    this.frames++;
+    const now = performance.now();
+    const delta = now - this.lastTime;
+
+    if (delta >= 1000) {
+      this.fps = Math.round((this.frames * 1000) / delta);
+      this.frames = 0;
+      this.lastTime = now;
+    }
+
+    // Track frame time for smoothness
+    this.frameTimes.push(delta);
+    if (this.frameTimes.length > 60) this.frameTimes.shift();
+
+    return this.fps;
+  }
+
+  getAvgFrameTime(): number {
+    if (this.frameTimes.length === 0) return 0;
+    return this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+  }
+
+  getFPS(): number { return this.fps; }
+}
+
 export default function PreviewCanvas() {
   const {
     project: { tracks, duration: projectDuration, media },
@@ -28,9 +61,11 @@ export default function PreviewCanvas() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<RenderEngine | null>(null);
+  const perfRef = useRef<PerformanceMonitor>(new PerformanceMonitor());
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
   const [_, setIsFullscreen] = useState(false);
+  const [fps, setFps] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(480);
@@ -68,7 +103,13 @@ export default function PreviewCanvas() {
     if (!engine) return;
     const state = useEditorStore.getState();
     engine.renderFrame({ time, tracks: state.project.tracks, getMediaUrl: getUrl });
-  }, [getUrl]);
+
+    // Track FPS
+    const currentFps = perfRef.current.tick();
+    if (currentFps !== fps) {
+      setFps(currentFps);
+    }
+  }, [getUrl, fps]);
 
   const onFrame = useCallback((time: number) => { drawFrame(time); }, [drawFrame]);
   const engine = usePlaybackEngine(onFrame);
@@ -242,6 +283,11 @@ export default function PreviewCanvas() {
             />
           </div>
           <button className="preview-btn" onClick={toggleFullscreen}><FullscreenIcon /></button>
+          {isPlaying && (
+            <span style={{ fontSize: 10, fontFamily: 'monospace', color: fps >= 50 ? '#22c55e' : fps >= 30 ? '#f59e0b' : '#ef4444', marginLeft: 8 }}>
+              {fps} FPS
+            </span>
+          )}
         </div>
       </div>
     </div>

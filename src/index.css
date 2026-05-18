@@ -38,6 +38,56 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* GPU acceleration hints */
+.gpu-accelerated {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Hardware-accelerated canvas */
+canvas {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/* Off-screen panel optimization */
+.inspector-panel.collapsed,
+.asset-library {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
+
+/* Timeline clip GPU hints */
+.timeline-clip {
+  will-change: transform, left, width;
+  contain: layout style paint;
+}
+
+/* Playhead GPU acceleration */
+.playhead,
+.playhead-triangle {
+  will-change: left;
+  transform: translateZ(0);
+}
+
+/* Transform box GPU hints */
+.transform-box {
+  will-change: transform, left, top, width, height;
+  transform: translateZ(0);
+}
+
+/* Preview canvas GPU layer */
+.preview-canvas {
+  will-change: contents;
+}
+
+/* Scrollbar GPU hints */
+.tl-clips-scroll {
+  contain: strict;
+}
+
 body {
   font-family: var(--font);
   background: var(--bg-deepest);
@@ -45,6 +95,10 @@ body {
   overflow: hidden;
   height: 100vh;
   font-size: 13px;
+  /* Prevent layout thrashing */
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root { height: 100vh; }
