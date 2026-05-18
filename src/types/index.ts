@@ -80,6 +80,7 @@ export interface Track {
   name: string;
   locked: boolean;
   visible: boolean;
+  solo?: boolean;
   clips: Clip[];
 }
 

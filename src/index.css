@@ -473,13 +473,28 @@ body {
 .playhead {
   position: absolute; top: 0; width: 2px;
   background: var(--danger); z-index: 20; pointer-events: none;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
 }
 .playhead-triangle {
   position: absolute; top: 0; width: 0; height: 0;
   border-left: 6px solid transparent; border-right: 6px solid transparent;
   border-top: 8px solid var(--danger); transform: translateX(-50%);
   z-index: 21; pointer-events: none;
+  filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.5));
 }
+
+/* Timeline markers on ruler */
+.tl-marker {
+  position: absolute; top: 0; width: 2px; height: 100%;
+  cursor: pointer; z-index: 15;
+}
+.tl-marker-flag {
+  position: absolute; top: 0; left: -4px;
+  width: 10px; height: 100%;
+  border-radius: 0 0 2px 2px;
+  opacity: 0.8;
+}
+.tl-marker:hover .tl-marker-flag { opacity: 1; transform: scaleY(1.1); }
 
 /* Grid tracks */
 .timeline-grid-tracks {
@@ -825,4 +840,110 @@ body {
 .transform-handle.top-right { top: -4px; right: -4px; cursor: nesw-resize; }
 .transform-handle.bottom-left { bottom: -4px; left: -4px; cursor: nesw-resize; }
 .transform-handle.bottom-right { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+/* ======================== */
+/* Timeline Pro Features    */
+/* ======================== */
+
+/* Selection box */
+.tl-selection-box {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  background: rgba(59, 130, 246, 0.08);
+  z-index: 15;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+/* Status bar */
+.tl-status-bar {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 12px; background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--text-dim);
+  flex-shrink: 0; height: 24px;
+}
+.tl-status-item { font-family: var(--font-mono); }
+.tl-status-sep { opacity: 0.4; }
+.tl-status-badge {
+  background: var(--accent); color: #fff;
+  padding: 1px 6px; border-radius: 3px;
+  font-size: 9px; font-weight: 600;
+  margin-left: 4px;
+}
+
+/* Hover preview */
+.tl-hover-preview {
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 4px; z-index: 50;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+.tl-hover-preview img { width: 120px; height: 68px; object-fit: cover; border-radius: 2px; display: block; }
+.tl-hover-info { display: flex; justify-content: space-between; padding: 3px 4px 0; gap: 8px; }
+.tl-hover-name { font-size: 9px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+.tl-hover-dur { font-size: 9px; color: var(--text-dim); font-family: var(--font-mono); }
+
+/* Track header solo button active */
+.track-icon-btn.active { color: var(--warning); background: rgba(245, 158, 11, 0.15); }
+
+/* Timeline section with status bar */
+.timeline-section {
+  height: 38vh; min-height: 180px; flex-shrink: 0;
+  background: var(--bg-primary); border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* Clip selected glow effect */
+.timeline-clip.selected {
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.3), 0 0 12px rgba(255,255,255,0.15);
+}
+
+/* Clip hover lift */
+.timeline-clip {
+  transition: border-color var(--transition), transform 0.15s ease, box-shadow 0.15s ease;
+}
+.timeline-clip:hover {
+  border-color: var(--accent-dim);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* Ruler marks styling */
+.ruler-mark { position: absolute; top: 0; height: 100%; pointer-events: none; }
+.ruler-mark.major { border-left: 1px solid rgba(255,255,255,0.15); }
+.ruler-mark.minor { border-left: 1px solid rgba(255,255,255,0.05); }
+
+/* Track header content */
+.track-header-content { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.track-name { font-size: 11px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track-type-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Track dot */
+.track-dot { width: 4px; height: 24px; border-radius: 2px; flex-shrink: 0; }
+
+/* Timeline toolbar center hint */
+.timeline-toolbar-center { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+/* Smooth scrollbar */
+.tl-clips-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.tl-clips-scroll::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 4px; }
+.tl-clips-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+.tl-clips-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Transition zone improvements */
+.tl-transition-zone {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--bg-tertiary); border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: var(--text-dim);
+  cursor: pointer; transition: all var(--transition);
+  z-index: 30; user-select: none;
+}
+.tl-transition-zone:hover { border-color: var(--accent); color: var(--accent); transform: scale(1.2); }
+.tl-transition-zone.drag-over { border-color: var(--accent); background: rgba(59,130,246,0.2); color: var(--accent); transform: scale(1.3); }
+.tl-transition-zone.has { background: rgba(59,130,246,0.2); border-color: var(--accent-dim); color: var(--accent); }
+.tl-transition-zone.has:hover { background: rgba(239,68,68,0.2); border-color: var(--danger); color: var(--danger); }
 

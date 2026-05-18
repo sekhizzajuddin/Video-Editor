@@ -54,6 +54,24 @@ export default function App() {
     const meta = e.ctrlKey || e.metaKey;
 
     if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlayback(); return; }
+    // JKL playback controls
+    if (e.key === 'k' || e.key === 'K') { store.setIsPlaying(false); store.setCurrentTime(store.currentTime); return; }
+    if (e.key === 'l' || e.key === 'L') { if (!store.isPlaying) { e.preventDefault(); togglePlayback(); } return; }
+    if (e.key === 'j' || e.key === 'J') { store.setIsPlaying(false); store.setCurrentTime(Math.max(0, store.currentTime - 1)); return; }
+    // Arrow key frame navigation
+    if (e.key === 'ArrowLeft') { e.preventDefault(); store.setCurrentTime(Math.max(0, store.currentTime - (e.shiftKey ? 5 : 1/30))); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); store.setCurrentTime(Math.min(store.project.duration, store.currentTime + (e.shiftKey ? 5 : 1/30))); return; }
+    // Home/End navigation
+    if (e.key === 'Home') { e.preventDefault(); store.setCurrentTime(0); return; }
+    if (e.key === 'End') { e.preventDefault(); store.setCurrentTime(store.project.duration); return; }
+    // Split shortcut
+    if (e.key === 's' || e.key === 'S') {
+      if (!meta) {
+        const id = store.activeClipId || store.selectedClipIds[0];
+        if (id) { store.pushHistory(); store.splitClip(id, store.currentTime); }
+        return;
+      }
+    }
     if (e.key === 'Escape') {
       store.setSelectedClipIds([]); store.setActiveClipId(null);
       store.setShowExport(false); store.setShowShorcuts(false); store.setShowOpenProject(false); return;

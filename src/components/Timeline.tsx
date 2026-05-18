@@ -3,7 +3,7 @@ import { useEditorStore } from '../store/editorStore';
 import { useTimelineMath } from '../engine/useTimelineMath';
 import { useDraggableClip, detectDragZone } from '../engine/useDraggableClip';
 import { formatTime } from '../utils/fileUtils';
-import type { Clip, TransitionType } from '../types';
+import type { Clip, TransitionType, Marker } from '../types';
 
 const TRACK_HEIGHT = 56;
 const RULER_HEIGHT = 28;
@@ -27,15 +27,20 @@ const Ico = {
   trash:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>,
   zoomIn:   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>,
   zoomOut:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>,
+  fit:      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>,
   plus:     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   eye:      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
   eyeOff:   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
   lock:     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
   unlock:   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>,
   ripple:   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
+  solo:     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
+  marker:   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>,
 };
 
 interface CtxMenu { x: number; y: number; clipId: string; }
+
+interface HoverClip { id: string; mf?: { name: string; thumbnail?: string; duration?: number }; clip: Clip; }
 
 // ─── Waveform bars component ──────────────────────────────────────
 function WaveformBars({ waveform, height }: { waveform: number[]; height: number }) {
@@ -106,8 +111,13 @@ export default function Timeline() {
 
   const rulerRef  = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
+  const headersRef = useRef<HTMLDivElement>(null);
   const activeDragRef = useRef<'none' | 'move' | 'trim-start' | 'trim-end'>('none');
   const [ctxMenu, setCtxMenu]   = useState<CtxMenu | null>(null);
+  const [hoverClip, setHoverClip] = useState<HoverClip | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const selectStartRef = useRef({ x: 0, y: 0 });
 
   const projectDuration = useMemo(() => {
     let max = 30;
@@ -126,7 +136,39 @@ export default function Timeline() {
   const onTracksScroll = useCallback(() => {
     if (rulerRef.current && tracksRef.current)
       rulerRef.current.scrollLeft = tracksRef.current.scrollLeft;
+    if (headersRef.current && tracksRef.current)
+      headersRef.current.scrollTop = tracksRef.current.scrollTop;
   }, []);
+
+  // Wheel handler: Ctrl+Scroll = zoom, Shift+Scroll = horizontal
+  const onWheel = useCallback((e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(Math.max(0.05, Math.min(5, zoom + delta)));
+    } else if (e.shiftKey) {
+      e.preventDefault();
+      if (tracksRef.current) {
+        tracksRef.current.scrollLeft += e.deltaY;
+      }
+    }
+  }, [zoom, setZoom]);
+
+  useEffect(() => {
+    const el = tracksRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [onWheel]);
+
+  // Fit timeline to screen
+  const fitToScreen = useCallback(() => {
+    if (!tracksRef.current) return;
+    const clientW = tracksRef.current.clientWidth - HEADER_WIDTH;
+    const newPxPerSec = clientW / projectDuration;
+    const newZoom = newPxPerSec / 100;
+    setZoom(Math.max(0.05, Math.min(5, newZoom)));
+  }, [projectDuration, setZoom]);
 
   // Auto-scroll playhead during playback
   useEffect(() => {
@@ -158,6 +200,56 @@ export default function Timeline() {
     window.addEventListener('click', h);
     return () => window.removeEventListener('click', h);
   }, []);
+
+  // Selection box mouse handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isSelecting || !tracksRef.current) return;
+      const rect = tracksRef.current.getBoundingClientRect();
+      const x = Math.max(0, e.clientX - rect.left + tracksRef.current.scrollLeft);
+      const y = Math.max(0, e.clientY - rect.top + tracksRef.current.scrollTop);
+      const startX = selectStartRef.current.x;
+      const startY = selectStartRef.current.y;
+      setSelectionBox({
+        x: Math.min(startX, x),
+        y: Math.min(startY, y),
+        w: Math.abs(x - startX),
+        h: Math.abs(y - startY),
+      });
+    };
+    const handleMouseUp = () => {
+      if (!isSelecting || !selectionBox) { setIsSelecting(false); setSelectionBox(null); return; }
+      // Find clips within selection box
+      const selected: string[] = [];
+      tracks.forEach((track, ti) => {
+        const trackTop = ti * TRACK_HEIGHT;
+        const trackBottom = trackTop + TRACK_HEIGHT;
+        if (selectionBox.y < trackBottom && selectionBox.y + selectionBox.h > trackTop) {
+          track.clips.forEach(clip => {
+            const clipLeft = clip.startAt * pxPerSec;
+            const clipRight = clipLeft + clip.duration * pxPerSec;
+            if (selectionBox.x < clipRight && selectionBox.x + selectionBox.w > clipLeft) {
+              selected.push(clip.id);
+            }
+          });
+        }
+      });
+      if (selected.length > 0) {
+        setSelectedClipIds(selected);
+        setActiveClipId(selected[0]);
+      }
+      setIsSelecting(false);
+      setSelectionBox(null);
+    };
+    if (isSelecting) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isSelecting, selectionBox, tracks, pxPerSec, setSelectedClipIds, setActiveClipId]);
 
   // Ruler marks
   const rulerMarks = useMemo(() => {
@@ -199,11 +291,27 @@ export default function Timeline() {
 
   const ctxAction = (action: string) => {
     if (!ctxMenu) return;
+    const store = useEditorStore.getState();
     if (action === 'delete') { pushHistory(); removeClip(ctxMenu.clipId); }
     else if (action === 'split') { pushHistory(); splitClip(ctxMenu.clipId, currentTime); }
     else if (action === 'copy') {
-      const c = useEditorStore.getState().getClip(ctxMenu.clipId);
-      if (c) useEditorStore.getState().setCopiedClip(JSON.parse(JSON.stringify(c)));
+      const c = store.getClip(ctxMenu.clipId);
+      if (c) store.setCopiedClip(JSON.parse(JSON.stringify(c)));
+    }
+    else if (action === 'duplicate') {
+      const c = store.getClip(ctxMenu.clipId);
+      if (c) {
+        const newClip = store.addClip(c.trackType, c.mediaId, c.sticker);
+        if (newClip) store.updateClip(newClip.id, { ...c, id: newClip.id, startAt: c.startAt + c.duration });
+      }
+    }
+    else if (action === 'freeze') {
+      const c = store.getClip(ctxMenu.clipId);
+      if (c) store.updateClip(c.id, { speed: 0 });
+    }
+    else if (action === 'reverse') {
+      const c = store.getClip(ctxMenu.clipId);
+      if (c) store.updateClip(c.id, { speed: -(c.speed || 1) });
     }
     setCtxMenu(null);
   };
@@ -249,6 +357,9 @@ export default function Timeline() {
     return zones;
   }, [tracks, pxPerSec]);
 
+  // Clip count for status bar
+  const clipCount = useMemo(() => tracks.reduce((sum, t) => sum + t.clips.length, 0), [tracks]);
+
   return (
     <section className="timeline-section">
       {/* ── Toolbar ── */}
@@ -258,14 +369,18 @@ export default function Timeline() {
           <button className="tl-btn" onClick={handleDelete} title="Delete (Del)">{Ico.trash}</button>
           <button className={`tl-btn ${rippleDelete ? 'active' : ''}`} onClick={() => setRippleDelete(!rippleDelete)} title="Ripple delete">{Ico.ripple}</button>
           <div className="toolbar-sep" />
+          <button className="tl-btn" onClick={() => useEditorStore.getState().toggleMarker(currentTime)} title="Add Marker (M)">{Ico.marker}</button>
+          <div className="toolbar-sep" />
           <button className="tl-btn add-track-btn" onClick={() => addTrack('video')}  title="Add Video track">{Ico.plus}<span>V</span></button>
           <button className="tl-btn add-track-btn" onClick={() => addTrack('audio')}  title="Add Audio track">{Ico.plus}<span>A</span></button>
           <button className="tl-btn add-track-btn" onClick={() => addTrack('text')}   title="Add Text track">{Ico.plus}<span>T</span></button>
         </div>
         <div className="timeline-toolbar-center">
-          <span className="tl-hint">SPACE play · S split · Del delete · drag clips · drag transitions between clips</span>
+          <span className="tl-hint">SPACE play · S split · Del delete · M marker · Ctrl+Scroll zoom · Shift+Scroll pan · drag to multi-select</span>
         </div>
         <div className="timeline-toolbar-right">
+          <button className="tl-btn" onClick={fitToScreen} title="Fit to Screen">{Ico.fit}</button>
+          <div className="toolbar-sep" />
           <button className="tl-btn" onClick={() => setZoom(Math.max(0.05, zoom - 0.15))}>{Ico.zoomOut}</button>
           <input type="range" className="timeline-zoom-slider" min={0.05} max={5} step={0.05} value={zoom}
             onChange={e => setZoom(parseFloat(e.target.value))} />
@@ -287,6 +402,13 @@ export default function Timeline() {
                   {m.major && <span className="ruler-label">{formatTime(m.t)}</span>}
                 </div>
               ))}
+              {/* Timeline markers on ruler */}
+              {useEditorStore.getState().project.markers.map((marker: Marker) => (
+                <div key={marker.id} className="tl-marker" style={{ left: marker.time * pxPerSec }}
+                  title={marker.label} onClick={e => { e.stopPropagation(); setCurrentTime(marker.time); }}>
+                  <div className="tl-marker-flag" style={{ background: marker.color }} />
+                </div>
+              ))}
               <div className="playhead-triangle" style={{ left: currentTime * pxPerSec }} />
             </div>
           </div>
@@ -295,7 +417,7 @@ export default function Timeline() {
         {/* Tracks row (both-axis scroll) */}
         <div className="tl-tracks-row">
           {/* Track headers (sticky left column) */}
-          <div className="tl-headers-col" style={{ width: HEADER_WIDTH }}>
+          <div className="tl-headers-col" ref={headersRef} style={{ width: HEADER_WIDTH }}>
             {tracks.map(t => (
               <div key={t.id} className="tl-track-header" style={{ height: TRACK_HEIGHT }}>
                 <div className="track-dot" style={{ background: TRACK_COLORS[t.type] || '#666' }} />
@@ -307,6 +429,10 @@ export default function Timeline() {
                   <button className="track-icon-btn" title={t.visible ? 'Hide' : 'Show'}
                     onClick={() => updateTrack(t.id, { visible: !t.visible })}>
                     {t.visible ? Ico.eye : Ico.eyeOff}
+                  </button>
+                  <button className={`track-icon-btn ${(t as any).solo ? 'active' : ''}`} title={(t as any).solo ? 'Unsolo' : 'Solo'}
+                    onClick={() => updateTrack(t.id, { solo: !(t as any).solo } as any)}>
+                    {Ico.solo}
                   </button>
                   <button className="track-icon-btn" title={t.locked ? 'Unlock' : 'Lock'}
                     onClick={() => updateTrack(t.id, { locked: !t.locked })}>
@@ -322,7 +448,22 @@ export default function Timeline() {
           {/* Clip area */}
           <div className="tl-clips-scroll" ref={tracksRef}
             onScroll={onTracksScroll}
-            onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
+            onDrop={handleDrop} onDragOver={e => e.preventDefault()}
+            onMouseDown={e => {
+              const target = e.target as HTMLElement;
+              if (e.button === 0 && !target.closest('.timeline-clip') && !target.closest('.tl-transition-zone')) {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                selectStartRef.current = {
+                  x: e.clientX - rect.left + tracksRef.current!.scrollLeft,
+                  y: e.clientY - rect.top + tracksRef.current!.scrollTop,
+                };
+                setIsSelecting(true);
+                if (!e.shiftKey && !e.ctrlKey) {
+                  setSelectedClipIds([]);
+                  setActiveClipId(null);
+                }
+              }
+            }}>
 
             <div style={{ width: totalWidth, height: totalTracksH, position: 'relative' }}>
               {/* Row backgrounds */}
@@ -330,6 +471,16 @@ export default function Timeline() {
                 <div key={`bg-${t.id}`} className={`tl-row-bg ${i % 2 ? 'alt' : ''} ${t.locked ? 'locked' : ''}`}
                   style={{ top: i * TRACK_HEIGHT, height: TRACK_HEIGHT }} />
               ))}
+
+              {/* Selection box */}
+              {selectionBox && (
+                <div className="tl-selection-box" style={{
+                  left: selectionBox.x,
+                  top: selectionBox.y,
+                  width: selectionBox.w,
+                  height: selectionBox.h,
+                }} />
+              )}
 
               {/* Clips */}
               {tracks.map((track, ti) =>
@@ -346,7 +497,9 @@ export default function Timeline() {
                       className={`timeline-clip clip-${clip.trackType} ${sel ? 'selected' : ''} ${!track.visible ? 'hidden-clip' : ''}`}
                       style={{ left, width, top, height: h }}
                       onMouseDown={e => onClipMouseDown(e, clip)}
-                      onContextMenu={e => handleContextMenu(e, clip.id)}>
+                      onContextMenu={e => handleContextMenu(e, clip.id)}
+                      onMouseEnter={() => setHoverClip({ id: clip.id, mf, clip })}
+                      onMouseLeave={() => setHoverClip(null)}>
 
                       {/* Filmstrip for video clips */}
                       {clip.trackType === 'video' && mf?.thumbnails?.length ? (
@@ -396,11 +549,39 @@ export default function Timeline() {
       {ctxMenu && (
         <div className="context-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
           <div className="context-item" onClick={() => ctxAction('copy')}>📋 Copy</div>
+          <div className="context-item" onClick={() => ctxAction('duplicate')}>📑 Duplicate</div>
           <div className="context-item" onClick={() => ctxAction('split')}>✂️ Split at playhead</div>
+          <div className="context-separator" />
+          <div className="context-item" onClick={() => ctxAction('freeze')}>❄️ Freeze frame</div>
+          <div className="context-item" onClick={() => ctxAction('reverse')}>⏪ Reverse</div>
           <div className="context-separator" />
           <div className="context-item context-danger" onClick={() => ctxAction('delete')}>🗑 Delete</div>
         </div>
       )}
+
+      {/* Hover preview */}
+      {hoverClip && hoverClip.mf?.thumbnail && (
+        <div className="tl-hover-preview" style={{ left: hoverClip.mf ? 100 : 0, top: -80 }}>
+          <img src={hoverClip.mf.thumbnail} alt="" />
+          <div className="tl-hover-info">
+            <span className="tl-hover-name">{hoverClip.mf.name.replace(/\.[^.]+$/, '')}</span>
+            <span className="tl-hover-dur">{hoverClip.clip.duration.toFixed(1)}s</span>
+          </div>
+        </div>
+      )}
+
+      {/* Status bar */}
+      <div className="tl-status-bar">
+        <span className="tl-status-item">{tracks.length} tracks</span>
+        <span className="tl-status-sep">·</span>
+        <span className="tl-status-item">{clipCount} clips</span>
+        <span className="tl-status-sep">·</span>
+        <span className="tl-status-item">{formatTime(currentTime)} / {formatTime(projectDuration)}</span>
+        <span className="tl-status-sep">·</span>
+        <span className="tl-status-item">{Math.round(zoom * 100)}%</span>
+        {rippleDelete && <span className="tl-status-badge">RIPPLE</span>}
+        {selectedClipIds.length > 1 && <span className="tl-status-badge">{selectedClipIds.length} selected</span>}
+      </div>
     </section>
   );
 }
