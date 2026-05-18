@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { usePlaybackEngine } from '../engine/usePlaybackEngine';
 import { useMediaManager } from '../engine/useMediaManager';
@@ -20,8 +20,9 @@ function formatTime(seconds: number): string {
 
 export default function PreviewCanvas() {
   const {
-    project: { tracks, duration: projectDuration },
+    project: { tracks, duration: projectDuration, media },
     currentTime, isPlaying, aspectRatio, volume, setVolume, renderTick,
+    activeClipId, updateClip, pushHistory,
   } = useEditorStore();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -44,12 +45,127 @@ export default function PreviewCanvas() {
   const onFrame = useCallback((time: number) => { drawFrame(time); }, [drawFrame]);
   const engine = usePlaybackEngine(onFrame);
 
+  // Locate current active selected clip
+  const activeClip = useMemo(() => {
+    if (!activeClipId) return null;
+    for (const t of tracks) {
+      const c = t.clips.find(clip => clip.id === activeClipId);
+      if (c) return c;
+    }
+    return null;
+  }, [tracks, activeClipId]);
+
+  // Retrieve media details of the clip
+  const activeMedia = useMemo(() => {
+    if (!activeClip || !activeClip.mediaId) return null;
+    return media.find(m => m.id === activeClip.mediaId);
+  }, [activeClip, media]);
+
+  // Snap active clip transformation coordinate space (1920x1080) to Canvas (480px width)
+  const scaleFactor = canvasWidth / 1920;
+  const tr = activeClip?.transform || { x: 0, y: 0, scale: 1, rotation: 0 };
+  const isVisible = activeClip && currentTime >= activeClip.startAt && currentTime < activeClip.startAt + activeClip.duration;
+
+  const baseWidth = activeClip
+    ? activeClip.trackType === 'text'
+      ? 1000
+      : activeClip.trackType === 'sticker'
+        ? 300
+        : activeMedia?.width || 1920
+    : 1920;
+
+  const baseHeight = activeClip
+    ? activeClip.trackType === 'text'
+      ? 200
+      : activeClip.trackType === 'sticker'
+        ? 300
+        : activeMedia?.height || 1080
+    : 1080;
+
+  const boxWidth = baseWidth * tr.scale * scaleFactor;
+  const boxHeight = baseHeight * tr.scale * scaleFactor;
+  const boxLeft = canvasWidth / 2 + tr.x * scaleFactor - boxWidth / 2;
+  const boxTop = canvasHeight / 2 + tr.y * scaleFactor - boxHeight / 2;
+
+  // On-Canvas Drag-to-Move & Drag-to-Scale handlers
+  const [isDragging, setIsDragging] = useState(false);
+  const [isScaling, setIsScaling] = useState(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, clipX: 0, clipY: 0, clipScale: 1 });
+
+  const handleBoxMouseDown = (e: React.MouseEvent) => {
+    if (!activeClip) return;
+    e.stopPropagation(); e.preventDefault();
+    setIsDragging(true);
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      clipX: tr.x,
+      clipY: tr.y,
+      clipScale: tr.scale
+    };
+  };
+
+  const handleHandleMouseDown = (e: React.MouseEvent) => {
+    if (!activeClip) return;
+    e.stopPropagation(); e.preventDefault();
+    setIsScaling(true);
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      clipX: tr.x,
+      clipY: tr.y,
+      clipScale: tr.scale
+    };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging && activeClip) {
+        const dx = e.clientX - dragStartRef.current.mouseX;
+        const dy = e.clientY - dragStartRef.current.mouseY;
+        updateClip(activeClip.id, {
+          transform: {
+            ...tr,
+            x: dragStartRef.current.clipX + dx / scaleFactor,
+            y: dragStartRef.current.clipY + dy / scaleFactor
+          }
+        });
+      } else if (isScaling && activeClip) {
+        const dx = e.clientX - dragStartRef.current.mouseX;
+        const scaleDelta = dx / 150;
+        updateClip(activeClip.id, {
+          transform: {
+            ...tr,
+            scale: Math.max(0.1, Math.min(10, dragStartRef.current.clipScale + scaleDelta))
+          }
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging || isScaling) {
+        setIsDragging(false);
+        setIsScaling(false);
+        pushHistory();
+      }
+    };
+
+    if (isDragging || isScaling) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, isScaling, activeClip, tr, updateClip, pushHistory, scaleFactor]);
+
   // Sync isPlaying → engine + RenderEngine playback mode
   useEffect(() => {
     if (!engineRef.current) return;
     engineRef.current.setPlaybackMode(isPlaying);
     if (isPlaying) {
-      // Gather all video clips and start them playing
       const state = useEditorStore.getState();
       const allClips = state.project.tracks.flatMap(t => t.clips);
       engineRef.current.startLivePlayback(allClips, getUrl);
@@ -94,8 +210,29 @@ export default function PreviewCanvas() {
 
   return (
     <div className="preview-player">
-      <div className="preview-canvas-wrap">
+      <div className="preview-canvas-wrap" style={{ width: canvasWidth, height: canvasHeight }}>
         <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="preview-canvas" />
+
+        {/* Dynamic Bounding Box Overlay for Active Clip Manipulation */}
+        {isVisible && !isPlaying && (
+          <div
+            className="transform-box"
+            style={{
+              left: boxLeft,
+              top: boxTop,
+              width: boxWidth,
+              height: boxHeight,
+              transform: `rotate(${tr.rotation}deg)`,
+            }}
+            onMouseDown={handleBoxMouseDown}
+          >
+            <div className="transform-handle top-left" onMouseDown={handleHandleMouseDown} />
+            <div className="transform-handle top-right" onMouseDown={handleHandleMouseDown} />
+            <div className="transform-handle bottom-left" onMouseDown={handleHandleMouseDown} />
+            <div className="transform-handle bottom-right" onMouseDown={handleHandleMouseDown} />
+          </div>
+        )}
+
         {!hasContent && (
           <div className="preview-placeholder">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>

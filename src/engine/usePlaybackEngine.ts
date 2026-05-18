@@ -21,11 +21,34 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   const speedRef = useRef(1);
   const durationRef = useRef(10);
   const lastFrameRef = useRef(0);
-
-  // Audio playback: one <audio> element per active clip
   const audioEls = useRef<{ el: HTMLAudioElement; clipId: string }[]>([]);
-
   const store = useEditorStore;
+
+  // Centralized Web Audio API context & master dynamics compressor
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+
+  const getAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtxClass();
+      const comp = ctx.createDynamicsCompressor();
+      // Configure compressor as a master brickwall limiter
+      comp.threshold.setValueAtTime(-10, ctx.currentTime); // start soft compression at -10dB
+      comp.knee.setValueAtTime(8, ctx.currentTime);
+      comp.ratio.setValueAtTime(16, ctx.currentTime); // brickwall ratio
+      comp.attack.setValueAtTime(0.003, ctx.currentTime); // ultra fast attack
+      comp.release.setValueAtTime(0.08, ctx.currentTime);
+      comp.connect(ctx.destination);
+
+      audioCtxRef.current = ctx;
+      compressorRef.current = comp;
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return { ctx: audioCtxRef.current, compressor: compressorRef.current! };
+  }, []);
 
   const stopAllAudio = useCallback(() => {
     for (const { el } of audioEls.current) {
@@ -41,6 +64,9 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     const tracks = state.project.tracks;
     const speed = state.speed || 1;
 
+    // Initialize/resume Audio Context on user play action
+    const { ctx, compressor } = getAudioCtx();
+
     for (const track of tracks) {
       for (const clip of track.clips) {
         if (!clip.mediaId || clip.muted) continue;
@@ -50,8 +76,6 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
 
         const clipEnd = clip.startAt + clip.duration;
         if (fromTime >= clipEnd || fromTime < clip.startAt - 0.05) {
-          // clip hasn't started or already ended — but schedule if it starts in future
-          // For simplicity only play clips active now or starting within 0.1s
           if (clip.startAt > fromTime + 0.1) continue;
         }
 
@@ -60,17 +84,27 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
 
         const el = document.createElement('audio');
         el.src = url;
-        el.volume = Math.max(0, Math.min(1, clip.volume ?? 1));
+        el.crossOrigin = 'anonymous'; // Avoid Web Audio CORS issues
         el.playbackRate = speed * (clip.speed || 1);
         el.muted = clip.muted;
         el.preload = 'auto';
 
-        // currentTime within the source file
+        // Bind HTML5 audio element output to centralized Web Audio Mixer nodes
+        try {
+          const sourceNode = ctx.createMediaElementSource(el);
+          const gainNode = ctx.createGain();
+          gainNode.gain.setValueAtTime(Math.max(0, Math.min(2, clip.volume ?? 1)), ctx.currentTime);
+          sourceNode.connect(gainNode);
+          gainNode.connect(compressor);
+        } catch {
+          // Fallback if media elements routing fails (e.g. cross-origin issues)
+          el.volume = Math.max(0, Math.min(1, clip.volume ?? 1));
+        }
+
         const localTime = Math.max(0, fromTime - clip.startAt);
         const sourceTime = clip.sourceStart + localTime * (clip.speed || 1);
         el.currentTime = sourceTime;
 
-        // If the clip starts in the future, delay playback
         const delay = Math.max(0, clip.startAt - fromTime) / speed;
         if (delay > 0) {
           setTimeout(() => { if (isPlayingRef.current) el.play().catch(() => {}); }, delay * 1000);
@@ -81,7 +115,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
         audioEls.current.push({ el, clipId: clip.id });
       }
     }
-  }, [stopAllAudio, store]);
+  }, [stopAllAudio, store, getAudioCtx]);
 
   const tick = useCallback((now: number) => {
     if (!isPlayingRef.current) return;

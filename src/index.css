@@ -818,3 +818,31 @@ body {
 /* ======================== */
 .snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warning); z-index: 25; pointer-events: none; }
 
+/* ======================== */
+/* Interactive Transform Box */
+/* ======================== */
+.preview-canvas-wrap { position: relative; overflow: hidden; }
+.transform-box {
+  position: absolute;
+  border: 1.5px solid #00f0ff;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+  pointer-events: auto;
+  cursor: move;
+  z-index: 40;
+  box-sizing: border-box;
+}
+.transform-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+  border: 1.5px solid #00f0ff;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+  z-index: 41;
+}
+.transform-handle.top-left { top: -4px; left: -4px; cursor: nwse-resize; }
+.transform-handle.top-right { top: -4px; right: -4px; cursor: nesw-resize; }
+.transform-handle.bottom-left { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.transform-handle.bottom-right { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
