@@ -416,9 +416,11 @@ class WebGLFilterPipeline {
     const gl = this.gl;
 
     const fb = gl.createFramebuffer();
+    if (!fb) return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
 
     const tex = gl.createTexture();
+    if (!tex) return;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -438,6 +440,7 @@ class WebGLFilterPipeline {
     const gl = this.gl;
 
     const tex = gl.createTexture();
+    if (!tex) return;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -560,6 +563,7 @@ class WebGLFilterPipeline {
       gl.uniform1i(gl.getUniformLocation(program, 'u_chromaKeyEnabled'), 0);
       gl.uniform1i(gl.getUniformLocation(program, 'u_vignetteEnabled'), 0);
       const blurredTex = this.textures.get('fb_b');
+      if (!blurredTex) return;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, blurredTex);
       this.drawQuad();
@@ -577,6 +581,7 @@ class WebGLFilterPipeline {
     this.bindQuad();
 
     const sourceTex = this.textures.get(sourceFb);
+    if (!sourceTex) return;
     const targetFbObj = this.framebuffers.get(targetFb);
 
     // Horizontal pass
