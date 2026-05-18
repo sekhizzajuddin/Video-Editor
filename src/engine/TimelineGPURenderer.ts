@@ -256,7 +256,8 @@ class TimelineGPURenderer {
     // Upload texture
     let tex = this.textures.get('filmstrip');
     if (!tex) {
-      tex = gl.createTexture();
+      tex = gl.createTexture() || undefined;
+      if (!tex) return;
       this.textures.set('filmstrip', tex);
     }
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -374,7 +375,8 @@ class TimelineGPURenderer {
 
     let tex = this.textures.get('waveform');
     if (!tex) {
-      tex = gl.createTexture();
+      tex = gl.createTexture() || undefined;
+      if (!tex) return null;
       this.textures.set('waveform', tex);
     }
     gl.bindTexture(gl.TEXTURE_2D, tex);
