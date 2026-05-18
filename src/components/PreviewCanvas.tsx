@@ -3,6 +3,7 @@ import { useEditorStore } from '../store/editorStore';
 import { usePlaybackEngine } from '../engine/usePlaybackEngine';
 import { useMediaManager } from '../engine/useMediaManager';
 import { RenderEngine } from '../engine/RenderEngine';
+import FullscreenIcon from './FullscreenIcon';
 
 function SkipBackIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z"/></svg>; }
 function PlayIcon() { return <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3l15 9-15 9V3z"/></svg>; }
@@ -29,8 +30,35 @@ export default function PreviewCanvas() {
   const engineRef = useRef<RenderEngine | null>(null);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const canvasWidth = 480;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(480);
+
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.parentElement?.getBoundingClientRect();
+        if (rect) {
+          const maxW = rect.width - 16;
+          const maxH = rect.height - 80;
+          const canvasW = Math.min(480, maxW);
+          const canvasH = Math.round((canvasW * aspectRatio.h) / aspectRatio.w);
+          if (canvasH > maxH) {
+            const adjustedW = Math.round((maxH * aspectRatio.w) / aspectRatio.h);
+            setContainerWidth(adjustedW);
+          } else {
+            setContainerWidth(canvasW);
+          }
+        }
+      }
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, [aspectRatio]);
+
+  const canvasWidth = containerWidth;
   const canvasHeight = Math.round((canvasWidth * aspectRatio.h) / aspectRatio.w);
 
   const { getUrl } = useMediaManager();
@@ -200,6 +228,22 @@ export default function PreviewCanvas() {
   const skipBackward = () => engine.seek(Math.max(0, currentTime - 5));
   const skipForward = () => engine.seek(Math.min(projectDuration, currentTime + 5));
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen?.();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen?.();
+      setIsFullscreen(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
   const seekBar = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     engine.seek(Math.max(0, Math.min(projectDuration, ((e.clientX - rect.left) / rect.width) * projectDuration)));
@@ -267,6 +311,9 @@ export default function PreviewCanvas() {
               onChange={e => { setVolume(parseInt(e.target.value) / 100); setMuted(false); mutedRef.current = false; }}
             />
           </div>
+          <button className="preview-btn" onClick={toggleFullscreen} title="Fullscreen">
+            <FullscreenIcon />
+          </button>
         </div>
       </div>
       <div className="preview-seekbar" onClick={seekBar}>

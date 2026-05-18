@@ -18,23 +18,23 @@ const SHORTCUTS = [
   { key: 'Shift+Click ruler', desc: 'Add marker at click' },
 ];
 
-export default function ShorcutsModal() {
-  const { showShorcuts, setShowShorcuts } = useEditorStore();
-  if (!showShorcuts) return null;
+export default function ShortcutsModal() {
+  const { showShortcuts, setShowShortcuts } = useEditorStore();
+  if (!showShortcuts) return null;
 
   return (
-    <div className="modal-overlay" onClick={() => setShowShorcuts(false)}>
-      <div className="modal shorcuts-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={() => setShowShortcuts(false)}>
+      <div className="modal shortcuts-modal" onClick={(e) => e.stopPropagation()}>
         <h2>Keyboard Shortcuts</h2>
-        <div className="shorcuts-list">
+        <div className="shortcuts-list">
           {SHORTCUTS.map((s, i) => (
-            <div key={i} className="shorcut-row">
-              <kbd className="shorcut-key">{s.key}</kbd>
-              <span className="shorcut-desc">{s.desc}</span>
+            <div key={i} className="shortcut-row">
+              <kbd className="shortcut-key">{s.key}</kbd>
+              <span className="shortcut-desc">{s.desc}</span>
             </div>
           ))}
         </div>
-        <button className="btn secondary" onClick={() => setShowShorcuts(false)}>Close</button>
+        <button className="btn secondary" onClick={() => setShowShortcuts(false)}>Close</button>
       </div>
     </div>
   );

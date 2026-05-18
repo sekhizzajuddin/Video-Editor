@@ -93,11 +93,24 @@ export function renderTextOverlay(
     align = 'center', baseline = 'middle', shadow = true,
     shadowColor = 'rgba(0,0,0,0.5)', shadowBlur = 4,
     shadowOffsetX = 2, shadowOffsetY = 2, maxWidth = canvas.width - 40,
+    outlineColor, outlineWidth = 0, backgroundColor, backgroundOpacity = 0.5,
   } = options;
   ctx.save();
   ctx.font = `bold ${fontSize}px ${fontFamily}`;
   ctx.textAlign = align;
   ctx.textBaseline = baseline;
+
+  if (backgroundColor) {
+    const metrics = ctx.measureText(text);
+    const padding = 8;
+    const bgX = align === 'center' ? x - metrics.width / 2 - padding : align === 'left' ? x - padding : x - metrics.width - padding;
+    const bgY = baseline === 'middle' ? y - fontSize / 2 - padding / 2 : y - padding;
+    ctx.fillStyle = backgroundColor;
+    ctx.globalAlpha = backgroundOpacity;
+    ctx.fillRect(bgX, bgY, metrics.width + padding * 2, fontSize + padding);
+    ctx.globalAlpha = 1;
+  }
+
   ctx.fillStyle = color;
   if (shadow) {
     ctx.shadowColor = shadowColor;
@@ -105,10 +118,18 @@ export function renderTextOverlay(
     ctx.shadowOffsetX = shadowOffsetX;
     ctx.shadowOffsetY = shadowOffsetY;
   }
+  if (outlineColor && outlineWidth > 0) {
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = outlineWidth;
+    ctx.lineJoin = 'round';
+  }
   const lines = text.split('\n');
   const lineHeight = fontSize * 1.2;
   const startY = lines.length === 1 ? y : y - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((line, idx) => ctx.fillText(line, x, startY + idx * lineHeight, maxWidth));
+  lines.forEach((line, idx) => {
+    if (outlineColor && outlineWidth > 0) ctx.strokeText(line, x, startY + idx * lineHeight, maxWidth);
+    ctx.fillText(line, x, startY + idx * lineHeight, maxWidth);
+  });
   ctx.restore();
 }
 
@@ -152,6 +173,36 @@ export function applyFilter(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasEle
     }
   }
   ctx.putImageData(imageData, 0, 0);
+}
+
+export function applyChromaKey(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, color: string, similarity: number, smoothness: number): void {
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  const keyR = parseInt(color.slice(1, 3), 16);
+  const keyG = parseInt(color.slice(3, 5), 16);
+  const keyB = parseInt(color.slice(5, 7), 16);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const diff = Math.sqrt((r - keyR) ** 2 + (g - keyG) ** 2 + (b - keyB) ** 2);
+    const maxDiff = similarity * 441.67;
+    if (diff < maxDiff) {
+      const alpha = Math.max(0, (diff - maxDiff * (1 - smoothness)) / (maxDiff * smoothness));
+      data[i + 3] = Math.round(alpha * 255);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+export function applyVignette(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, intensity: number): void {
+  const w = canvas.width, h = canvas.height;
+  const cx = w / 2, cy = h / 2;
+  const maxDist = Math.sqrt(cx * cx + cy * cy);
+  const gradient = ctx.createRadialGradient(cx, cy, maxDist * (1 - intensity), cx, cy, maxDist);
+  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+  gradient.addColorStop(1, `rgba(0,0,0,${intensity})`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
 }
 
 export function getFilterString(filterName: CSSFilterName, intensity: number = 1): string {

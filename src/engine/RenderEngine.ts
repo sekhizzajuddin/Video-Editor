@@ -1,5 +1,6 @@
 import { Clip, Track, TransitionType } from '../types';
-import { renderVideoFrame, renderImageFrame, renderTextOverlay, applyFilter } from '../utils/codec';
+import { renderVideoFrame, renderImageFrame, renderTextOverlay, applyFilter, applyChromaKey, applyVignette } from '../utils/codec';
+import { interpolateKeyframes } from '../utils/keyframeUtils';
 
 export interface FrameRequest {
   time: number;
@@ -140,7 +141,8 @@ export class RenderEngine {
   ): Promise<void> {
     const mediaUrl = clip.mediaId ? req.getMediaUrl(clip.mediaId) : undefined;
     const localTime = req.time - clip.startAt;
-    const sourceTime = clip.sourceStart + localTime * clip.speed;
+    const rawSourceTime = clip.sourceStart + localTime * clip.speed;
+    const sourceTime = clip.sourceEnd ? Math.min(rawSourceTime, clip.sourceEnd) : rawSourceTime;
 
     const layerCanvas = document.createElement('canvas');
     layerCanvas.width = w; layerCanvas.height = h;
@@ -174,9 +176,12 @@ export class RenderEngine {
     }
 
     if (clip.textOverlay) {
+      const to = clip.textOverlay;
       renderTextOverlay(layerCtx, layerCanvas, clip.textOverlay.text, {
         fontSize: clip.textOverlay.fontSize, fontFamily: clip.textOverlay.fontFamily,
         color: clip.textOverlay.color, align: clip.textOverlay.textAlign,
+        outlineColor: to.outlineColor, outlineWidth: to.outlineWidth || 0,
+        backgroundColor: to.backgroundColor, backgroundOpacity: to.backgroundOpacity ?? 0.5,
       });
     }
 
@@ -190,12 +195,38 @@ export class RenderEngine {
 
     if (clip.trackType === 'audio' && !mediaUrl) return;
     if (clip.filters && clip.filters.preset !== 'none') applyFilter(layerCtx, layerCanvas, clip.filters.preset);
-    this.compositeLayer(layerCanvas, clip, ctx, w, h);
+    if (clip.filters?.chromaKey?.enabled) {
+      const ck = clip.filters.chromaKey;
+      applyChromaKey(layerCtx, layerCanvas, ck.color, ck.similarity, ck.smoothness);
+    }
+    if (clip.filters?.vignette?.enabled) {
+      applyVignette(layerCtx, layerCanvas, clip.filters.vignette.intensity);
+    }
+    if (clip.filters?.blur && clip.filters.blur > 0) {
+      layerCtx.filter = `blur(${clip.filters.blur}px)`;
+      layerCtx.drawImage(layerCanvas, 0, 0);
+      layerCtx.filter = 'none';
+    }
+    this.compositeLayer(layerCanvas, clip, ctx, w, h, localTime);
   }
 
-  private compositeLayer(source: HTMLCanvasElement, clip: Clip, ctx: CanvasRenderingContext2D, w: number, h: number) {
-    const tr = clip.transform;
-    const alpha = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
+  private compositeLayer(source: HTMLCanvasElement, clip: Clip, ctx: CanvasRenderingContext2D, w: number, h: number, localTime: number) {
+    const baseTr = clip.transform;
+    const kfX = interpolateKeyframes(clip.keyframeTracks, localTime, 'x');
+    const kfY = interpolateKeyframes(clip.keyframeTracks, localTime, 'y');
+    const kfScale = interpolateKeyframes(clip.keyframeTracks, localTime, 'scale');
+    const kfRotation = interpolateKeyframes(clip.keyframeTracks, localTime, 'rotation');
+    const kfOpacity = interpolateKeyframes(clip.keyframeTracks, localTime, 'opacity');
+
+    const tr = {
+      x: baseTr.x + kfX,
+      y: baseTr.y + kfY,
+      scale: baseTr.scale + kfScale,
+      rotation: baseTr.rotation + kfRotation,
+    };
+
+    const baseAlpha = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
+    const alpha = baseAlpha * (1 - Math.max(0, Math.min(1, kfOpacity / 100)));
     const mode = clip.blendMode && clip.blendMode !== 'normal' ? clip.blendMode as GlobalCompositeOperation : undefined;
     ctx.save();
     ctx.globalAlpha = alpha;

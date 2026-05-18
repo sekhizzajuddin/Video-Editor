@@ -3,6 +3,8 @@
  * Falls back to WebM via MediaRecorder if FFmpeg fails to load.
  */
 
+import { applyChromaKey, applyVignette } from '../utils/codec';
+
 export interface ExportProgress { stage: string; percent: number; }
 export type ExportResult = { type: 'complete'; blob: Blob } | { type: 'cancelled' };
 
@@ -139,23 +141,39 @@ async function exportWithFFmpeg(
   ffmpegArgs.push('-framerate', String(fps), '-i', 'frame%06d.png');
 
   // Add audio inputs
-  let hasAudio = false;
+  let audioInputCount = 0;
+  const audioInputs: string[] = [];
   for (const m of media) {
     if (m.type === 'audio' || m.type === 'video') {
       const ext = m.mimeType.split('/')[1]?.split(';')[0] || 'mp4';
       const fname = `input_${m.id}.${ext}`;
       ffmpegArgs.push('-i', fname);
-      hasAudio = true;
-      break;
+      audioInputs.push(`[${audioInputCount + 1}:a]`);
+      audioInputCount++;
     }
   }
+  const hasAudio = audioInputCount > 0;
 
   if (settings.format === 'mp4') {
     ffmpegArgs.push('-c:v', 'libx264', '-crf', crf, '-preset', 'fast', '-pix_fmt', 'yuv420p');
-    if (hasAudio) ffmpegArgs.push('-c:a', 'aac', '-b:a', '128k');
+    if (hasAudio) {
+      if (audioInputCount > 1) {
+        const amixFilter = audioInputs.join('') + `amix=inputs=${audioInputCount}:duration=longest[aout]`;
+        ffmpegArgs.push('-filter_complex', amixFilter, '-map', '[aout]', '-c:a', 'aac', '-b:a', '128k');
+      } else {
+        ffmpegArgs.push('-c:a', 'aac', '-b:a', '128k');
+      }
+    }
   } else if (settings.format === 'webm') {
     ffmpegArgs.push('-c:v', 'libvpx-vp9', '-crf', crf, '-b:v', '0');
-    if (hasAudio) ffmpegArgs.push('-c:a', 'libopus');
+    if (hasAudio) {
+      if (audioInputCount > 1) {
+        const amixFilter = audioInputs.join('') + `amix=inputs=${audioInputCount}:duration=longest[aout]`;
+        ffmpegArgs.push('-filter_complex', amixFilter, '-map', '[aout]', '-c:a', 'libopus');
+      } else {
+        ffmpegArgs.push('-c:a', 'libopus');
+      }
+    }
   } else if (settings.format === 'mp3' || settings.format === 'wav') {
     ffmpegArgs.splice(0, ffmpegArgs.length, '-i', `input_${media.find(m => m.type === 'audio')?.id}.mp3`);
   }
@@ -188,76 +206,263 @@ function renderProjectFrame(
   time: number,
 ) {
   const w = canvas.width; const h = canvas.height;
-  const layers: { clip: any; ti: number }[] = [];
+  const layers: { clip: any; ti: number; transition?: any }[] = [];
   for (let ti = 0; ti < tracks.length; ti++) {
     const t = tracks[ti];
     if (!t.visible) continue;
-    for (const c of t.clips) {
-      if (time >= c.startAt && time < c.startAt + c.duration) layers.push({ clip: c, ti });
+    const sortedClips = [...t.clips].sort((a, b) => a.startAt - b.startAt);
+    for (let ci = 0; ci < sortedClips.length; ci++) {
+      const c = sortedClips[ci];
+      const next = sortedClips[ci + 1];
+      if (time >= c.startAt && time < c.startAt + c.duration) {
+        const trans = c.transition;
+        if (trans && trans.type !== 'none' && trans.duration > 0 && next) {
+          const transStart = c.startAt + c.duration - trans.duration;
+          if (time >= transStart) {
+            const progress = (time - transStart) / trans.duration;
+            layers.push({
+              clip: c, ti,
+              transition: { type: trans.type, progress: Math.min(1, Math.max(0, progress)), nextClip: next }
+            });
+            continue;
+          }
+        }
+        layers.push({ clip: c, ti });
+      }
     }
   }
   layers.sort((a, b) => a.ti - b.ti);
 
-  for (const { clip } of layers) {
-    const tr = clip.transform || { x: 0, y: 0, scale: 1, rotation: 0 };
-    const alpha = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
-    const localTime = time - clip.startAt;
-    const sourceTime = (clip.sourceStart || 0) + localTime * (clip.speed || 1);
-
-    const layerCanvas = document.createElement('canvas');
-    layerCanvas.width = w; layerCanvas.height = h;
-    const lCtx = layerCanvas.getContext('2d')!;
-
-    if (clip.mediaId) {
-      const el = mediaElMap.get(clip.mediaId);
-      if (el instanceof HTMLVideoElement) {
-        if (Math.abs(el.currentTime - sourceTime) > 0.08) el.currentTime = sourceTime;
-        if (el.videoWidth > 0) {
-          lCtx.fillStyle = '#000'; lCtx.fillRect(0, 0, w, h);
-          const sw = el.videoWidth; const sh = el.videoHeight;
-          const ratio = Math.min(w / sw, h / sh);
-          const dx = (w - sw * ratio) / 2; const dy = (h - sh * ratio) / 2;
-          lCtx.drawImage(el, dx, dy, sw * ratio, sh * ratio);
-        }
-      } else if (el instanceof HTMLImageElement && el.complete) {
-        lCtx.fillStyle = '#000'; lCtx.fillRect(0, 0, w, h);
-        const ratio = Math.min(w / el.naturalWidth, h / el.naturalHeight);
-        const dx = (w - el.naturalWidth * ratio) / 2; const dy = (h - el.naturalHeight * ratio) / 2;
-        lCtx.drawImage(el, dx, dy, el.naturalWidth * ratio, el.naturalHeight * ratio);
-      }
+  for (const layer of layers) {
+    if (layer.transition) {
+      renderTransitionLayer(ctx, canvas, layer.clip, layer.transition.nextClip, layer.transition.type, layer.transition.progress, mediaElMap, time, w, h);
+    } else {
+      renderClipLayer(ctx, canvas, layer.clip, mediaElMap, time, w, h);
     }
-
-    if (clip.textOverlay) {
-      const to = clip.textOverlay;
-      lCtx.save();
-      lCtx.font = `${to.fontWeight || 700} ${to.fontSize || 48}px ${to.fontFamily || 'Inter, sans-serif'}`;
-      lCtx.textAlign = to.textAlign || 'center';
-      lCtx.textBaseline = 'middle';
-      lCtx.fillStyle = to.color || '#ffffff';
-      lCtx.shadowColor = 'rgba(0,0,0,0.5)'; lCtx.shadowBlur = 4;
-      lCtx.fillText(to.text || '', w / 2 + (tr.x || 0), h / 2 + (tr.y || 0));
-      lCtx.restore();
-    }
-
-    if (clip.trackType === 'sticker' && clip.sticker) {
-      lCtx.save(); lCtx.font = `${Math.round(h * 0.15)}px sans-serif`;
-      lCtx.textAlign = 'center'; lCtx.textBaseline = 'middle';
-      lCtx.fillText(clip.sticker, w / 2 + (tr.x || 0), h / 2 + (tr.y || 0));
-      lCtx.restore();
-    }
-
-    if (clip.trackType === 'audio') continue;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    if (clip.blendMode && clip.blendMode !== 'normal') ctx.globalCompositeOperation = clip.blendMode;
-    ctx.translate(w / 2 + tr.x, h / 2 + tr.y);
-    ctx.scale(tr.scale || 1, tr.scale || 1);
-    ctx.rotate(((tr.rotation || 0) * Math.PI) / 180);
-    ctx.translate(-w / 2, -h / 2);
-    ctx.drawImage(layerCanvas, 0, 0);
-    ctx.restore();
   }
+}
+
+function renderClipLayer(
+  ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, clip: any,
+  mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number, w: number, h: number,
+) {
+  const tr = clip.transform || { x: 0, y: 0, scale: 1, rotation: 0 };
+  const alpha = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
+  const localTime = time - clip.startAt;
+  const rawSourceTime = (clip.sourceStart || 0) + localTime * (clip.speed || 1);
+  const sourceTime = clip.sourceEnd ? Math.min(rawSourceTime, clip.sourceEnd) : rawSourceTime;
+
+  const layerCanvas = document.createElement('canvas');
+  layerCanvas.width = w; layerCanvas.height = h;
+  const lCtx = layerCanvas.getContext('2d')!;
+
+  if (clip.mediaId) {
+    const el = mediaElMap.get(clip.mediaId);
+    if (el instanceof HTMLVideoElement) {
+      if (Math.abs(el.currentTime - sourceTime) > 0.08) el.currentTime = sourceTime;
+      if (el.videoWidth > 0) {
+        lCtx.fillStyle = '#000'; lCtx.fillRect(0, 0, w, h);
+        const sw = el.videoWidth; const sh = el.videoHeight;
+        const ratio = Math.min(w / sw, h / sh);
+        const dx = (w - sw * ratio) / 2; const dy = (h - sh * ratio) / 2;
+        lCtx.drawImage(el, dx, dy, sw * ratio, sh * ratio);
+      }
+    } else if (el instanceof HTMLImageElement && el.complete) {
+      lCtx.fillStyle = '#000'; lCtx.fillRect(0, 0, w, h);
+      const ratio = Math.min(w / el.naturalWidth, h / el.naturalHeight);
+      const dx = (w - el.naturalWidth * ratio) / 2; const dy = (h - el.naturalHeight * ratio) / 2;
+      lCtx.drawImage(el, dx, dy, el.naturalWidth * ratio, el.naturalHeight * ratio);
+    }
+  }
+
+  if (clip.textOverlay) {
+    const to = clip.textOverlay;
+    lCtx.save();
+    lCtx.font = `${to.fontWeight || 700} ${to.fontSize || 48}px ${to.fontFamily || 'Inter, sans-serif'}`;
+    lCtx.textAlign = to.textAlign || 'center';
+    lCtx.textBaseline = 'middle';
+    lCtx.fillStyle = to.color || '#ffffff';
+    lCtx.shadowColor = 'rgba(0,0,0,0.5)'; lCtx.shadowBlur = 4;
+    if (to.outlineColor && to.outlineWidth) {
+      lCtx.strokeStyle = to.outlineColor;
+      lCtx.lineWidth = to.outlineWidth;
+      lCtx.lineJoin = 'round';
+      lCtx.strokeText(to.text || '', w / 2 + (tr.x || 0), h / 2 + (tr.y || 0));
+    }
+    lCtx.fillText(to.text || '', w / 2 + (tr.x || 0), h / 2 + (tr.y || 0));
+    lCtx.restore();
+  }
+
+  if (clip.trackType === 'sticker' && clip.sticker) {
+    lCtx.save(); lCtx.font = `${Math.round(h * 0.12)}px sans-serif`;
+    lCtx.textAlign = 'center'; lCtx.textBaseline = 'middle';
+    lCtx.fillText(clip.sticker, w / 2 + (tr.x || 0), h / 2 + (tr.y || 0));
+    lCtx.restore();
+  }
+
+  if (clip.trackType === 'audio') return;
+
+  // Apply filters
+  if (clip.filters && clip.filters.preset !== 'none') {
+    applyFilterToCanvas(lCtx, layerCanvas, clip.filters.preset);
+  }
+  if (clip.filters?.chromaKey?.enabled) {
+    const ck = clip.filters.chromaKey;
+    applyChromaKey(lCtx, layerCanvas, ck.color, ck.similarity, ck.smoothness);
+  }
+  if (clip.filters?.vignette?.enabled) {
+    applyVignette(lCtx, layerCanvas, clip.filters.vignette.intensity);
+  }
+  if (clip.filters?.blur && clip.filters.blur > 0) {
+    lCtx.filter = `blur(${clip.filters.blur}px)`;
+    lCtx.drawImage(layerCanvas, 0, 0);
+    lCtx.filter = 'none';
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  if (clip.blendMode && clip.blendMode !== 'normal') ctx.globalCompositeOperation = clip.blendMode;
+  ctx.translate(w / 2 + (tr.x || 0), h / 2 + (tr.y || 0));
+  ctx.scale(tr.scale || 1, tr.scale || 1);
+  ctx.rotate(((tr.rotation || 0) * Math.PI) / 180);
+  ctx.translate(-w / 2, -h / 2);
+  ctx.drawImage(layerCanvas, 0, 0);
+  ctx.restore();
+}
+
+function renderTransitionLayer(
+  ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement,
+  clipA: any, clipB: any, type: string, progress: number,
+  mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number,
+  w: number, h: number,
+) {
+  const canvasA = document.createElement('canvas');
+  canvasA.width = w; canvasA.height = h;
+  const ctxA = canvasA.getContext('2d')!;
+  renderClipLayer(ctxA, canvasA, clipA, mediaElMap, time, w, h);
+
+  const canvasB = document.createElement('canvas');
+  canvasB.width = w; canvasB.height = h;
+  const ctxB = canvasB.getContext('2d')!;
+  const transOffset = progress * (clipA.transition?.duration || 0.3);
+  renderClipLayer(ctxB, canvasB, clipB, mediaElMap, clipB.startAt + transOffset, w, h);
+
+  ctx.save();
+  switch (type) {
+    case 'fade':
+    case 'dissolve': {
+      ctx.globalAlpha = 1 - progress;
+      ctx.drawImage(canvasA, 0, 0);
+      ctx.globalAlpha = progress;
+      ctx.drawImage(canvasB, 0, 0);
+      break;
+    }
+    case 'wipe-left': {
+      const boundary = w * (1 - progress);
+      ctx.drawImage(canvasA, 0, 0, boundary, h, 0, 0, boundary, h);
+      ctx.drawImage(canvasB, boundary, 0, w - boundary, h, boundary, 0, w - boundary, h);
+      break;
+    }
+    case 'wipe-right': {
+      const boundary = w * progress;
+      ctx.drawImage(canvasB, 0, 0, boundary, h, 0, 0, boundary, h);
+      ctx.drawImage(canvasA, boundary, 0, w - boundary, h, boundary, 0, w - boundary, h);
+      break;
+    }
+    case 'slide-left': {
+      const offsetX = -w * progress;
+      ctx.drawImage(canvasA, offsetX, 0);
+      ctx.drawImage(canvasB, offsetX + w, 0);
+      break;
+    }
+    case 'slide-right': {
+      const offsetX = w * progress;
+      ctx.drawImage(canvasA, offsetX, 0);
+      ctx.drawImage(canvasB, offsetX - w, 0);
+      break;
+    }
+    case 'zoom': {
+      ctx.globalAlpha = 1 - progress;
+      ctx.save(); ctx.translate(w / 2, h / 2);
+      ctx.scale(1 + progress * 0.5, 1 + progress * 0.5);
+      ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(canvasA, 0, 0); ctx.restore();
+      ctx.globalAlpha = progress;
+      ctx.save(); ctx.translate(w / 2, h / 2);
+      ctx.scale(0.5 + progress * 0.5, 0.5 + progress * 0.5);
+      ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(canvasB, 0, 0); ctx.restore();
+      break;
+    }
+    case 'spin': {
+      ctx.globalAlpha = 1 - progress;
+      ctx.save(); ctx.translate(w / 2, h / 2); ctx.rotate(progress * Math.PI);
+      ctx.scale(1 - progress, 1 - progress); ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(canvasA, 0, 0); ctx.restore();
+      ctx.globalAlpha = progress;
+      ctx.save(); ctx.translate(w / 2, h / 2); ctx.rotate((progress - 1) * Math.PI);
+      ctx.scale(progress, progress); ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(canvasB, 0, 0); ctx.restore();
+      break;
+    }
+    case 'blur': {
+      ctx.filter = `blur(${Math.sin(progress * Math.PI) * 20}px)`;
+      ctx.globalAlpha = 1 - progress; ctx.drawImage(canvasA, 0, 0);
+      ctx.globalAlpha = progress; ctx.drawImage(canvasB, 0, 0);
+      break;
+    }
+    case 'flash': {
+      ctx.drawImage(canvasA, 0, 0);
+      ctx.globalAlpha = progress; ctx.drawImage(canvasB, 0, 0);
+      ctx.globalAlpha = Math.sin(progress * Math.PI);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+      break;
+    }
+    default: ctx.drawImage(canvasA, 0, 0); break;
+  }
+  ctx.restore();
+}
+
+function applyFilterToCanvas(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, filterName: string): void {
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  switch (filterName) {
+    case 'bw':
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        data[i] = data[i + 1] = data[i + 2] = gray;
+      }
+      break;
+    case 'sepia':
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        data[i] = Math.min(255, r * 0.393 + g * 0.769 + b * 0.189);
+        data[i + 1] = Math.min(255, r * 0.349 + g * 0.686 + b * 0.168);
+        data[i + 2] = Math.min(255, r * 0.272 + g * 0.534 + b * 0.131);
+      }
+      break;
+    case 'invert':
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 255 - data[i]; data[i + 1] = 255 - data[i + 1]; data[i + 2] = 255 - data[i + 2];
+      }
+      break;
+    case 'warm':
+      for (let i = 0; i < data.length; i += 4) { data[i] = Math.min(255, data[i] * 1.1); data[i + 2] = Math.min(255, data[i + 2] * 0.9); }
+      break;
+    case 'cool':
+      for (let i = 0; i < data.length; i += 4) { data[i] = Math.min(255, data[i] * 0.9); data[i + 2] = Math.min(255, data[i + 2] * 1.1); }
+      break;
+    case 'contrast': {
+      const factor = (259 * (1.5 * 255 + 255)) / (255 * (259 - 1.5));
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+        data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+        data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+      }
+      break;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
 }
 
 // ─── WebM MediaRecorder Fallback ─────────────────────────────────

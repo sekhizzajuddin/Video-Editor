@@ -62,6 +62,18 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             <span className="toggle-track"><span className="toggle-thumb" /></span>
           </label>
         </Row>
+        <Row label="Fade In">
+          <input className="inspector-input" type="number" min={0} max={10} step={0.1}
+            value={clip.audioFadeIn || 0}
+            onChange={e => update({ audioFadeIn: Math.max(0, parseFloat(e.target.value) || 0) })} />
+          <span className="inspector-field-value">s</span>
+        </Row>
+        <Row label="Fade Out">
+          <input className="inspector-input" type="number" min={0} max={10} step={0.1}
+            value={clip.audioFadeOut || 0}
+            onChange={e => update({ audioFadeOut: Math.max(0, parseFloat(e.target.value) || 0) })} />
+          <span className="inspector-field-value">s</span>
+        </Row>
       </div>
     </div>
   );
@@ -126,6 +138,18 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             <span className="toggle-track"><span className="toggle-thumb" /></span>
           </label>
         </Row>
+        <Row label="Fade In">
+          <input className="inspector-input" type="number" min={0} max={10} step={0.1}
+            value={clip.audioFadeIn || 0}
+            onChange={e => update({ audioFadeIn: Math.max(0, parseFloat(e.target.value) || 0) })} />
+          <span className="inspector-field-value">s</span>
+        </Row>
+        <Row label="Fade Out">
+          <input className="inspector-input" type="number" min={0} max={10} step={0.1}
+            value={clip.audioFadeOut || 0}
+            onChange={e => update({ audioFadeOut: Math.max(0, parseFloat(e.target.value) || 0) })} />
+          <span className="inspector-field-value">s</span>
+        </Row>
       </div>
       <div className="inspector-section">
         <Sec>SPEED</Sec>
@@ -174,9 +198,63 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
         <Row label="Saturation">
           <input className="inspector-range" type="range" min={-100} max={100}
             value={clip.filters?.saturation ?? 0}
-            onChange={e => update({ filters: { brightness: clip.filters?.brightness ?? 0, contrast: clip.filters?.contrast ?? 0, saturation: parseInt(e.target.value), preset: clip.filters?.preset ?? 'none' } })} />
+            onChange={e => update({ filters: { brightness: clip.filters?.brightness ?? 0, contrast: clip.filters?.contrast ?? 0, saturation: parseInt(e.target.value), preset: clip.filters?.preset ?? 'none', chromaKey: clip.filters?.chromaKey, vignette: clip.filters?.vignette, blur: clip.filters?.blur } })} />
           <span className="inspector-range-value">{clip.filters?.saturation ?? 0}</span>
         </Row>
+        <Row label="Blur">
+          <input className="inspector-range" type="range" min={0} max={20} step={1}
+            value={clip.filters?.blur ?? 0}
+            onChange={e => update({ filters: { brightness: clip.filters?.brightness ?? 0, contrast: clip.filters?.contrast ?? 0, saturation: clip.filters?.saturation ?? 0, preset: clip.filters?.preset ?? 'none', chromaKey: clip.filters?.chromaKey, vignette: clip.filters?.vignette, blur: parseInt(e.target.value) } })} />
+          <span className="inspector-range-value">{clip.filters?.blur ?? 0}px</span>
+        </Row>
+      </div>
+      <div className="inspector-section">
+        <Sec title="CHROMA KEY" />
+        <Row label="Enabled">
+          <label className="inspector-toggle">
+            <input type="checkbox" checked={clip.filters?.chromaKey?.enabled || false}
+              onChange={e => update({ filters: { brightness: clip.filters?.brightness ?? 0, contrast: clip.filters?.contrast ?? 0, saturation: clip.filters?.saturation ?? 0, preset: clip.filters?.preset ?? 'none', chromaKey: { enabled: e.target.checked, color: clip.filters?.chromaKey?.color || '#00ff00', similarity: clip.filters?.chromaKey?.similarity ?? 0.4, smoothness: clip.filters?.chromaKey?.smoothness ?? 0.5 }, vignette: clip.filters?.vignette, blur: clip.filters?.blur } })} />
+            <span className="toggle-track"><span className="toggle-thumb" /></span>
+          </label>
+        </Row>
+        {clip.filters?.chromaKey?.enabled && (
+          <>
+            <Row label="Color">
+              <input className="inspector-input" type="color" value={clip.filters.chromaKey.color}
+                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters.chromaKey!, color: e.target.value } } })} />
+            </Row>
+            <Row label="Similarity">
+              <input className="inspector-range" type="range" min={0} max={1} step={0.05}
+                value={clip.filters.chromaKey.similarity}
+                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters.chromaKey!, similarity: parseFloat(e.target.value) } } })} />
+              <span className="inspector-range-value">{clip.filters.chromaKey.similarity.toFixed(2)}</span>
+            </Row>
+            <Row label="Smoothness">
+              <input className="inspector-range" type="range" min={0} max={1} step={0.05}
+                value={clip.filters.chromaKey.smoothness}
+                onChange={e => update({ filters: { ...clip.filters!, chromaKey: { ...clip.filters.chromaKey!, smoothness: parseFloat(e.target.value) } } })} />
+              <span className="inspector-range-value">{clip.filters.chromaKey.smoothness.toFixed(2)}</span>
+            </Row>
+          </>
+        )}
+      </div>
+      <div className="inspector-section">
+        <Sec title="VIGNETTE" />
+        <Row label="Enabled">
+          <label className="inspector-toggle">
+            <input type="checkbox" checked={clip.filters?.vignette?.enabled || false}
+              onChange={e => update({ filters: { brightness: clip.filters?.brightness ?? 0, contrast: clip.filters?.contrast ?? 0, saturation: clip.filters?.saturation ?? 0, preset: clip.filters?.preset ?? 'none', chromaKey: clip.filters?.chromaKey, vignette: { enabled: e.target.checked, intensity: clip.filters?.vignette?.intensity ?? 0 }, blur: clip.filters?.blur } })} />
+            <span className="toggle-track"><span className="toggle-thumb" /></span>
+          </label>
+        </Row>
+        {clip.filters?.vignette?.enabled && (
+          <Row label="Intensity">
+            <input className="inspector-range" type="range" min={0} max={1} step={0.05}
+              value={clip.filters.vignette.intensity}
+              onChange={e => update({ filters: { ...clip.filters!, vignette: { ...clip.filters.vignette!, intensity: parseFloat(e.target.value) } } })} />
+            <span className="inspector-range-value">{Math.round(clip.filters.vignette.intensity * 100)}%</span>
+          </Row>
+        )}
       </div>
       <div className="inspector-section">
         <Sec title="TRANSITION" />
@@ -253,6 +331,22 @@ function TextInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>
           <input className="inspector-input" type="color" value={to.color || '#ffffff'}
             onChange={e => update({ textOverlay: { ...to, color: e.target.value } })} />
           <span className="inspector-field-value">{to.color || '#ffffff'}</span>
+        </Row>
+        <Row label="Outline">
+          <input className="inspector-input" type="color" value={to.outlineColor || '#000000'}
+            onChange={e => update({ textOverlay: { ...to, outlineColor: e.target.value } })} />
+          <input className="inspector-input" type="number" min={0} max={10} step={1}
+            value={to.outlineWidth || 0}
+            onChange={e => update({ textOverlay: { ...to, outlineWidth: parseInt(e.target.value) || 0 } })}
+            style={{ width: 50 }} />
+        </Row>
+        <Row label="Background">
+          <input className="inspector-input" type="color" value={to.backgroundColor || '#000000'}
+            onChange={e => update({ textOverlay: { ...to, backgroundColor: e.target.value } })} />
+          <input className="inspector-input" type="number" min={0} max={1} step={0.1}
+            value={to.backgroundOpacity ?? 0.5}
+            onChange={e => update({ textOverlay: { ...to, backgroundOpacity: parseFloat(e.target.value) || 0 } })}
+            style={{ width: 50 }} />
         </Row>
       </div>
       <div className="inspector-section">

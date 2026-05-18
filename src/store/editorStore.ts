@@ -6,6 +6,8 @@ import {
   DEFAULT_FPS, DEFAULT_RESOLUTION,
 } from '../types';
 import { saveProject } from '../utils/fileUtils';
+import { revokeMediaUrl } from '../engine/useMediaManager';
+import { addKeyframe, removeKeyframe, Keyframe } from '../utils/keyframeUtils';
 
 let clipCounter = 0;
 function genId(): string { clipCounter += 1; return `clip_${Date.now()}_${clipCounter}`; }
@@ -44,13 +46,14 @@ export interface EditorState {
   undoStack: Project[];
   redoStack: Project[];
   copiedClip: Clip | null;
+  pendingDrag: { clip: Clip; sourceTrackId: string } | null;
   exportSettings: ExportSettings;
   showExport: boolean;
   exportProgress: number;
   exportStage: string;
   exportError: string | null;
   zoom: number;
-  showShorcuts: boolean;
+  showShortcuts: boolean;
   rippleDelete: boolean;
   showOpenProject: boolean;
   saveToast: boolean;
@@ -68,12 +71,16 @@ export interface EditorState {
   setExportProgress: (p: number) => void;
   setExportStage: (s: string) => void;
   setExportError: (e: string | null) => void;
-  setShowShorcuts: (s: boolean) => void;
+  setshowShortcuts: (s: boolean) => void;
   setRippleDelete: (r: boolean) => void;
   setShowOpenProject: (s: boolean) => void;
   setSaveToast: (s: boolean) => void;
   setCopiedClip: (c: Clip | null) => void;
+  setPendingDrag: (d: { clip: Clip; sourceTrackId: string } | null) => void;
+  commitPendingDrag: () => void;
+  cancelPendingDrag: () => void;
   setExportSettings: (s: ExportSettings) => void;
+  setAspectRatio: (w: number, h: number) => void;
   setActiveClipId: (id: string | null) => void;
   setSelectedClipIds: (ids: string[]) => void;
   setDirty: (d: boolean) => void;
@@ -117,6 +124,8 @@ export interface EditorState {
   getTrackClips: (trackId: string) => Clip[];
   getClipsInRange: (trackId: string, from: number, to: number) => Clip[];
   findSnapTime: (trackId: string, t: number) => number;
+  addKeyframe: (clipId: string, property: string, time: number, value: number, easing?: Keyframe['easing']) => void;
+  removeKeyframe: (clipId: string, keyframeId: string) => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => {
@@ -135,13 +144,14 @@ export const useEditorStore = create<EditorState>((set, get) => {
     undoStack: [],
     redoStack: [],
     copiedClip: null,
+    pendingDrag: null,
     exportSettings: defaultExport,
     showExport: false,
     exportProgress: 0,
     exportStage: '',
     exportError: null,
     zoom: 1,
-    showShorcuts: false,
+    showShortcuts: false,
     rippleDelete: false,
     showOpenProject: false,
     saveToast: false,
@@ -159,12 +169,35 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setExportProgress: (p) => set({ exportProgress: p }),
     setExportStage: (s) => set({ exportStage: s }),
     setExportError: (e) => set({ exportError: e }),
-    setShowShorcuts: (s) => set({ showShorcuts: s }),
+    setshowShortcuts: (s) => set({ showShortcuts: s }),
     setRippleDelete: (r) => set({ rippleDelete: r }),
     setShowOpenProject: (s) => set({ showOpenProject: s }),
     setSaveToast: (s) => set({ saveToast: s }),
     setCopiedClip: (c) => set({ copiedClip: c }),
+    setPendingDrag: (d) => set({ pendingDrag: d }),
+    commitPendingDrag: () => set({ pendingDrag: null }),
+    cancelPendingDrag: () => {
+      const { pendingDrag } = get();
+      if (!pendingDrag) return;
+      const { clip, sourceTrackId } = pendingDrag;
+      set((st) => ({
+        project: {
+          ...st.project,
+          tracks: st.project.tracks.map((t) => {
+            if (t.id === sourceTrackId && !t.clips.some(c => c.id === clip.id)) {
+              return { ...t, clips: [...t.clips, clip] };
+            }
+            if (t.id === clip.trackId && t.clips.some(c => c.id === clip.id) && t.id !== sourceTrackId) {
+              return { ...t, clips: t.clips.filter(c => c.id !== clip.id) };
+            }
+            return t;
+          }),
+        },
+        pendingDrag: null,
+      }));
+    },
     setExportSettings: (s) => set({ exportSettings: s }),
+    setAspectRatio: (w, h) => set({ aspectRatio: { w, h }, isDirty: true }),
     setActiveClipId: (id) => set({ activeClipId: id }),
     setSelectedClipIds: (ids) => set({ selectedClipIds: ids }),
     setDirty: (d) => set({ isDirty: d }),
@@ -213,7 +246,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         textOverlay: trackType === 'text' ? {
           text: 'Text', fontFamily: 'Arial', fontSize: 48, color: '#ffffff', fontWeight: 400, textAlign: 'center' as const,
         } : undefined,
-        filters: { brightness: 0, contrast: 0, saturation: 0, preset: 'none' },
+        filters: { brightness: 0, contrast: 0, saturation: 0, preset: 'none', chromaKey: { enabled: false, color: '#00ff00', similarity: 0.4, smoothness: 0.5 }, vignette: { enabled: false, intensity: 0 }, blur: 0 },
         transition: { type: 'none', duration: 0.3 },
       };
 
@@ -255,12 +288,20 @@ export const useEditorStore = create<EditorState>((set, get) => {
               ...t,
               clips: t.clips.map((c) => {
                 if (c.id !== id) return c;
-                const updated = { ...c, ...patch };
+                let updated = { ...c, ...patch };
                 if (patch.startAt !== undefined || patch.duration !== undefined) {
-                  const overlap = get().getClipsInRange(t.id, updated.startAt, updated.startAt + updated.duration)
-                    .filter((o) => o.id !== id);
-                  if (overlap.length > 0) {
-                    updated.startAt = overlap[0].startAt + overlap[0].duration;
+                  let hasOverlap = true;
+                  let safetyCounter = 0;
+                  while (hasOverlap && safetyCounter < 50) {
+                    const overlap = get().getClipsInRange(t.id, updated.startAt, updated.startAt + updated.duration)
+                      .filter((o) => o.id !== id);
+                    if (overlap.length > 0) {
+                      const firstOverlap = overlap[0];
+                      updated.startAt = firstOverlap.startAt + firstOverlap.duration;
+                    } else {
+                      hasOverlap = false;
+                    }
+                    safetyCounter++;
                   }
                 }
                 return updated;
@@ -344,7 +385,11 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const destTrack = state.project.tracks.find((t) => t.id === toTrackId);
       if (!destTrack || destTrack.locked) return false;
       const finalTime = Math.max(0, toStartAt);
-      // No overlap check during drag — allow ghost positioning
+
+      if (!state.pendingDrag) {
+        get().setPendingDrag({ clip: { ...clip }, sourceTrackId: sourceTrack.id });
+      }
+
       set((st) => ({
         project: {
           ...st.project,
@@ -371,14 +416,18 @@ export const useEditorStore = create<EditorState>((set, get) => {
         const splitPoint = splitAt - clip.startAt;
         if (splitPoint < MIN_CLIP_DURATION || clip.duration - splitPoint < MIN_CLIP_DURATION) return;
 
+        const mf = clip.mediaId ? state.project.media.find(m => m.id === clip.mediaId) : undefined;
         get().pushHistory();
         const newId = genId();
+        const originalSourceEnd = clip.sourceEnd || (mf?.duration ?? clip.sourceStart + clip.duration * clip.speed);
+        const splitSourcePoint = clip.sourceStart + splitPoint * clip.speed;
         const newClip: Clip = {
           ...clone(clip), id: newId, startAt: splitAt,
           duration: clip.duration - splitPoint,
-          sourceStart: clip.sourceStart + splitPoint * clip.speed,
+          sourceStart: splitSourcePoint,
+          sourceEnd: originalSourceEnd,
         };
-        const updatedClip = { ...clip, duration: splitPoint };
+        const updatedClip = { ...clip, duration: splitPoint, sourceEnd: splitSourcePoint };
 
         set((st) => ({
           project: {
@@ -459,6 +508,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     addMedia: (m) => set((st) => ({ project: { ...st.project, media: [...st.project.media, m] }, isDirty: true })),
     removeMedia: (id) => {
       get().pushHistory();
+      revokeMediaUrl(id);
       set((st) => ({
         project: {
           ...st.project,
@@ -487,6 +537,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     loadProject: (p) => {
+      const oldMedia = get().project.media;
+      for (const m of oldMedia) revokeMediaUrl(m.id);
       set({
         project: clone(p),
         currentTime: 0, isPlaying: false,
@@ -496,6 +548,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     newProject: () => {
+      const oldMedia = get().project.media;
+      for (const m of oldMedia) revokeMediaUrl(m.id);
+      clipCounter = 0;
       set({
         project: clone(emptyProject()),
         currentTime: 0, isPlaying: false,
@@ -583,6 +638,21 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const grid = Math.round(t / CLIP_GRID) * CLIP_GRID;
       if (Math.abs(t - grid) < 0.02) return grid;
       return -1;
+    },
+
+    addKeyframe: (clipId, property, time, value, easing) => {
+      const clip = get().getClip(clipId);
+      if (!clip) return;
+      const tracks = clip.keyframeTracks || [];
+      const updated = addKeyframe(tracks, property, time, value, easing);
+      get().updateClip(clipId, { keyframeTracks: updated });
+    },
+
+    removeKeyframe: (clipId, keyframeId) => {
+      const clip = get().getClip(clipId);
+      if (!clip || !clip.keyframeTracks) return;
+      const updated = removeKeyframe(clip.keyframeTracks, keyframeId);
+      get().updateClip(clipId, { keyframeTracks: updated });
     },
   };
 });

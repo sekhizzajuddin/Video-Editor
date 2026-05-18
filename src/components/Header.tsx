@@ -1,4 +1,5 @@
 import { useEditorStore } from '../store/editorStore';
+import { ASPECT_RATIO_PRESETS } from '../types';
 
 function UndoIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>; }
 function RedoIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>; }
@@ -6,13 +7,14 @@ function SaveIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fil
 function DownloadIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>; }
 function FolderOpenIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>; }
 function PlusIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
+function AspectRatioIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>; }
 
 export default function Header() {
   const {
     project: { name: projectName }, setProjectName,
     undo, redo, undoStack, redoStack,
     setShowExport, setShowOpenProject, newProject,
-    isDirty, saveToDB,
+    isDirty, saveToDB, aspectRatio, setAspectRatio,
   } = useEditorStore();
 
   const handleSave = () => {
@@ -38,6 +40,23 @@ export default function Header() {
           title="Project name"
         />
         {isDirty && <span className="navbar-dirty" title="Unsaved changes">●</span>}
+        <div className="navbar-divider" />
+        <div className="aspect-ratio-selector">
+          <AspectRatioIcon />
+          <select
+            className="aspect-ratio-select"
+            value={`${aspectRatio.w}:${aspectRatio.h}`}
+            onChange={e => {
+              const [w, h] = e.target.value.split(':').map(Number);
+              setAspectRatio(w, h);
+            }}
+            title="Aspect Ratio"
+          >
+            {ASPECT_RATIO_PRESETS.map(p => (
+              <option key={p.label} value={`${p.w}:${p.h}`}>{p.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="navbar-right">
         <button className="navbar-btn" onClick={() => setShowOpenProject(true)} title="Open Project"><FolderOpenIcon /></button>

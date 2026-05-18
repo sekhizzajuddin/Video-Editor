@@ -8,7 +8,7 @@ import PreviewCanvas from './components/PreviewCanvas';
 import InspectorPanel from './components/InspectorPanel';
 import Timeline from './components/Timeline';
 import ExportModal from './components/ExportModal';
-import ShorcutsModal from './components/ShorcutsModal';
+import ShortcutsModal from './components/ShortcutsModal';
 import ProjectManagerModal from './components/ProjectManagerModal';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
@@ -74,7 +74,7 @@ export default function App() {
     }
     if (e.key === 'Escape') {
       store.setSelectedClipIds([]); store.setActiveClipId(null);
-      store.setShowExport(false); store.setShowShorcuts(false); store.setShowOpenProject(false); return;
+      store.setShowExport(false); store.setShowShortcuts(false); store.setShowOpenProject(false); return;
     }
     if (e.key === 'Delete' || e.key === 'Backspace') { if (store.selectedClipIds.length > 0) store.removeSelectedClips(); return; }
     if (meta && e.key === 'z') { e.preventDefault(); e.shiftKey ? store.redo() : store.undo(); return; }
@@ -95,7 +95,7 @@ export default function App() {
     }
     if (e.key === 'i') { store.toggleMarker(currentTime); return; }
     if (e.key === 'o') { cropToMarkers(); return; }
-    if (e.key === '?' || (meta && e.key === '/')) { store.setShowShorcuts(!store.showShorcuts); return; }
+    if (e.key === '?' || (meta && e.key === '/')) { store.setShowShortcuts(!store.showShortcuts); return; }
     if (e.key === 'n' && meta && e.shiftKey) { e.preventDefault(); newProject(); return; }
   }, [currentTime, cropToMarkers, newProject, togglePlayback]);
 
@@ -126,7 +126,7 @@ export default function App() {
         </div>
         <Timeline />
         <ExportModal />
-        <ShorcutsModal />
+        <ShortcutsModal />
         {showOpenProject && <ProjectManagerModal />}
         {saveToast && <div className="toast">✓ Project saved</div>}
       </div>

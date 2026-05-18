@@ -26,6 +26,9 @@ const TEXT_PRESETS = [
   { label: 'Bold Quote', fontSize: 48, fontWeight: 700, color: '#f59e0b', fontFamily: 'Georgia, serif' },
   { label: 'Mono Code', fontSize: 32, fontWeight: 400, color: '#34d399', fontFamily: 'JetBrains Mono, monospace' },
   { label: 'Neon', fontSize: 56, fontWeight: 700, color: '#a78bfa', fontFamily: 'Inter, sans-serif' },
+  { label: 'Lower Third', fontSize: 32, fontWeight: 600, color: '#ffffff', fontFamily: 'Inter, sans-serif', backgroundColor: '#1e3a8a', backgroundOpacity: 0.8 },
+  { label: 'Watermark', fontSize: 24, fontWeight: 400, color: '#ffffff', fontFamily: 'Inter, sans-serif', outlineColor: '#000000', outlineWidth: 3 },
+  { label: 'Credits', fontSize: 28, fontWeight: 300, color: '#e2e8f0', fontFamily: 'Georgia, serif' },
 ];
 
 // ─── Stickers ─────────────────────────────────────────────────────
@@ -175,7 +178,14 @@ function TextPanel() {
   const { addClip, updateClip } = useEditorStore();
   const handleAddText = (p: typeof TEXT_PRESETS[number]) => {
     const clip = addClip('text');
-    if (clip) updateClip(clip.id, { textOverlay: { text: p.label, fontFamily: p.fontFamily, fontSize: p.fontSize, color: p.color, fontWeight: p.fontWeight, textAlign: 'center' }, duration: 4 });
+    if (clip) updateClip(clip.id, {
+      textOverlay: {
+        text: p.label, fontFamily: p.fontFamily, fontSize: p.fontSize, color: p.color, fontWeight: p.fontWeight, textAlign: 'center',
+        outlineColor: p.outlineColor, outlineWidth: p.outlineWidth,
+        backgroundColor: p.backgroundColor, backgroundOpacity: p.backgroundOpacity,
+      },
+      duration: 4,
+    });
   };
   return (
     <div className="panel-content">
@@ -256,11 +266,28 @@ function TransitionsPanel() {
   );
 }
 
+// ─── Shapes Panel ──────────────────────────────────────────────────
+function ShapesPanel() {
+  const { addClip, updateClip } = useEditorStore();
+  const SHAPES = ['⬛', '🟥', '🟦', '🟩', '🟨', '⬜', '🔴', '🟢', '🔵', '🟡', '⚫', '⚪', '🔶', '🔷', '🔺', '🔻', '⭐', '💠', '🔲', '🔳'];
+  const add = (emoji: string) => { const c = addClip('sticker', undefined, emoji); if (c) updateClip(c.id, { duration: 5 }); };
+  return (
+    <div className="panel-content">
+      <p className="panel-hint">Click a shape to add to timeline</p>
+      <div className="sticker-group">
+        <div className="sticker-group-label">Basic Shapes</div>
+        <div className="sticker-grid">{SHAPES.map(s => <button key={s} className="sticker-btn" onClick={() => add(s)}>{s}</button>)}</div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────────
 const TABS = [
   { id: 'media',       label: '🎬 Media' },
   { id: 'text',        label: '𝐓 Text' },
   { id: 'stickers',    label: '😀 Stickers' },
+  { id: 'shapes',      label: '⬜ Shapes' },
   { id: 'effects',     label: '✨ Effects' },
   { id: 'transitions', label: '⟷ Transitions' },
 ];
@@ -271,6 +298,8 @@ export default function AssetLibrary({ activeTool }: { activeTool: string }) {
   useEffect(() => {
     if (activeTool === 'audio') {
       setTab('transitions');
+    } else if (activeTool === 'shapes') {
+      setTab('shapes');
     } else {
       setTab(activeTool);
     }
@@ -290,6 +319,7 @@ export default function AssetLibrary({ activeTool }: { activeTool: string }) {
         {tab === 'media'       && <MediaPanel />}
         {tab === 'text'        && <TextPanel />}
         {tab === 'stickers'    && <StickersPanel />}
+        {tab === 'shapes'      && <ShapesPanel />}
         {tab === 'effects'     && <EffectsPanel />}
         {tab === 'transitions' && <TransitionsPanel />}
       </div>

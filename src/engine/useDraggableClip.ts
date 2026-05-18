@@ -133,9 +133,13 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
   }, [pxPerSec, trackHeight]);
 
   const onDragEnd = useCallback(() => {
+    const store = useEditorStore.getState();
     if (dragRef.current.zone !== 'none') {
-      useEditorStore.getState().commitDrag();
+      store.commitDrag();
+      store.commitPendingDrag();
       dragRef.current.zone = 'none';
+    } else {
+      store.cancelPendingDrag();
     }
     setSnapLine(null);
   }, []);

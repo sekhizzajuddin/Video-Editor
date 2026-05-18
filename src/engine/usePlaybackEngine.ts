@@ -22,6 +22,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   const durationRef = useRef(10);
   const lastFrameRef = useRef(0);
   const audioEls = useRef<{ el: HTMLAudioElement; clipId: string }[]>([]);
+  const isStartingRef = useRef(false);
   const store = useEditorStore;
 
   // Centralized Web Audio API context & master dynamics compressor
@@ -75,8 +76,9 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
         if (!isAudio && !isVideo) continue;
 
         const clipEnd = clip.startAt + clip.duration;
-        if (fromTime >= clipEnd || fromTime < clip.startAt - 0.05) {
-          if (clip.startAt > fromTime + 0.1) continue;
+        if (fromTime >= clipEnd + 0.05) continue;
+        if (fromTime < clip.startAt - 0.05) {
+          if (clip.startAt > fromTime + 0.5) continue;
         }
 
         const url = getMediaUrl(clip.mediaId);
@@ -139,12 +141,13 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   }, [onFrame, store, stopAllAudio]);
 
   const play = useCallback(() => {
-    if (isPlayingRef.current) return;
+    if (isPlayingRef.current || isStartingRef.current) return;
     const state = store.getState();
     if (state.currentTime >= state.project.duration) {
       store.getState().setCurrentTime(0);
       currentTimeRef.current = 0;
     }
+    isStartingRef.current = true;
     isPlayingRef.current = true;
     startWallRef.current = performance.now();
     startTimeRef.current = currentTimeRef.current;
@@ -154,6 +157,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     store.getState().setIsPlaying(true);
     startAudio(currentTimeRef.current);
     rAF.current = requestAnimationFrame(tick);
+    setTimeout(() => { isStartingRef.current = false; }, 100);
   }, [tick, store, startAudio]);
 
   const pause = useCallback(() => {

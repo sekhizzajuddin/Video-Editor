@@ -313,6 +313,17 @@ export default function Timeline() {
       const c = store.getClip(ctxMenu.clipId);
       if (c) store.updateClip(c.id, { speed: -(c.speed || 1) });
     }
+    else if (action === 'detachAudio') {
+      const c = store.getClip(ctxMenu.clipId);
+      if (c && c.mediaId && c.trackType === 'video') {
+        pushHistory();
+        const audioClip = store.addClip('audio', c.mediaId);
+        if (audioClip) {
+          store.updateClip(audioClip.id, { startAt: c.startAt, duration: c.duration, sourceStart: c.sourceStart });
+          store.updateClip(c.id, { muted: true });
+        }
+      }
+    }
     setCtxMenu(null);
   };
 
@@ -548,14 +559,15 @@ export default function Timeline() {
       {/* Context menu */}
       {ctxMenu && (
         <div className="context-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
-          <div className="context-item" onClick={() => ctxAction('copy')}>📋 Copy</div>
-          <div className="context-item" onClick={() => ctxAction('duplicate')}>📑 Duplicate</div>
-          <div className="context-item" onClick={() => ctxAction('split')}>✂️ Split at playhead</div>
+          <div className="context-item" onClick={() => ctxAction('copy')}>Copy</div>
+          <div className="context-item" onClick={() => ctxAction('duplicate')}>Duplicate</div>
+          <div className="context-item" onClick={() => ctxAction('split')}>Split at playhead</div>
           <div className="context-separator" />
-          <div className="context-item" onClick={() => ctxAction('freeze')}>❄️ Freeze frame</div>
-          <div className="context-item" onClick={() => ctxAction('reverse')}>⏪ Reverse</div>
+          <div className="context-item" onClick={() => ctxAction('freeze')}>Freeze frame</div>
+          <div className="context-item" onClick={() => ctxAction('reverse')}>Reverse</div>
+          <div className="context-item" onClick={() => ctxAction('detachAudio')}>Detach audio</div>
           <div className="context-separator" />
-          <div className="context-item context-danger" onClick={() => ctxAction('delete')}>🗑 Delete</div>
+          <div className="context-item context-danger" onClick={() => ctxAction('delete')}>Delete</div>
         </div>
       )}
 

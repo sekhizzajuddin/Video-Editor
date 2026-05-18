@@ -21,6 +21,10 @@ export interface TextOverlay {
   color: string;
   fontWeight: number;
   textAlign: 'left' | 'center' | 'right';
+  outlineColor?: string;
+  outlineWidth?: number;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
 }
 
 export interface Transform {
@@ -30,11 +34,31 @@ export interface Transform {
   rotation: number;
 }
 
+export interface Keyframe {
+  id: string;
+  time: number;
+  value: number;
+  easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+}
+
+export interface KeyframeTrack {
+  property: string;
+  keyframes: Keyframe[];
+}
+
+export interface SpeedRampPoint {
+  time: number;
+  speed: number;
+}
+
 export interface ClipFilters {
   brightness: number;
   contrast: number;
   saturation: number;
   preset: 'none' | 'bw' | 'sepia' | 'invert' | 'warm' | 'cool' | 'contrast';
+  chromaKey?: { enabled: boolean; color: string; similarity: number; smoothness: number };
+  vignette?: { enabled: boolean; intensity: number };
+  blur?: number;
 }
 
 export type TransitionType =
@@ -72,6 +96,10 @@ export interface Clip {
   thumbnailFrame?: string;
   filters?: ClipFilters;
   transition?: ClipTransition;
+  keyframeTracks?: KeyframeTrack[];
+  speedRampPoints?: SpeedRampPoint[];
+  audioFadeIn?: number;
+  audioFadeOut?: number;
 }
 
 export interface Track {
@@ -118,3 +146,12 @@ export const MIN_CLIP_DURATION = 0.3;
 export const CLIP_GRID = 0.1;
 export const DEFAULT_FPS = 30;
 export const DEFAULT_RESOLUTION = { w: 1920, h: 1080 };
+
+export const ASPECT_RATIO_PRESETS = [
+  { label: '16:9 (Landscape)', w: 16, h: 9 },
+  { label: '9:16 (Vertical)', w: 9, h: 16 },
+  { label: '1:1 (Square)', w: 1, h: 1 },
+  { label: '4:3 (Standard)', w: 4, h: 3 },
+  { label: '4:5 (Instagram)', w: 4, h: 5 },
+  { label: '21:9 (Ultrawide)', w: 21, h: 9 },
+];
