@@ -1,4 +1,5 @@
-import type { Keyframe, KeyframeTrack } from '../types';
+import type { KeyframeTrack } from '../types';
+import type { Keyframe } from '../types';
 
 export function interpolateKeyframes(tracks: KeyframeTrack[] | undefined, time: number, property: string): number {
   if (!tracks) return 0;

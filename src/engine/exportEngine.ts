@@ -331,7 +331,7 @@ function renderClipLayer(
 }
 
 function renderTransitionLayer(
-  ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D, _canvas: HTMLCanvasElement,
   clipA: any, clipB: any, type: string, progress: number,
   mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number,
   w: number, h: number,

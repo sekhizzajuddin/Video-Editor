@@ -8,7 +8,7 @@ import {
 import { saveProject } from '../utils/fileUtils';
 import { revokeMediaUrl } from '../engine/useMediaManager';
 import { addKeyframe, removeKeyframe } from '../utils/keyframeUtils';
-import type { Keyframe } from '../utils/keyframeUtils';
+import type { Keyframe } from '../types';
 
 let clipCounter = 0;
 function genId(): string { clipCounter += 1; return `clip_${Date.now()}_${clipCounter}`; }
