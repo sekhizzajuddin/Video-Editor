@@ -142,7 +142,7 @@ export default function Timeline() {
     return tracks.reduce((sum, t) => sum + getTrackHeight(t.type), 0);
   }, [tracks]);
 
-  const { snapLine, onDragStart, onDragMove, onDragEnd } = useDraggableClip(pxPerSec, TRACK_HEIGHT);
+  const { snapLine, onDragStart, onDragMove, onDragEnd } = useDraggableClip(pxPerSec, DEFAULT_TRACK_HEIGHT);
 
   // Ruler scroll sync
   const onTracksScroll = useCallback(() => {
@@ -234,7 +234,7 @@ export default function Timeline() {
       // Find clips within selection box
       const selected: string[] = [];
       let trackTopOffset = 0;
-      tracks.forEach((track, ti) => {
+      tracks.forEach((track, _) => {
         const trackH = getTrackHeight(track.type);
         const trackBottom = trackTopOffset + trackH;
         if (selectionBox.y < trackBottom && selectionBox.y + selectionBox.h > trackTopOffset) {
@@ -520,7 +520,7 @@ export default function Timeline() {
               {/* Clips */}
               {(() => {
                 let trackTopOffset = 0;
-                return tracks.map((track, ti) => {
+                return tracks.map((track, _) => {
                   const trackH = getTrackHeight(track.type);
                   const top = trackTopOffset + 2;
                   const h = trackH - 4;
@@ -574,7 +574,7 @@ export default function Timeline() {
               {/* Transition zones */}
               {(() => {
                 let trackTopOffset = 0;
-                return tracks.map((track, ti) => {
+                return tracks.map((track, _) => {
                   const trackH = getTrackHeight(track.type);
                   const y = trackTopOffset;
                   trackTopOffset += trackH;
