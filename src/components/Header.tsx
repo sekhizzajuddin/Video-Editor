@@ -1,13 +1,13 @@
 import { useEditorStore } from '../store/editorStore';
 import { ASPECT_RATIO_PRESETS } from '../types';
 
-function UndoIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>; }
-function RedoIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>; }
-function SaveIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>; }
-function DownloadIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>; }
-function FolderOpenIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>; }
-function PlusIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
-function AspectRatioIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>; }
+function UndoIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>; }
+function RedoIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>; }
+function SaveIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>; }
+function DownloadIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>; }
+function FolderOpenIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>; }
+function PlusIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
+function AspectRatioIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>; }
 
 export default function Header() {
   const {
@@ -28,46 +28,31 @@ export default function Header() {
     <header className="top-bar">
       <div className="top-bar-left">
         <div className="top-bar-logo">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="20" height="20" x="2" y="2" rx="5" fill="#00d4ff"/><polygon points="10,8 10,16 17,12" fill="#fff"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect width="20" height="20" x="2" y="2" rx="5" fill="#3b82f6"/><polygon points="10,8 10,16 17,12" fill="#fff"/></svg>
           <span className="top-bar-brand">VidForge Pro</span>
+          <span className="top-bar-version">v1.0</span>
         </div>
         <div className="top-bar-divider" />
-        <input
-          id="project-name-input"
-          className="top-bar-project-name"
-          value={projectName}
-          onChange={e => setProjectName(e.target.value)}
-          title="Project name"
-        />
-        {isDirty && <span className="top-bar-dirty" title="Unsaved changes">●</span>}
+        <input className="top-bar-project-name" value={projectName} onChange={e => setProjectName(e.target.value)} title="Project name" />
+        {isDirty && <span className="top-bar-dirty">●</span>}
         <div className="top-bar-divider" />
         <div className="aspect-ratio-selector">
           <AspectRatioIcon />
-          <select
-            className="aspect-ratio-select"
-            value={`${aspectRatio.w}:${aspectRatio.h}`}
-            onChange={e => {
-              const [w, h] = e.target.value.split(':').map(Number);
-              setAspectRatio(w, h);
-            }}
-            title="Aspect Ratio"
-          >
-            {ASPECT_RATIO_PRESETS.map(p => (
-              <option key={p.label} value={`${p.w}:${p.h}`}>{p.label}</option>
-            ))}
+          <select className="aspect-ratio-select" value={`${aspectRatio.w}:${aspectRatio.h}`}
+            onChange={e => { const [w, h] = e.target.value.split(':').map(Number); setAspectRatio(w, h); }} title="Aspect Ratio">
+            {ASPECT_RATIO_PRESETS.map(p => <option key={p.label} value={`${p.w}:${p.h}`}>{p.label}</option>)}
           </select>
         </div>
       </div>
       <div className="top-bar-right">
-        <button className="top-bar-btn" onClick={() => setShowOpenProject(true)} title="Open Project"><FolderOpenIcon /></button>
-        <button className="top-bar-btn" onClick={() => newProject()} title="New Project (Ctrl+Shift+N)"><PlusIcon /></button>
+        <button className="top-bar-btn" onClick={() => setShowOpenProject(true)} title="Open"><FolderOpenIcon /></button>
+        <button className="top-bar-btn" onClick={() => newProject()} title="New"><PlusIcon /></button>
         <div className="top-bar-divider" />
-        <button className="top-bar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)"><UndoIcon /></button>
-        <button className="top-bar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Shift+Z)"><RedoIcon /></button>
-        <button className="top-bar-btn top-bar-save" onClick={handleSave} title="Save (Ctrl+S)"><SaveIcon /></button>
+        <button className="top-bar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo"><UndoIcon /></button>
+        <button className="top-bar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo"><RedoIcon /></button>
+        <button className="top-bar-btn" onClick={handleSave} title="Save"><SaveIcon /></button>
         <button className="top-bar-export-btn" onClick={() => setShowExport(true)}>
-          <DownloadIcon />
-          <span>Export</span>
+          <DownloadIcon /><span>Export</span>
         </button>
       </div>
     </header>
