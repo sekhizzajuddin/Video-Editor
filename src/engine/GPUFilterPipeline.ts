@@ -83,11 +83,11 @@ const FRAGMENT_SHADER_BASE = `
     return color;
   }
   
-  vec3 applyChromaKey(vec3 color) {
-    if (u_chromaKeyEnabled == 0) return color;
-    float dist = distance(color, u_chromaKeyColor);
+  vec4 applyChromaKey(vec4 texColor) {
+    if (u_chromaKeyEnabled == 0) return texColor;
+    float dist = distance(texColor.rgb, u_chromaKeyColor);
     float alpha = smoothstep(u_chromaKeySimilarity, u_chromaKeySimilarity + u_chromaKeySmoothness, dist);
-    return color * alpha;
+    return vec4(texColor.rgb * alpha, texColor.a * alpha);
   }
   
   vec3 applyVignette(vec3 color, vec2 uv) {
@@ -100,6 +100,9 @@ const FRAGMENT_SHADER_BASE = `
   
   void main() {
     vec4 texColor = texture2D(u_texture, v_texCoord);
+    
+    // Apply chroma key first to compute correct alpha channel
+    texColor = applyChromaKey(texColor);
     vec3 color = texColor.rgb;
     
     // Apply adjustments
@@ -107,7 +110,6 @@ const FRAGMENT_SHADER_BASE = `
     color = adjustContrast(color, u_contrast);
     color = adjustSaturation(color, u_saturation);
     color = applyPreset(color, u_preset);
-    color = applyChromaKey(color);
     color = applyVignette(color, v_texCoord);
     
     gl_FragColor = vec4(color, texColor.a);
@@ -121,9 +123,10 @@ const FRAGMENT_SHADER_BLUR = `
   uniform sampler2D u_texture;
   uniform vec2 u_direction;
   uniform float u_blurAmount;
+  uniform vec2 u_resolution;
   
   void main() {
-    vec2 texOffset = 1.0 / vec2(textureSize(u_texture, 0));
+    vec2 texOffset = 1.0 / u_resolution;
     vec3 result = vec3(0.0);
     float totalWeight = 0.0;
     
@@ -344,9 +347,9 @@ class WebGLFilterPipeline {
 
   init(canvas: HTMLCanvasElement): boolean {
     const gl = canvas.getContext('webgl', {
-      alpha: false,
+      alpha: true,
       antialias: false,
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     });
     if (!gl) return false;
@@ -491,24 +494,29 @@ class WebGLFilterPipeline {
     return [r, g, b];
   }
 
-  /** Apply filters to a video element and render to framebuffer */
+  /** Apply filters to a video or canvas element and render to framebuffer or screen */
   applyFilters(
-    video: HTMLVideoElement,
+    video: TexImageSource,
     config: GPUFilterConfig,
     targetFb: string = 'fb_a'
   ): void {
     if (!this.gl || !this.initialized) return;
     const gl = this.gl;
 
-    // Upload video frame to texture
+    const isScreenTarget = targetFb === 'screen';
+    const actualTargetFb = isScreenTarget ? 'fb_a' : targetFb;
+
+    // Upload video/canvas frame to texture
     const tex = this.textures.get('tex_video');
     if (!tex) return;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
 
-    // Bind target framebuffer
-    const fb = this.framebuffers.get(targetFb);
+    // Clear target buffer with transparent pixels
+    const fb = this.framebuffers.get(actualTargetFb);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb || null);
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.viewport(0, 0, this.width, this.height);
 
     // Use filter program
@@ -551,7 +559,7 @@ class WebGLFilterPipeline {
 
     // Apply blur if needed (separable Gaussian)
     if (config.blur && config.blur > 0) {
-      this.applyBlur(targetFb, 'fb_b', config.blur);
+      this.applyBlur(actualTargetFb, 'fb_b', config.blur);
       // Copy back
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb || null);
       this.useProgram('filter');
@@ -569,7 +577,27 @@ class WebGLFilterPipeline {
       this.drawQuad();
     }
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (isScreenTarget) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.clearColor(0.0, 0.0, 0.0, 0.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.viewport(0, 0, this.width, this.height);
+      this.useProgram('filter');
+      this.bindQuad();
+      gl.uniform1i(gl.getUniformLocation(program, 'u_preset'), 0);
+      gl.uniform1f(gl.getUniformLocation(program, 'u_brightness'), 0);
+      gl.uniform1f(gl.getUniformLocation(program, 'u_contrast'), 0);
+      gl.uniform1f(gl.getUniformLocation(program, 'u_saturation'), 0);
+      gl.uniform1i(gl.getUniformLocation(program, 'u_chromaKeyEnabled'), 0);
+      gl.uniform1i(gl.getUniformLocation(program, 'u_vignetteEnabled'), 0);
+      const resultTex = this.textures.get('fb_a');
+      if (!resultTex) return;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, resultTex);
+      this.drawQuad();
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
   }
 
   private applyBlur(sourceFb: string, targetFb: string, amount: number): void {
@@ -586,16 +614,21 @@ class WebGLFilterPipeline {
 
     // Horizontal pass
     gl.bindFramebuffer(gl.FRAMEBUFFER, targetFbObj || null);
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.viewport(0, 0, this.width, this.height);
     gl.uniform1i(gl.getUniformLocation(program, 'u_texture'), 0);
     gl.uniform2f(gl.getUniformLocation(program, 'u_direction'), 1, 0);
     gl.uniform1f(gl.getUniformLocation(program, 'u_blurAmount'), amount);
+    gl.uniform2f(gl.getUniformLocation(program, 'u_resolution'), this.width, this.height);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, sourceTex);
     this.drawQuad();
 
     // Vertical pass
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers.get(sourceFb) || null);
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform2f(gl.getUniformLocation(program, 'u_direction'), 0, 1);
     const intermediateTex = this.textures.get(targetFb);
     if (!intermediateTex) return;
@@ -722,14 +755,42 @@ class WebGLFilterPipeline {
     }
   }
 
+  get canvas(): HTMLCanvasElement | null {
+    return this.gl ? this.gl.canvas as HTMLCanvasElement : null;
+  }
+
+  uploadTexture(name: string, source: TexImageSource): void {
+    if (!this.gl) return;
+    const gl = this.gl;
+    let tex = this.textures.get(name);
+    if (!tex) {
+      tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.textures.set(name, tex);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  }
+
   /** Get a texture for direct use (e.g., as background for compositing) */
   getTexture(name: string): WebGLTexture | undefined {
     return this.textures.get(name);
   }
 
   resize(width: number, height: number): void {
+    if (this.width === width && this.height === height) return;
     this.width = width;
     this.height = height;
+
+    const gl = this.gl;
+    if (gl) {
+      for (const [, fb] of this.framebuffers) gl.deleteFramebuffer(fb);
+      for (const [, tex] of this.textures) gl.deleteTexture(tex);
+    }
 
     // Recreate framebuffers and textures
     this.framebuffers.clear();

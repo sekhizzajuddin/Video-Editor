@@ -143,7 +143,7 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
         const durationDelta = origStartAt - rawStart;
         let newDuration = origDuration + durationDelta;
         let newStart = rawStart;
-        let newSourceStart = origSourceStart + durationDelta;
+        let newSourceStart = origSourceStart - durationDelta * (clip.speed || 1);
         const clamped = clampTrim(newStart, newDuration, newSourceStart, clip, store.project.media);
         newStart = clamped.startAt; newDuration = clamped.duration; newSourceStart = clamped.sourceStart;
         const snap = calculateSnap(newStart, newStart + newDuration, 'start', candidates, snapThreshold);
@@ -151,7 +151,7 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
           const sd = snap.targetTime - newStart;
           newStart = snap.targetTime;
           newDuration = Math.max(MIN_CLIP_DURATION, newDuration - sd);
-          newSourceStart = Math.max(0, newSourceStart + sd);
+          newSourceStart = Math.max(0, newSourceStart + sd * (clip.speed || 1));
         }
         setSnapLine(snapLinePx(snap));
         store.updateClip(s.clipId, { startAt: newStart, duration: newDuration, sourceStart: newSourceStart });

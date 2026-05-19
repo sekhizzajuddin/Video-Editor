@@ -27,8 +27,8 @@ const TEXT_PRESETS = [
 ];
 
 const STICKER_GROUPS = [
-  { label: 'Reactions', items: ['😂', '❤️', '🔥', '', '😍', '🎉', '😮', '🤩', '', '✨'] },
-  { label: 'Symbols', items: ['▶️', '️', '⏹️', '', '🟢', '🔵', '⚡', '', '🌟', ''] },
+  { label: 'Reactions', items: ['😂', '❤️', '🔥', '👏', '😍', '🎉', '😮', '🤩', '💩', '✨'] },
+  { label: 'Symbols', items: ['▶️', '⏸️', '⏹️', '⚠️', '🟢', '🔵', '⚡', '💡', '🌟', '🎯'] },
 ];
 
 const EFFECT_PRESETS = [
@@ -47,7 +47,7 @@ const VFX_ITEMS = [
   { id: 'particles', label: 'Particles', icon: '✨', category: 'Particles', gradient: 'linear-gradient(135deg, #a78bfa, #7c3aed)' },
   { id: 'glitch', label: 'Glitch', icon: '📺', category: 'Distortion', gradient: 'linear-gradient(135deg, #22d3ee, #ef4444)' },
   { id: 'vhs', label: 'VHS', icon: '📼', category: 'Overlays', gradient: 'linear-gradient(135deg, #6366f1, #8b5cf6)' },
-  { id: 'chromatic', label: 'Chromatic', icon: '', category: 'Distortion', gradient: 'linear-gradient(135deg, #ef4444, #3b82f6, #22c55e)' },
+  { id: 'chromatic', label: 'Chromatic', icon: '🌀', category: 'Distortion', gradient: 'linear-gradient(135deg, #ef4444, #3b82f6, #22c55e)' },
   { id: 'bloom', label: 'Bloom', icon: '💡', category: 'Light Effects', gradient: 'linear-gradient(135deg, #fde68a, #fbbf24)' },
   { id: 'sparkle', label: 'Sparkle', icon: '⭐', category: 'Particles', gradient: 'linear-gradient(135deg, #fde047, #facc15)' },
   { id: 'smoke', label: 'Smoke', icon: '💨', category: 'Particles', gradient: 'linear-gradient(135deg, #9ca3af, #4b5563)' },
@@ -60,7 +60,7 @@ const AUDIO_ITEMS = [
   { id: 'upbeat-2', label: 'Energetic Pop', duration: 35, category: 'Upbeat', icon: '🎸' },
   { id: 'ambient-1', label: 'Calm Ambient', duration: 120, category: 'Ambient', icon: '🌊' },
   { id: 'ambient-2', label: 'Deep Space', duration: 90, category: 'Ambient', icon: '🌌' },
-  { id: 'electronic-1', label: 'Synth Wave', duration: 40, category: 'Electronic', icon: '' },
+  { id: 'electronic-1', label: 'Synth Wave', duration: 40, category: 'Electronic', icon: '⚡' },
   { id: 'electronic-2', label: 'Lo-Fi Beat', duration: 55, category: 'Electronic', icon: '🎧' },
   { id: 'acoustic-1', label: 'Guitar Melody', duration: 50, category: 'Acoustic', icon: '🎵' },
   { id: 'acoustic-2', label: 'Piano Soft', duration: 65, category: 'Acoustic', icon: '🎹' },

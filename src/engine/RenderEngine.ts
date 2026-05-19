@@ -63,8 +63,8 @@ export class RenderEngine {
       });
     }
 
-    this.setSize(this.width, this.height);
     this.initGPU();
+    this.setSize(this.width, this.height);
   }
 
   private initGPU(): void {
@@ -146,198 +146,6 @@ export class RenderEngine {
 
     const layers = this.collectLayers(req.tracks, req.time);
 
-    if (this.gpuEnabled && this.gpu) {
-      await this.renderFrameGPU(layers, req, ctx, width, height);
-    } else {
-      await this.renderFrameCPU(layers, req, offCtx, ctx, width, height);
-    }
-  }
-
-  private async renderFrameGPU(
-    layers: LayeredClip[],
-    req: FrameRequest,
-    _ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number
-  ): Promise<void> {
-    if (!this.gpu) return;
-
-    // Render all layers to GPU textures
-    const layerTextures: { texture: WebGLTexture; clip: Clip }[] = [];
-
-    for (const layer of layers) {
-      if (layer.transition) {
-        // GPU transition rendering
-        const tex = await this.renderTransitionGPU(
-          layer.clip,
-          layer.transition.nextClip,
-          layer.transition.type,
-          layer.transition.progress,
-          req,
-          w,
-          h
-        );
-        if (tex) layerTextures.push({ texture: tex, clip: layer.clip });
-      } else {
-        const tex = await this.renderLayerGPU(layer.clip, req, w, h);
-        if (tex) layerTextures.push({ texture: tex, clip: layer.clip });
-      }
-    }
-
-    // Composite all layers on GPU
-    if (layerTextures.length === 0) return;
-
-    // First layer goes to output directly
-    this.gpu.readToCanvas(this.output, 'fb_a');
-
-    // Composite remaining layers
-    for (let i = 1; i < layerTextures.length; i++) {
-      const bgTex = this.gpu.getTexture('fb_a');
-      const fgTex = layerTextures[i].texture;
-      if (!bgTex || !fgTex) continue;
-
-      const clip = layerTextures[i].clip;
-      const opacity = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
-
-      this.gpu.composite(bgTex, fgTex, opacity, clip.blendMode || 'normal', 'fb_a');
-      this.gpu.readToCanvas(this.output, 'fb_a');
-    }
-  }
-
-  private async renderLayerGPU(
-    clip: Clip,
-    req: FrameRequest,
-    w: number,
-    h: number
-  ): Promise<WebGLTexture | null> {
-    if (!this.gpu) return null;
-
-    const mediaUrl = clip.mediaId ? req.getMediaUrl(clip.mediaId) : undefined;
-    const localTime = req.time - clip.startAt;
-    const rawSourceTime = clip.sourceStart + localTime * clip.speed;
-    const sourceTime = clip.sourceEnd ? Math.min(rawSourceTime, clip.sourceEnd) : rawSourceTime;
-
-    // Get or load media
-    let el: HTMLVideoElement | HTMLImageElement | undefined;
-    if (mediaUrl && clip.mediaId) {
-      el = this.mediaCache.get(clip.mediaId);
-      if (!el) {
-        el = await this.getOrLoadMedia(clip.mediaId, mediaUrl, clip.trackType);
-      }
-    }
-
-    // Create layer canvas for rendering
-    const layerCanvas = this.getLayerCanvas(w, h);
-    const layerCtx = layerCanvas.getContext('2d', { alpha: false, desynchronized: true });
-    if (!layerCtx) return null;
-
-    layerCtx.clearRect(0, 0, w, h);
-
-    // Render video/image to layer canvas
-    if (el instanceof HTMLVideoElement && el.readyState >= 2) {
-      if (this.isPlaybackMode) {
-        if (Math.abs(el.currentTime - sourceTime) > 0.5) el.currentTime = sourceTime;
-        if (el.paused) el.play().catch(() => {});
-      } else {
-        if (Math.abs(el.currentTime - sourceTime) > 0.04) el.currentTime = sourceTime;
-      }
-      layerCtx.drawImage(el, 0, 0, w, h);
-    } else if (el instanceof HTMLImageElement && el.complete) {
-      layerCtx.drawImage(el, 0, 0, w, h);
-    }
-
-    // Render text overlay
-    if (clip.textOverlay) {
-      const to = clip.textOverlay;
-      renderTextOverlay(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, clip.textOverlay.text, {
-        fontSize: clip.textOverlay.fontSize,
-        fontFamily: clip.textOverlay.fontFamily,
-        color: clip.textOverlay.color,
-        align: clip.textOverlay.textAlign,
-        outlineColor: to.outlineColor,
-        outlineWidth: to.outlineWidth || 0,
-        backgroundColor: to.backgroundColor,
-        backgroundOpacity: to.backgroundOpacity ?? 0.5,
-      });
-    }
-
-    // Render sticker
-    if (clip.trackType === 'sticker' && clip.sticker) {
-      layerCtx.save();
-      layerCtx.font = `${Math.round(h * 0.12)}px sans-serif`;
-      layerCtx.textAlign = 'center';
-      layerCtx.textBaseline = 'middle';
-      layerCtx.fillText(clip.sticker, w / 2 + clip.transform.x, h / 2 + clip.transform.y);
-      layerCtx.restore();
-    }
-
-    // Render VFX overlay
-    if (clip.trackType === 'vfx' && clip.vfxOverlay) {
-      this.renderVFXOverlay(layerCtx as CanvasRenderingContext2D, w, h, clip.vfxOverlay, localTime);
-    }
-
-    // Upload to GPU and apply filters
-    if (clip.trackType === 'audio' && !mediaUrl) return null;
-
-    const config = {
-      preset: clip.filters?.preset || 'none',
-      brightness: clip.filters?.brightness ?? 0,
-      contrast: clip.filters?.contrast ?? 0,
-      saturation: clip.filters?.saturation ?? 0,
-      chromaKey: clip.filters?.chromaKey,
-      vignette: clip.filters?.vignette,
-      blur: clip.filters?.blur ?? 0,
-    };
-
-    // Create temp video element from canvas for GPU upload
-    const tempVideo = document.createElement('video');
-    const stream = (layerCanvas as HTMLCanvasElement).captureStream(0);
-    tempVideo.srcObject = stream as MediaStream;
-    await new Promise<void>(resolve => {
-      tempVideo.onloadeddata = () => resolve();
-      tempVideo.load();
-    });
-
-    this.gpu.applyFilters(tempVideo, config, 'fb_a');
-    tempVideo.srcObject = null;
-
-    return this.gpu.getTexture('fb_a') || null;
-  }
-
-  private async renderTransitionGPU(
-    clipA: Clip,
-    clipB: Clip,
-    type: TransitionType,
-    progress: number,
-    req: FrameRequest,
-    w: number,
-    h: number
-  ): Promise<WebGLTexture | null> {
-    if (!this.gpu) return null;
-
-    const texA = await this.renderLayerGPU(clipA, req, w, h);
-    if (!texA) return null;
-
-    const originalTime = req.time;
-    const transOffset = progress * clipA.transition!.duration;
-    req.time = clipB.startAt + transOffset;
-    const texB = await this.renderLayerGPU(clipB, req, w, h);
-    req.time = originalTime;
-
-    if (!texB) return texA;
-
-    this.gpu.applyTransition(texA, texB, type, progress, 'fb_a');
-    return this.gpu.getTexture('fb_a') || null;
-  }
-
-  private async renderFrameCPU(
-    layers: LayeredClip[],
-    req: FrameRequest,
-    offCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number
-  ): Promise<void> {
     for (const layer of layers) {
       if (layer.transition) {
         await this.renderTransitionLayer(
@@ -347,11 +155,11 @@ export class RenderEngine {
           layer.transition.progress,
           req,
           offCtx as CanvasRenderingContext2D,
-          w,
-          h
+          width,
+          height
         );
       } else {
-        await this.renderLayer(layer.clip, req, offCtx as CanvasRenderingContext2D, w, h);
+        await this.renderLayer(layer.clip, req, offCtx as CanvasRenderingContext2D, width, height);
       }
     }
     ctx.drawImage(this.offscreen as HTMLCanvasElement, 0, 0);
@@ -423,7 +231,7 @@ export class RenderEngine {
     const sourceTime = clip.sourceEnd ? Math.min(rawSourceTime, clip.sourceEnd) : rawSourceTime;
 
     const layerCanvas = this.getLayerCanvas(w, h);
-    const layerCtx = layerCanvas.getContext('2d', { alpha: false, desynchronized: true });
+    const layerCtx = layerCanvas.getContext('2d', { alpha: true, desynchronized: true });
     if (!layerCtx) return;
 
     layerCtx.clearRect(0, 0, w, h);
@@ -467,10 +275,11 @@ export class RenderEngine {
 
     if (clip.trackType === 'sticker' && clip.sticker) {
       layerCtx.save();
-      layerCtx.font = `${Math.round(h * 0.12)}px sans-serif`;
+      layerCtx.font = `${Math.round(h * 0.12)}px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`;
       layerCtx.textAlign = 'center';
       layerCtx.textBaseline = 'middle';
-      layerCtx.fillText(clip.sticker, w / 2 + clip.transform.x, h / 2 + clip.transform.y);
+      layerCtx.fillStyle = '#ffffff';
+      layerCtx.fillText(clip.sticker, w / 2, h / 2);
       layerCtx.restore();
     }
 
@@ -480,24 +289,53 @@ export class RenderEngine {
 
     if (clip.trackType === 'audio' && !mediaUrl) return;
 
-    // Apply filters using GPU if available, otherwise CPU fallback
-    if (clip.filters) {
-      if (clip.filters.preset !== 'none') applyFilter(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, clip.filters.preset);
-      if (clip.filters.chromaKey?.enabled) {
-        const ck = clip.filters.chromaKey;
-        applyChromaKey(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, ck.color, ck.similarity, ck.smoothness);
-      }
-      if (clip.filters.vignette?.enabled) {
-        applyVignette(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, clip.filters.vignette.intensity);
-      }
-      if (clip.filters.blur && clip.filters.blur > 0) {
-        layerCtx.filter = `blur(${clip.filters.blur}px)`;
-        layerCtx.drawImage(layerCanvas as HTMLCanvasElement, 0, 0);
-        layerCtx.filter = 'none';
+    let sourceCanvas: HTMLCanvasElement | OffscreenCanvas = layerCanvas;
+
+    const hasFilters = clip.filters && (
+      clip.filters.preset !== 'none' ||
+      clip.filters.brightness !== 0 ||
+      clip.filters.contrast !== 0 ||
+      clip.filters.saturation !== 0 ||
+      clip.filters.chromaKey?.enabled ||
+      clip.filters.vignette?.enabled ||
+      (clip.filters.blur && clip.filters.blur > 0)
+    );
+
+    if (hasFilters) {
+      if (this.gpuEnabled && this.gpu) {
+        const config = {
+          preset: clip.filters?.preset || 'none',
+          brightness: clip.filters?.brightness ?? 0,
+          contrast: clip.filters?.contrast ?? 0,
+          saturation: clip.filters?.saturation ?? 0,
+          chromaKey: clip.filters?.chromaKey,
+          vignette: clip.filters?.vignette,
+          blur: clip.filters?.blur ?? 0,
+        };
+        this.gpu.resize(w, h);
+        this.gpu.applyFilters(layerCanvas as HTMLCanvasElement, config, 'screen');
+        const gpuCanvas = this.gpu.canvas;
+        if (gpuCanvas) {
+          sourceCanvas = gpuCanvas;
+        }
+      } else if (clip.filters) {
+        if (clip.filters.preset !== 'none') applyFilter(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, clip.filters.preset);
+        if (clip.filters.chromaKey?.enabled) {
+          const ck = clip.filters.chromaKey;
+          applyChromaKey(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, ck.color, ck.similarity, ck.smoothness);
+        }
+        if (clip.filters.vignette?.enabled) {
+          applyVignette(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, clip.filters.vignette.intensity);
+        }
+        if (clip.filters.blur && clip.filters.blur > 0) {
+          layerCtx.filter = `blur(${clip.filters.blur}px)`;
+          layerCtx.drawImage(layerCanvas as HTMLCanvasElement, 0, 0);
+          layerCtx.filter = 'none';
+        }
       }
     }
 
-    this.compositeLayer(layerCanvas as HTMLCanvasElement, clip, ctx, w, h, localTime);
+    this.compositeLayer(sourceCanvas as HTMLCanvasElement, clip, ctx, w, h, localTime);
   }
 
   private compositeLayer(source: HTMLCanvasElement, clip: Clip, ctx: CanvasRenderingContext2D, w: number, h: number, localTime: number) {
@@ -543,14 +381,14 @@ export class RenderEngine {
     const canvasA = document.createElement('canvas');
     canvasA.width = w;
     canvasA.height = h;
-    const ctxA = canvasA.getContext('2d', { alpha: false, desynchronized: true })!;
+    const ctxA = canvasA.getContext('2d', { alpha: true, desynchronized: true })!;
     ctxA.clearRect(0, 0, w, h);
     await this.renderLayer(clipA, req, ctxA, w, h);
 
     const canvasB = document.createElement('canvas');
     canvasB.width = w;
     canvasB.height = h;
-    const ctxB = canvasB.getContext('2d', { alpha: false, desynchronized: true })!;
+    const ctxB = canvasB.getContext('2d', { alpha: true, desynchronized: true })!;
     ctxB.clearRect(0, 0, w, h);
 
     const originalTime = req.time;
@@ -558,6 +396,20 @@ export class RenderEngine {
     req.time = clipB.startAt + transOffset;
     await this.renderLayer(clipB, req, ctxB, w, h);
     req.time = originalTime;
+
+    if (this.gpuEnabled && this.gpu) {
+      this.gpu.resize(w, h);
+      this.gpu.uploadTexture('tex_a', canvasA);
+      this.gpu.uploadTexture('tex_b', canvasB);
+      const texA = this.gpu.getTexture('tex_a')!;
+      const texB = this.gpu.getTexture('tex_b')!;
+      this.gpu.applyTransition(texA, texB, type, progress, 'screen');
+      const gpuCanvas = this.gpu.canvas;
+      if (gpuCanvas) {
+        ctx.drawImage(gpuCanvas, 0, 0);
+        return;
+      }
+    }
 
     ctx.save();
     switch (type) {

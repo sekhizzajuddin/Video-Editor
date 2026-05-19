@@ -185,15 +185,22 @@ function TransitionZone({ clipId, x, y, type }: { clipId: string; x: number; y: 
 
 export default function Timeline() {
   const {
-    project: { tracks, media }, currentTime, isPlaying, zoom,
+    project, currentTime, isPlaying, zoom,
     selectedClipIds, activeClipId, dynamicSpeedMode, snapEnabled,
     setSelectedClipIds, setActiveClipId, setCurrentTime,
     updateClip, updateTrack, addClip, addTrack, removeClip, removeTrack,
     setZoom, rippleDelete, setRippleDelete, setSnapEnabled, setDynamicSpeedMode, splitClip, pushHistory, removeSelectedClips,
   } = useEditorStore();
 
+  const { tracks, media } = project;
+
   const rulerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (tracksRef.current) tracksRef.current.scrollLeft = 0;
+    if (rulerRef.current) rulerRef.current.scrollLeft = 0;
+  }, [project.id]);
   const headersRef = useRef<HTMLDivElement>(null);
   const activeDragRef = useRef<'none' | 'move' | 'trim-start' | 'trim-end'>('none');
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
