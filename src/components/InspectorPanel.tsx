@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import type { Clip } from '../types';
+import VFXInspector from './VFXInspector';
 
 const FONT_FAMILIES = ['Inter, sans-serif', 'Georgia, serif', 'JetBrains Mono, monospace', 'Arial, sans-serif'];
 const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'];
@@ -404,6 +405,7 @@ export default function InspectorPanel() {
       {clip.trackType === 'video' && <VideoInspector clip={clip} update={update} />}
       {clip.trackType === 'text' && <TextInspector clip={clip} update={update} />}
       {clip.trackType === 'sticker' && <StickerInspector clip={clip} update={update} />}
+      {clip.trackType === 'vfx' && <VFXInspector clip={clip} />}
     </aside>
   );
 }

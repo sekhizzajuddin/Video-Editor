@@ -225,13 +225,38 @@ export default function PreviewCanvas() {
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
-  const seekBar = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    engine.seek(Math.max(0, Math.min(projectDuration, ((e.clientX - rect.left) / rect.width) * projectDuration)));
-  };
+  const seekBarRef = useRef<HTMLDivElement>(null);
+  const seekDragRef = useRef(false);
+
+  const seekTo = useCallback((clientX: number) => {
+    if (!seekBarRef.current) return;
+    const rect = seekBarRef.current.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const time = pct * projectDuration;
+    engine.seek(time);
+    drawFrame(time);
+  }, [engine, drawFrame, projectDuration]);
+
+  const handleSeekMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    seekDragRef.current = true;
+    seekTo(e.clientX);
+    const store = useEditorStore.getState();
+    store.setIsPlaying(false);
+  }, [seekTo]);
+
+  useEffect(() => {
+    if (!seekDragRef.current) return;
+    const onMove = (e: MouseEvent) => { if (seekDragRef.current) seekTo(e.clientX); };
+    const onUp = () => { seekDragRef.current = false; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [seekTo]);
 
   const effectiveVolume = muted ? 0 : (volume ?? 1);
   const hasContent = tracks.some(t => t.visible && t.clips.length > 0);
+  const seekPct = (currentTime / Math.max(projectDuration, 0.01)) * 100;
 
   return (
     <div className="preview-area">
@@ -254,8 +279,10 @@ export default function PreviewCanvas() {
           </div>
         )}
       </div>
-      <div className="preview-seekbar" onClick={seekBar}>
-        <div className="preview-seekbar-fill" style={{ width: `${(currentTime / Math.max(projectDuration, 0.01)) * 100}%` }} />
+      <div className={`preview-seekbar ${seekDragRef.current ? 'dragging' : ''}`} ref={seekBarRef}
+        onMouseDown={handleSeekMouseDown}>
+        <div className="preview-seekbar-fill" style={{ width: `${seekPct}%` }} />
+        <div className="preview-seekbar-thumb" style={{ left: `${seekPct}%` }} />
       </div>
       <div className="preview-control-bar">
         <div className="preview-control-left">

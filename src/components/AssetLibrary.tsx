@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { getMediaDuration } from '../utils/fileUtils';
 import { generateWaveformData, generateThumbnail, generateFilmstrip, registerMediaUrl } from '../engine/useMediaManager';
@@ -7,9 +7,11 @@ import { v4 as uuid } from 'uuid';
 
 function UploadIcon() { return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
 function VideoIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>; }
-function AudioIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>; }
+function AudioFileIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>; }
 function ImageIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>; }
 function PlusIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
+function PlayIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>; }
+function PauseIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>; }
 
 function formatDur(sec?: number) {
   if (!sec) return '';
@@ -25,8 +27,8 @@ const TEXT_PRESETS = [
 ];
 
 const STICKER_GROUPS = [
-  { label: 'Reactions', items: ['😂', '❤️', '🔥', '👏', '😍', '🎉', '😮', '', '💯', '✨'] },
-  { label: 'Symbols', items: ['▶️', '⏸️', '⏹️', '🔴', '🟢', '🔵', '⚡', '', '🌟', '💫'] },
+  { label: 'Reactions', items: ['😂', '❤️', '🔥', '', '😍', '🎉', '😮', '🤩', '', '✨'] },
+  { label: 'Symbols', items: ['▶️', '️', '⏹️', '', '🟢', '🔵', '⚡', '', '🌟', ''] },
 ];
 
 const EFFECT_PRESETS = [
@@ -38,15 +40,30 @@ const EFFECT_PRESETS = [
   { label: 'Contrast', preset: 'contrast', color: '#e2e8f0' },
 ];
 
-const TRANSITIONS = [
-  { id: 'fade', label: 'Fade', preview: '◐' },
-  { id: 'dissolve', label: 'Dissolve', preview: '◈' },
-  { id: 'wipe-left', label: 'Wipe ←', preview: '◁' },
-  { id: 'wipe-right', label: 'Wipe →', preview: '▷' },
-  { id: 'slide-left', label: 'Slide ←', preview: '⟵' },
-  { id: 'slide-right', label: 'Slide →', preview: '⟶' },
-  { id: 'zoom', label: 'Zoom', preview: '⊕' },
-  { id: 'blur', label: 'Blur', preview: '≋' },
+const VFX_ITEMS = [
+  { id: 'lens-flare', label: 'Lens Flare', icon: '☀️', category: 'Light Effects', gradient: 'linear-gradient(135deg, #fbbf24, #f59e0b)' },
+  { id: 'film-grain', label: 'Film Grain', icon: '📽️', category: 'Overlays', gradient: 'linear-gradient(135deg, #6b7280, #374151)' },
+  { id: 'light-leak', label: 'Light Leak', icon: '🌅', category: 'Light Effects', gradient: 'linear-gradient(135deg, #f97316, #ef4444)' },
+  { id: 'particles', label: 'Particles', icon: '✨', category: 'Particles', gradient: 'linear-gradient(135deg, #a78bfa, #7c3aed)' },
+  { id: 'glitch', label: 'Glitch', icon: '📺', category: 'Distortion', gradient: 'linear-gradient(135deg, #22d3ee, #ef4444)' },
+  { id: 'vhs', label: 'VHS', icon: '📼', category: 'Overlays', gradient: 'linear-gradient(135deg, #6366f1, #8b5cf6)' },
+  { id: 'chromatic', label: 'Chromatic', icon: '', category: 'Distortion', gradient: 'linear-gradient(135deg, #ef4444, #3b82f6, #22c55e)' },
+  { id: 'bloom', label: 'Bloom', icon: '💡', category: 'Light Effects', gradient: 'linear-gradient(135deg, #fde68a, #fbbf24)' },
+  { id: 'sparkle', label: 'Sparkle', icon: '⭐', category: 'Particles', gradient: 'linear-gradient(135deg, #fde047, #facc15)' },
+  { id: 'smoke', label: 'Smoke', icon: '💨', category: 'Particles', gradient: 'linear-gradient(135deg, #9ca3af, #4b5563)' },
+];
+
+const AUDIO_ITEMS = [
+  { id: 'cinematic-1', label: 'Epic Cinematic', duration: 45, category: 'Cinematic', icon: '🎬' },
+  { id: 'cinematic-2', label: 'Dramatic Build', duration: 30, category: 'Cinematic', icon: '🎭' },
+  { id: 'upbeat-1', label: 'Happy Vibes', duration: 60, category: 'Upbeat', icon: '🎉' },
+  { id: 'upbeat-2', label: 'Energetic Pop', duration: 35, category: 'Upbeat', icon: '🎸' },
+  { id: 'ambient-1', label: 'Calm Ambient', duration: 120, category: 'Ambient', icon: '🌊' },
+  { id: 'ambient-2', label: 'Deep Space', duration: 90, category: 'Ambient', icon: '🌌' },
+  { id: 'electronic-1', label: 'Synth Wave', duration: 40, category: 'Electronic', icon: '' },
+  { id: 'electronic-2', label: 'Lo-Fi Beat', duration: 55, category: 'Electronic', icon: '🎧' },
+  { id: 'acoustic-1', label: 'Guitar Melody', duration: 50, category: 'Acoustic', icon: '🎵' },
+  { id: 'acoustic-2', label: 'Piano Soft', duration: 65, category: 'Acoustic', icon: '🎹' },
 ];
 
 function MediaPanel() {
@@ -93,7 +110,7 @@ function MediaPanel() {
     if (mf.duration) updateClip(clip.id, { duration: mf.duration });
   };
 
-  const ICON_MAP = { video: <VideoIcon />, audio: <AudioIcon />, image: <ImageIcon /> };
+  const ICON_MAP = { video: <VideoIcon />, audio: <AudioFileIcon />, image: <ImageIcon /> };
 
   return (
     <div className="media-panel">
@@ -105,8 +122,8 @@ function MediaPanel() {
         onClick={() => fileInputRef.current?.click()}
       >
         <UploadIcon />
-        <span className="dropzone-title">{importing ? 'Importing...' : 'Drop files or click'}</span>
-        <span className="dropzone-sub">Video · Audio · Images</span>
+        <span className="dropzone-title">{importing ? 'Importing...' : 'Drop files or click to import'}</span>
+        <span className="dropzone-sub">Files stay on your device</span>
         <input ref={fileInputRef} type="file" multiple accept="video/*,audio/*,image/*" style={{ display: 'none' }} onChange={handleFileInput} />
       </div>
 
@@ -192,64 +209,147 @@ function EffectsPanel() {
   );
 }
 
-function TransitionsPanel() {
+function VFXPanel() {
+  const { addClip, updateClip, currentTime } = useEditorStore();
+  const categories = [...new Set(VFX_ITEMS.map(v => v.category))];
+
+  const handleAddVFX = (vfx: typeof VFX_ITEMS[number]) => {
+    const clip = addClip('vfx');
+    if (clip) {
+      updateClip(clip.id, {
+        duration: 3,
+        startAt: currentTime,
+        vfxOverlay: {
+          type: vfx.id as any,
+          intensity: 0.5,
+          position: { x: 0, y: 0 },
+          scale: 1,
+          rotation: 0,
+          opacity: 0.8,
+        },
+      });
+    }
+  };
+
   return (
     <div className="panel-content">
-      <p className="panel-hint">Drag a transition between clips on the timeline</p>
-      <div className="transition-grid">
-        {TRANSITIONS.map(t => (
-          <div key={t.id} className="transition-card" draggable
-            onDragStart={e => { e.dataTransfer.setData('transition', t.id); e.dataTransfer.effectAllowed = 'copy'; }}
-          >
-            <div className="transition-preview">{t.preview}</div>
-            <span className="transition-label">{t.label}</span>
+      {categories.map(cat => (
+        <div key={cat} className="vfx-category">
+          <div className="vfx-category-label">{cat}</div>
+          <div className="vfx-grid">
+            {VFX_ITEMS.filter(v => v.category === cat).map(v => (
+              <div key={v.id} className="vfx-card" onClick={() => handleAddVFX(v)}>
+                <div className="vfx-preview" style={{ background: v.gradient }}>{v.icon}</div>
+                <span className="vfx-label">{v.label}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-const TABS = [
-  { id: 'media', label: 'Media' },
-  { id: 'text', label: 'Text' },
-  { id: 'stickers', label: 'Stickers' },
-  { id: 'effects', label: 'Effects' },
-  { id: 'transitions', label: 'Transitions' },
-];
+function AudioPanel() {
+  const { addClip, updateClip, currentTime } = useEditorStore();
+  const [search, setSearch] = useState('');
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const categories = [...new Set(AUDIO_ITEMS.map(a => a.category))];
+
+  const filtered = AUDIO_ITEMS.filter(a =>
+    a.label.toLowerCase().includes(search.toLowerCase()) ||
+    a.category.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleAddAudio = (audio: typeof AUDIO_ITEMS[number]) => {
+    const clip = addClip('audio');
+    if (clip) updateClip(clip.id, { duration: audio.duration, startAt: currentTime });
+  };
+
+  const handlePreview = (audio: typeof AUDIO_ITEMS[number]) => {
+    if (playingId === audio.id) {
+      audioRef.current?.pause();
+      setPlayingId(null);
+      return;
+    }
+    audioRef.current?.pause();
+    // In a real app, this would play a preview URL
+    setPlayingId(audio.id);
+    setTimeout(() => setPlayingId(null), 3000);
+  };
+
+  return (
+    <div className="panel-content">
+      <input
+        className="audio-search"
+        placeholder="Search audio..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
+      {categories.map(cat => {
+        const items = filtered.filter(a => a.category === cat);
+        if (items.length === 0) return null;
+        return (
+          <div key={cat} className="audio-category">
+            <div className="audio-category-label">{cat}</div>
+            <div className="audio-list">
+              {items.map(a => (
+                <div key={a.id} className="audio-item" onClick={() => handleAddAudio(a)}>
+                  <span className="audio-item-icon">{a.icon}</span>
+                  <div className="audio-item-info">
+                    <div className="audio-item-name">{a.label}</div>
+                    <div className="audio-item-dur">{formatDur(a.duration)}</div>
+                  </div>
+                  <button className="audio-item-play" onClick={() => handlePreview(a)}>
+                    {playingId === a.id ? <PauseIcon /> : <PlayIcon />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {filtered.length === 0 && <p className="panel-hint">No audio found</p>}
+      <audio ref={audioRef} style={{ display: 'none' }} />
+    </div>
+  );
+}
+
+const PANEL_MAP: Record<string, () => JSX.Element> = {
+  media: MediaPanel,
+  text: TextPanel,
+  stickers: StickersPanel,
+  effects: EffectsPanel,
+  vfx: VFXPanel,
+  audio: AudioPanel,
+};
+
+const TITLE_MAP: Record<string, string> = {
+  media: 'Media',
+  text: 'Text',
+  stickers: 'Stickers',
+  effects: 'Effects',
+  vfx: 'VFX',
+  audio: 'Audio',
+};
 
 export default function AssetLibrary({ activeTool }: { activeTool: string }) {
-  const [tab, setTab] = useState(activeTool === 'media' ? 'media' : activeTool);
-
-  useEffect(() => {
-    if (activeTool === 'audio') setTab('transitions');
-    else if (activeTool === 'shapes') setTab('stickers');
-    else setTab(activeTool);
-  }, [activeTool]);
+  const Panel = PANEL_MAP[activeTool] || MediaPanel;
+  const title = TITLE_MAP[activeTool] || 'Media';
 
   return (
     <aside className="asset-library">
       <div className="asset-library-header">
-        <span className="asset-library-title">{TABS.find(t => t.id === tab)?.label || 'Media'}</span>
-        {tab === 'media' && (
+        <span className="asset-library-title">{title}</span>
+        {activeTool === 'media' && (
           <button className="asset-import-btn" onClick={() => document.querySelector<HTMLInputElement>('.media-dropzone input')?.click()}>
             <PlusIcon /> Import
           </button>
         )}
       </div>
-      <div className="asset-tabs">
-        {TABS.map(t => (
-          <button key={t.id} className={`asset-tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
-      </div>
       <div className="asset-panel">
-        {tab === 'media' && <MediaPanel />}
-        {tab === 'text' && <TextPanel />}
-        {tab === 'stickers' && <StickersPanel />}
-        {tab === 'effects' && <EffectsPanel />}
-        {tab === 'transitions' && <TransitionsPanel />}
+        <Panel />
       </div>
     </aside>
   );

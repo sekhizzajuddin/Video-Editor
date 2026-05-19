@@ -271,6 +271,11 @@ export class RenderEngine {
       layerCtx.restore();
     }
 
+    // Render VFX overlay
+    if (clip.trackType === 'vfx' && clip.vfxOverlay) {
+      this.renderVFXOverlay(layerCtx as CanvasRenderingContext2D, w, h, clip.vfxOverlay, localTime);
+    }
+
     // Upload to GPU and apply filters
     if (clip.trackType === 'audio' && !mediaUrl) return null;
 
@@ -467,6 +472,10 @@ export class RenderEngine {
       layerCtx.textBaseline = 'middle';
       layerCtx.fillText(clip.sticker, w / 2 + clip.transform.x, h / 2 + clip.transform.y);
       layerCtx.restore();
+    }
+
+    if (clip.trackType === 'vfx' && clip.vfxOverlay) {
+      this.renderVFXOverlay(layerCtx as CanvasRenderingContext2D, w, h, clip.vfxOverlay, localTime);
     }
 
     if (clip.trackType === 'audio' && !mediaUrl) return;
@@ -699,6 +708,159 @@ export class RenderEngine {
         this.mediaCache.delete(key.value);
       }
     }
+  }
+
+  private renderVFXOverlay(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    vfx: { type: string; intensity: number; position: { x: number; y: number }; scale: number; rotation: number; opacity: number },
+    time: number
+  ): void {
+    ctx.save();
+    ctx.globalAlpha = vfx.opacity;
+
+    const cx = w / 2 + vfx.position.x * w / 2;
+    const cy = h / 2 + vfx.position.y * h / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate((vfx.rotation * Math.PI) / 180);
+    ctx.scale(vfx.scale, vfx.scale);
+
+    const intensity = vfx.intensity;
+
+    switch (vfx.type) {
+      case 'lens-flare': {
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.min(w, h) * 0.4);
+        grad.addColorStop(0, `rgba(255, 240, 200, ${intensity})`);
+        grad.addColorStop(0.3, `rgba(255, 200, 100, ${intensity * 0.5})`);
+        grad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        // Rays
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI) / 3 + time * 0.2;
+          ctx.save();
+          ctx.rotate(angle);
+          ctx.fillStyle = `rgba(255, 230, 180, ${intensity * 0.3})`;
+          ctx.fillRect(0, -2, Math.min(w, h) * 0.5, 4);
+          ctx.restore();
+        }
+        break;
+      }
+      case 'film-grain': {
+        const imageData = ctx.getImageData(-w / 2, -h / 2, w, h);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const noise = (Math.random() - 0.5) * 50 * intensity;
+          data[i] = Math.max(0, Math.min(255, data[i] + noise));
+          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+          data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+        }
+        ctx.putImageData(imageData, -w / 2, -h / 2);
+        break;
+      }
+      case 'light-leak': {
+        const grad = ctx.createRadialGradient(w * 0.3, -h * 0.2, 0, w * 0.3, -h * 0.2, Math.min(w, h) * 0.6);
+        grad.addColorStop(0, `rgba(255, 100, 50, ${intensity * 0.6})`);
+        grad.addColorStop(0.5, `rgba(255, 150, 80, ${intensity * 0.3})`);
+        grad.addColorStop(1, 'rgba(255, 100, 50, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        break;
+      }
+      case 'particles': {
+        for (let i = 0; i < 30 * intensity; i++) {
+          const x = (Math.sin(time * 2 + i * 1.7) * 0.5 + 0.5) * w - w / 2;
+          const y = (Math.cos(time * 1.5 + i * 2.3) * 0.5 + 0.5) * h - h / 2;
+          const size = 1 + Math.random() * 3 * intensity;
+          const alpha = 0.3 + Math.random() * 0.7 * intensity;
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(200, 180, 255, ${alpha})`;
+          ctx.fill();
+        }
+        break;
+      }
+      case 'glitch': {
+        const slices = Math.floor(10 * intensity);
+        for (let i = 0; i < slices; i++) {
+          const y = (Math.random() * h) - h / 2;
+          const sliceH = 2 + Math.random() * 8;
+          const offset = (Math.random() - 0.5) * 40 * intensity;
+          const slice = ctx.getImageData(-w / 2, y, w, sliceH);
+          ctx.putImageData(slice, -w / 2 + offset, y);
+          ctx.fillStyle = `rgba(${Math.random() > 0.5 ? '255,0,0' : '0,0,255'}, ${intensity * 0.3})`;
+          ctx.fillRect(-w / 2 + offset, y, w, sliceH);
+        }
+        break;
+      }
+      case 'vhs': {
+        // Scanlines
+        for (let y = -h / 2; y < h / 2; y += 3) {
+          ctx.fillStyle = `rgba(0, 0, 0, ${0.15 * intensity})`;
+          ctx.fillRect(-w / 2, y, w, 1);
+        }
+        // Color shift
+        const imageData = ctx.getImageData(-w / 2, -h / 2, w, h);
+        const data = imageData.data;
+        const shift = Math.floor(3 * intensity);
+        for (let i = 0; i < data.length - shift * 4; i += 4) {
+          data[i] = data[i + shift * 4]; // Red channel shift
+        }
+        ctx.putImageData(imageData, -w / 2, -h / 2);
+        break;
+      }
+      case 'chromatic': {
+        const offset = 4 * intensity;
+        const imageData = ctx.getImageData(-w / 2, -h / 2, w, h);
+        const data = imageData.data;
+        const copy = new Uint8ClampedArray(data);
+        for (let i = 0; i < data.length - offset * 4; i += 4) {
+          data[i] = copy[i + offset * 4];       // Red shifted right
+          data[i + 2] = copy[Math.max(0, i - offset * 4) + 2]; // Blue shifted left
+        }
+        ctx.putImageData(imageData, -w / 2, -h / 2);
+        break;
+      }
+      case 'bloom': {
+        ctx.shadowColor = `rgba(255, 220, 150, ${intensity})`;
+        ctx.shadowBlur = 20 * intensity;
+        ctx.fillStyle = `rgba(255, 230, 180, ${intensity * 0.3})`;
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        break;
+      }
+      case 'sparkle': {
+        for (let i = 0; i < 15 * intensity; i++) {
+          const x = (Math.sin(time * 3 + i * 2.1) * 0.5 + 0.5) * w - w / 2;
+          const y = (Math.cos(time * 2.5 + i * 1.9) * 0.5 + 0.5) * h - h / 2;
+          const size = 2 + Math.sin(time * 5 + i) * 2;
+          const alpha = 0.5 + Math.sin(time * 4 + i * 1.3) * 0.5;
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(time + i);
+          ctx.fillStyle = `rgba(255, 240, 150, ${alpha * intensity})`;
+          ctx.fillRect(-size, -0.5, size * 2, 1);
+          ctx.fillRect(-0.5, -size, 1, size * 2);
+          ctx.restore();
+        }
+        break;
+      }
+      case 'smoke': {
+        for (let i = 0; i < 8 * intensity; i++) {
+          const x = Math.sin(time * 0.5 + i * 1.3) * w * 0.3;
+          const y = Math.cos(time * 0.3 + i * 0.9) * h * 0.3 - h * 0.2;
+          const size = 30 + i * 10;
+          const grad = ctx.createRadialGradient(x, y, 0, x, y, size);
+          grad.addColorStop(0, `rgba(150, 150, 160, ${0.15 * intensity})`);
+          grad.addColorStop(1, 'rgba(150, 150, 160, 0)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(x - size, y - size, size * 2, size * 2);
+        }
+        break;
+      }
+    }
+
+    ctx.restore();
   }
 
   destroy() {

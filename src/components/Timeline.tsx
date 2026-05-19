@@ -5,14 +5,21 @@ import { useDraggableClip, detectDragZone } from '../engine/useDraggableClip';
 import { formatTime } from '../utils/fileUtils';
 import type { Clip, TransitionType, Marker } from '../types';
 
-const TRACK_HEIGHTS: Record<string, number> = { video: 48, audio: 40, text: 36, sticker: 36 };
+function formatTimeLumen(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const ms = Math.floor((sec % 1) * 100);
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+}
+
+const TRACK_HEIGHTS: Record<string, number> = { video: 48, audio: 40, text: 36, sticker: 36, vfx: 36 };
 const DEFAULT_TRACK_HEIGHT = 44;
 const RULER_HEIGHT = 24;
 const HEADER_WIDTH = 100;
 
 function getTrackHeight(type: string): number { return TRACK_HEIGHTS[type] ?? DEFAULT_TRACK_HEIGHT; }
 
-const TRACK_COLORS: Record<string, string> = { video: '#3b82f6', audio: '#22c55e', text: '#a855f7', sticker: '#f59e0b' };
+const TRACK_COLORS: Record<string, string> = { video: '#3b82f6', audio: '#22c55e', text: '#a855f7', sticker: '#f59e0b', vfx: '#c084fc' };
 
 const Ico = {
   scissors: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>,
@@ -171,6 +178,37 @@ export default function Timeline() {
     return marks;
   }, [projectDuration, zoom]);
 
+  // Draggable playhead
+  const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const playheadDragRef = useRef(false);
+
+  const handlePlayheadMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    playheadDragRef.current = true;
+    setIsDraggingPlayhead(true);
+    const store = useEditorStore.getState();
+    store.setIsPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    if (!playheadDragRef.current) return;
+    const onMove = (e: MouseEvent) => {
+      if (!tracksRef.current || !playheadDragRef.current) return;
+      const rect = tracksRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
+      const time = Math.max(0, Math.min(pixelsToTime(x), projectDuration));
+      setCurrentTime(time);
+    };
+    const onUp = () => {
+      playheadDragRef.current = false;
+      setIsDraggingPlayhead(false);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [pixelsToTime, projectDuration, setCurrentTime]);
+
   const handleRulerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!tracksRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -240,6 +278,7 @@ export default function Timeline() {
           <button className="tl-btn" onClick={() => addTrack('video')} title="Add Video track">{Ico.plus} V</button>
           <button className="tl-btn" onClick={() => addTrack('audio')} title="Add Audio track">{Ico.plus} A</button>
           <button className="tl-btn" onClick={() => addTrack('text')} title="Add Text track">{Ico.plus} T</button>
+          <button className="tl-btn" onClick={() => addTrack('vfx')} title="Add VFX track">{Ico.plus} VFX</button>
         </div>
         <div className="timeline-toolbar-center">
           <span className="tl-hint">SPACE play · S split · DEL remove · M marker · Ctrl+Scroll zoom · Shift+Scroll pan</span>
@@ -261,7 +300,7 @@ export default function Timeline() {
             <div style={{ width: totalWidth, height: RULER_HEIGHT, position: 'relative' }} onClick={handleRulerClick} className="tl-ruler-inner">
               {rulerMarks.map((m, i) => (
                 <div key={i} className={`ruler-mark ${m.major ? 'major' : 'minor'}`} style={{ left: m.t * pxPerSec }}>
-                  {m.major && <span className="ruler-label">{formatTime(m.t)}</span>}
+                  {m.major && <span className="ruler-label">{formatTimeLumen(m.t)}</span>}
                 </div>
               ))}
               {useEditorStore.getState().project.markers.map((marker: Marker) => (
@@ -339,6 +378,7 @@ export default function Timeline() {
                         {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? <WaveformBars waveform={mf.waveform} height={h} /> : null}
                         {clip.textOverlay && <div className="clip-text-label">{clip.textOverlay.text}</div>}
                         {clip.sticker && <div className="clip-sticker-label">{clip.sticker}</div>}
+                        {clip.vfxOverlay && <div className="clip-label" style={{ fontSize: 9 }}>✦ {clip.vfxOverlay.type}</div>}
                         <div className="clip-overlay">
                           <span className="clip-label">{mf?.name?.replace(/\.[^.]+$/, '') || clip.textOverlay?.text || clip.sticker || 'Clip'}</span>
                           <span className="clip-duration-label">{clip.duration.toFixed(1)}s</span>
@@ -366,7 +406,9 @@ export default function Timeline() {
                 });
               })()}
 
-              <div className="playhead" style={{ left: currentTime * pxPerSec, height: totalTracksH }} />
+              <div className={`playhead ${isDraggingPlayhead ? 'dragging' : ''}`}
+                style={{ left: currentTime * pxPerSec, height: totalTracksH }}
+                onMouseDown={handlePlayheadMouseDown} />
               {snapLine !== null && <div className="snap-line" style={{ left: snapLine }} />}
             </div>
           </div>

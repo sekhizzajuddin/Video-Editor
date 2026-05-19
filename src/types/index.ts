@@ -1,4 +1,4 @@
-export type TrackType = 'video' | 'audio' | 'text' | 'sticker';
+export type TrackType = 'video' | 'audio' | 'text' | 'sticker' | 'vfx';
 
 export interface MediaFile {
   id: string;
@@ -12,6 +12,19 @@ export interface MediaFile {
   width?: number;
   height?: number;
   waveform?: number[];     // normalised 0-1 amplitude buckets
+}
+
+export type VFXType =
+  | 'lens-flare' | 'film-grain' | 'light-leak' | 'particles'
+  | 'glitch' | 'vhs' | 'chromatic' | 'bloom' | 'sparkle' | 'smoke';
+
+export interface VFXOverlay {
+  type: VFXType;
+  intensity: number;
+  position: { x: number; y: number };
+  scale: number;
+  rotation: number;
+  opacity: number;
 }
 
 export interface TextOverlay {
@@ -93,6 +106,7 @@ export interface Clip {
   transform: Transform;
   textOverlay?: TextOverlay;
   sticker?: string;
+  vfxOverlay?: VFXOverlay;
   thumbnailFrame?: string;
   filters?: ClipFilters;
   transition?: ClipTransition;

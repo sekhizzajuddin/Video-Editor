@@ -120,8 +120,10 @@ export default function App() {
         <Header />
         <div className="main-workspace">
           <LeftSidebar activeTool={activeTool} onSetActiveTool={setActiveTool} />
-          <AssetLibrary activeTool={activeTool} />
-          <PreviewCanvas />
+          <div className="main-center">
+            <AssetLibrary activeTool={activeTool} />
+            <PreviewCanvas />
+          </div>
           <InspectorPanel />
         </div>
         <Timeline />

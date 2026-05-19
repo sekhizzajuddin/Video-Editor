@@ -24,6 +24,7 @@ function emptyProject(): Project {
       { id: 'track_audio_1', type: 'audio', name: 'Audio 1', locked: false, visible: true, clips: [] },
       { id: 'track_text_1', type: 'text', name: 'Text 1', locked: false, visible: true, clips: [] },
       { id: 'track_sticker_1', type: 'sticker', name: 'Sticker 1', locked: false, visible: true, clips: [] },
+      { id: 'track_vfx_1', type: 'vfx', name: 'VFX 1', locked: false, visible: true, clips: [] },
     ],
     media: [], markers: [],
   };
