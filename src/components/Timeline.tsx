@@ -324,7 +324,6 @@ export default function Timeline() {
 
   // Draggable playhead
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
-  const [isDraggingRuler, setIsDraggingRuler] = useState(false);
   const playheadDragRef = useRef(false);
   const rulerDragRef = useRef(false);
   const pxPerSecRef = useRef(pxPerSec);
@@ -349,7 +348,6 @@ export default function Timeline() {
     if ((e.target as HTMLElement).closest('.tl-marker')) return;
     e.preventDefault();
     rulerDragRef.current = true;
-    setIsDraggingRuler(true);
     const store = useEditorStore.getState();
     store.setIsPlaying(false);
     
@@ -382,7 +380,6 @@ export default function Timeline() {
       }
       if (rulerDragRef.current) {
         rulerDragRef.current = false;
-        setIsDraggingRuler(false);
       }
     };
     window.addEventListener('mousemove', onMove);
