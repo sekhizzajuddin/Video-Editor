@@ -60,69 +60,50 @@ function WaveformBars({ waveform, height }: { waveform: number[]; height: number
     
     ctx.clearRect(0, 0, width, h);
     
-    // Draw waveform as smooth curves
+    // CapCut style: vertical bars with mirrored display
+    const barCount = Math.min(waveform.length, Math.floor(width / 2));
+    const barWidth = width / barCount;
+    const gap = 1;
+    
+    // Draw center line
     ctx.beginPath();
     ctx.moveTo(0, centerY);
-    
-    const sliceWidth = width / waveform.length;
-    let x = 0;
-    
-    for (let i = 0; i < waveform.length; i++) {
-      const val = waveform[i];
-      const y = centerY - (val * h * 0.4);
-      
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        const prevX = x - sliceWidth;
-        const prevVal = waveform[i - 1];
-        const prevY = centerY - (prevVal * h * 0.4);
-        const cpX = (prevX + x) / 2;
-        ctx.quadraticCurveTo(prevX, prevY, cpX, (prevY + y) / 2);
-      }
-      x += sliceWidth;
-    }
-    
-    // Create gradient for the waveform
-    const gradient = ctx.createLinearGradient(0, 0, width, 0);
-    gradient.addColorStop(0, 'rgba(96, 165, 250, 0.6)');
-    gradient.addColorStop(0.5, 'rgba(96, 165, 250, 0.9)');
-    gradient.addColorStop(1, 'rgba(96, 165, 250, 0.6)');
-    
-    ctx.strokeStyle = gradient;
-    ctx.lineWidth = 1.5;
+    ctx.lineTo(width, centerY);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
     ctx.stroke();
     
-    // Draw filled area under the wave
-    ctx.lineTo(width, centerY);
-    ctx.lineTo(0, centerY);
-    ctx.closePath();
-    
-    const fillGradient = ctx.createLinearGradient(0, 0, 0, h);
-    fillGradient.addColorStop(0, 'rgba(96, 165, 250, 0.3)');
-    fillGradient.addColorStop(0.5, 'rgba(96, 165, 250, 0.1)');
-    fillGradient.addColorStop(1, 'rgba(96, 165, 250, 0.3)');
-    
-    ctx.fillStyle = fillGradient;
-    ctx.fill();
-    
-    // Draw vocal detection underline
-    ctx.beginPath();
-    ctx.moveTo(0, h - 2);
-    x = 0;
-    for (let i = 0; i < waveform.length; i++) {
-      const val = waveform[i];
-      // Vocal detection: positive values indicate vocal frequencies
-      if (val > 0) {
-        ctx.lineTo(x, h - 2);
-        ctx.lineTo(x, h);
-        ctx.lineTo(x + sliceWidth, h);
-        ctx.lineTo(x + sliceWidth, h - 2);
+    // Draw bars - CapCut style
+    for (let i = 0; i < barCount; i++) {
+      const waveIndex = Math.floor((i / barCount) * waveform.length);
+      const val = waveform[waveIndex] || 0;
+      const absVal = Math.abs(val);
+      
+      // Amplitude-based color intensity (louder = brighter)
+      const intensity = Math.min(1, absVal * 1.5 + 0.3);
+      
+      // CapCut gradient: brighter in center, darker at edges
+      const r = Math.floor(59 + intensity * 80);
+      const g = Math.floor(130 + intensity * 80);
+      const b = Math.floor(246);
+      const color = `rgba(${r}, ${g}, ${b}, ${intensity + 0.2})`;
+      
+      const barHeight = absVal * h * 0.45;
+      const x = i * barWidth;
+      
+      // Top half (mirrored)
+      ctx.fillStyle = color;
+      ctx.fillRect(x + gap / 2, centerY - barHeight, barWidth - gap, barHeight);
+      
+      // Bottom half (mirrored)
+      ctx.fillRect(x + gap / 2, centerY, barWidth - gap, barHeight);
+      
+      // Peak indicator (brighter top edge)
+      if (absVal > 0.5) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${absVal * 0.5})`;
+        ctx.fillRect(x + gap / 2, centerY - barHeight - 1, barWidth - gap, 2);
       }
-      x += sliceWidth;
     }
-    ctx.fillStyle = 'rgba(245, 158, 11, 0.6)';
-    ctx.fill();
   }, [waveform, height]);
   
   return (
@@ -164,10 +145,10 @@ function TransitionZone({ clipId, x, y, type }: { clipId: string; x: number; y: 
 export default function Timeline() {
   const {
     project: { tracks, media }, currentTime, isPlaying, zoom,
-    selectedClipIds, activeClipId, dynamicSpeedMode,
+    selectedClipIds, activeClipId, dynamicSpeedMode, snapEnabled,
     setSelectedClipIds, setActiveClipId, setCurrentTime,
     updateClip, updateTrack, addClip, addTrack, removeClip, removeTrack,
-    setZoom, rippleDelete, setRippleDelete, setDynamicSpeedMode, splitClip, pushHistory, removeSelectedClips,
+    setZoom, rippleDelete, setRippleDelete, setSnapEnabled, setDynamicSpeedMode, splitClip, pushHistory, removeSelectedClips,
   } = useEditorStore();
 
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -199,9 +180,28 @@ export default function Timeline() {
   }, []);
 
   const onWheel = useCallback((e: WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoom(Math.max(0.05, Math.min(5, zoom + (e.deltaY > 0 ? -0.1 : 0.1)))); }
+    if (e.ctrlKey || e.metaKey) { 
+      e.preventDefault();
+      const rect = tracksRef.current?.getBoundingClientRect();
+      if (rect) {
+        const mouseX = e.clientX - rect.left + (tracksRef.current?.scrollLeft || 0);
+        const mouseTime = mouseX / pxPerSec;
+        
+        const newZoom = Math.max(0.05, Math.min(5, zoom + (e.deltaY > 0 ? -0.1 : 0.1)));
+        const newPxPerSec = 30 + newZoom * 270;
+        const newMouseTime = mouseX / newPxPerSec;
+        
+        setZoom(newZoom);
+        
+        // Adjust scroll to keep cursor position stable
+        if (tracksRef.current) {
+          const scrollLeft = tracksRef.current.scrollLeft;
+          tracksRef.current.scrollLeft = newMouseTime * newPxPerSec - mouseX + (scrollLeft - mouseTime * pxPerSec);
+        }
+      }
+    }
     else if (e.shiftKey) { e.preventDefault(); if (tracksRef.current) tracksRef.current.scrollLeft += e.deltaY; }
-  }, [zoom, setZoom]);
+  }, [zoom, setZoom, pxPerSec]);
 
   useEffect(() => { const el = tracksRef.current; if (!el) return; el.addEventListener('wheel', onWheel, { passive: false }); return () => el.removeEventListener('wheel', onWheel); }, [onWheel]);
 
@@ -269,6 +269,13 @@ export default function Timeline() {
   // Draggable playhead
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const playheadDragRef = useRef(false);
+  const pxPerSecRef = useRef(pxPerSec);
+  const projectDurationRef = useRef(projectDuration);
+  const setCurrentTimeRef = useRef(setCurrentTime);
+  
+  useEffect(() => { pxPerSecRef.current = pxPerSec; }, [pxPerSec]);
+  useEffect(() => { projectDurationRef.current = projectDuration; }, [projectDuration]);
+  useEffect(() => { setCurrentTimeRef.current = setCurrentTime; }, [setCurrentTime]);
 
   const handlePlayheadMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -285,8 +292,8 @@ export default function Timeline() {
       if (!tracksRef.current || !playheadDragRef.current) return;
       const rect = tracksRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
-      const time = Math.max(0, Math.min(pixelsToTime(x), projectDuration));
-      setCurrentTime(time);
+      const time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
+      setCurrentTimeRef.current(time);
     };
     const onUp = () => {
       playheadDragRef.current = false;
@@ -295,7 +302,7 @@ export default function Timeline() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [pixelsToTime, projectDuration, setCurrentTime]);
+  }, []);
 
   const handleRulerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!tracksRef.current) return;
@@ -304,21 +311,68 @@ export default function Timeline() {
     setCurrentTime(Math.max(0, Math.min(pixelsToTime(x), projectDuration)));
   };
 
+  const lastClickedClipRef = useRef<string | null>(null);
+
   const onClipMouseDown = useCallback((e: React.MouseEvent, clip: Clip) => {
     if (e.button !== 0) return; e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    if (e.shiftKey) { setSelectedClipIds([...selectedClipIds, clip.id]); setActiveClipId(clip.id); return; }
-    if (e.ctrlKey || e.metaKey) { setSelectedClipIds(selectedClipIds.includes(clip.id) ? selectedClipIds.filter(x => x !== clip.id) : [...selectedClipIds, clip.id]); setActiveClipId(clip.id); return; }
+    
+    // Shift+Click: Range select from last clicked to current
+    if (e.shiftKey && lastClickedClipRef.current) {
+      // Find all clips between last clicked and current
+      const allClips: { id: string; startAt: number }[] = [];
+      tracks.forEach(t => {
+        t.clips.forEach(c => allClips.push({ id: c.id, startAt: c.startAt }));
+      });
+      allClips.sort((a, b) => a.startAt - b.startAt);
+      
+      const lastIdx = allClips.findIndex(c => c.id === lastClickedClipRef.current);
+      const currIdx = allClips.findIndex(c => c.id === clip.id);
+      
+      if (lastIdx !== -1 && currIdx !== -1) {
+        const start = Math.min(lastIdx, currIdx);
+        const end = Math.max(lastIdx, currIdx);
+        const rangeIds = allClips.slice(start, end + 1).map(c => c.id);
+        setSelectedClipIds([...new Set([...selectedClipIds, ...rangeIds])]);
+        setActiveClipId(clip.id);
+      }
+      return;
+    }
+    
+    // Ctrl/Cmd+Click: Toggle selection
+    if (e.ctrlKey || e.metaKey) {
+      if (selectedClipIds.includes(clip.id)) {
+        setSelectedClipIds(selectedClipIds.filter(x => x !== clip.id));
+        if (activeClipId === clip.id) setActiveClipId(selectedClipIds.length > 1 ? selectedClipIds.find(id => id !== clip.id) || null : null);
+      } else {
+        setSelectedClipIds([...selectedClipIds, clip.id]);
+        setActiveClipId(clip.id);
+      }
+      lastClickedClipRef.current = clip.id;
+      return;
+    }
+    
+    // Normal click: Select single clip and start drag
     if (!selectedClipIds.includes(clip.id)) { setSelectedClipIds([clip.id]); setActiveClipId(clip.id); }
+    lastClickedClipRef.current = clip.id;
     const zone = detectDragZone(e.clientX, rect);
     activeDragRef.current = zone; onDragStart(clip, zone, e.clientX, e.clientY);
-  }, [selectedClipIds, setSelectedClipIds, setActiveClipId, onDragStart]);
+  }, [selectedClipIds, setSelectedClipIds, setActiveClipId, onDragStart, tracks]);
 
   const handleContextMenu = (e: React.MouseEvent, clipId: string) => {
     e.preventDefault();
     if (!selectedClipIds.includes(clipId)) { setSelectedClipIds([clipId]); setActiveClipId(clipId); }
     setCtxMenu({ x: e.clientX, y: e.clientY, clipId });
   };
+
+  // Handle trim start - initiate trim operation from trim handles
+  const handleTrimStart = useCallback((e: React.MouseEvent, clip: Clip, zone: 'trim-start' | 'trim-end') => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (!selectedClipIds.includes(clip.id)) { setSelectedClipIds([clip.id]); setActiveClipId(clip.id); }
+    activeDragRef.current = zone;
+    onDragStart(clip, zone, e.clientX, e.clientY);
+  }, [selectedClipIds, setSelectedClipIds, setActiveClipId, onDragStart]);
 
   const ctxAction = (action: string) => {
     if (!ctxMenu) return; const store = useEditorStore.getState();
@@ -395,7 +449,11 @@ export default function Timeline() {
           <button className="tl-btn" onClick={handleSplit} title="Split (S)">{Ico.scissors} Split</button>
           <button className="tl-btn" onClick={handleDelete} title="Delete (Del)">{Ico.trash} Delete</button>
           <div className="toolbar-sep" />
-          <button className={`tl-btn ${rippleDelete ? 'active' : ''}`} onClick={() => setRippleDelete(!rippleDelete)} title="Ripple delete">{Ico.ripple}</button>
+          <button className={`tl-btn ${rippleDelete ? 'active' : ''}`} onClick={() => setRippleDelete(!rippleDelete)} title="Ripple delete (Ctrl+Shift+R)">{Ico.ripple}</button>
+          <button className={`tl-btn ${snapEnabled ? 'active' : ''}`} onClick={() => setSnapEnabled(!snapEnabled)} title="Toggle snap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 14h-5v5M21 3l-5 5M3 21l5-5M3 10h5v5"/></svg>
+            Snap
+          </button>
           <button className="tl-btn" onClick={() => useEditorStore.getState().toggleMarker(currentTime)} title="Marker (M)">{Ico.marker}</button>
           <div className="toolbar-sep" />
           <button className={`tl-btn ${dynamicSpeedMode ? 'active dynamic-speed' : ''}`} onClick={() => setDynamicSpeedMode(!dynamicSpeedMode)} title="Dynamic Speed Mode - Drag clip borders to change speed for lip sync">
@@ -530,7 +588,16 @@ export default function Timeline() {
                         {dynamicSpeedMode && clip.speed !== 1 && (
                           <span className="clip-speed-indicator">{clip.speed.toFixed(2)}x</span>
                         )}
-                        <div className="trim-handle left" /><div className="trim-handle right" />
+                        <div 
+                          className="trim-handle left" 
+                          onMouseDown={(e) => { e.stopPropagation(); handleTrimStart(e, clip, 'trim-start'); }}
+                          title="Trim start"
+                        />
+                        <div 
+                          className="trim-handle right" 
+                          onMouseDown={(e) => { e.stopPropagation(); handleTrimStart(e, clip, 'trim-end'); }}
+                          title="Trim end"
+                        />
                       </div>
                     );
                   });

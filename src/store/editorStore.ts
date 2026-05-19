@@ -57,6 +57,7 @@ export interface EditorState {
   zoom: number;
   showShortcuts: boolean;
   rippleDelete: boolean;
+  snapEnabled: boolean;
   dynamicSpeedMode: boolean;
   showCrop: boolean;
   cropRect: { x: number; y: number; width: number; height: number } | null;
@@ -78,6 +79,7 @@ export interface EditorState {
   setExportError: (e: string | null) => void;
   setshowShortcuts: (s: boolean) => void;
   setRippleDelete: (r: boolean) => void;
+  setSnapEnabled: (s: boolean) => void;
   setDynamicSpeedMode: (d: boolean) => void;
   setShowCrop: (s: boolean) => void;
   setCropRect: (r: { x: number; y: number; width: number; height: number } | null) => void;
@@ -161,6 +163,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     zoom: 1,
     showShortcuts: false,
     rippleDelete: false,
+    snapEnabled: true,
     dynamicSpeedMode: false,
     showCrop: false,
     cropRect: null,
@@ -182,6 +185,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setExportError: (e) => set({ exportError: e }),
     setshowShortcuts: (s) => set({ showShortcuts: s }),
     setRippleDelete: (r) => set({ rippleDelete: r }),
+    setSnapEnabled: (s) => set({ snapEnabled: s }),
     setDynamicSpeedMode: (d) => set({ dynamicSpeedMode: d }),
     setShowCrop: (s) => set({ showCrop: s }),
     setCropRect: (r) => set({ cropRect: r }),

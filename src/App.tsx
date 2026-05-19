@@ -53,18 +53,23 @@ export default function App() {
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
     const meta = e.ctrlKey || e.metaKey;
 
+    // Space: Play/Pause
     if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlayback(); return; }
-    // JKL playback controls
+    
+    // JKL playback controls (like professional editors)
     if (e.key === 'k' || e.key === 'K') { store.setIsPlaying(false); store.setCurrentTime(store.currentTime); return; }
     if (e.key === 'l' || e.key === 'L') { if (!store.isPlaying) { e.preventDefault(); togglePlayback(); } return; }
     if (e.key === 'j' || e.key === 'J') { store.setIsPlaying(false); store.setCurrentTime(Math.max(0, store.currentTime - 1)); return; }
+    
     // Arrow key frame navigation
     if (e.key === 'ArrowLeft') { e.preventDefault(); store.setCurrentTime(Math.max(0, store.currentTime - (e.shiftKey ? 5 : 1/30))); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); store.setCurrentTime(Math.min(store.project.duration, store.currentTime + (e.shiftKey ? 5 : 1/30))); return; }
+    
     // Home/End navigation
     if (e.key === 'Home') { e.preventDefault(); store.setCurrentTime(0); return; }
     if (e.key === 'End') { e.preventDefault(); store.setCurrentTime(store.project.duration); return; }
-    // Split shortcut
+    
+    // S: Split at playhead (not Ctrl+S which is save)
     if (e.key === 's' || e.key === 'S') {
       if (!meta) {
         const id = store.activeClipId || store.selectedClipIds[0];
@@ -72,13 +77,41 @@ export default function App() {
         return;
       }
     }
+    
+    // Escape: Deselect all
     if (e.key === 'Escape') {
       store.setSelectedClipIds([]); store.setActiveClipId(null);
-      store.setShowExport(false);       store.setshowShortcuts(false); store.setShowOpenProject(false); return;
+      store.setShowExport(false); store.setshowShortcuts(false); store.setShowOpenProject(false); return;
     }
+    
+    // Delete/Backspace: Remove selected clips
     if (e.key === 'Delete' || e.key === 'Backspace') { if (store.selectedClipIds.length > 0) store.removeSelectedClips(); return; }
+    
+    // Ctrl+A: Select all clips
+    if (meta && e.key === 'a') { 
+      e.preventDefault();
+      const allClipIds: string[] = [];
+      store.project.tracks.forEach(t => t.clips.forEach(c => allClipIds.push(c.id)));
+      store.setSelectedClipIds(allClipIds);
+      if (allClipIds.length > 0) store.setActiveClipId(allClipIds[0]);
+      return; 
+    }
+    
+    // Ctrl+D: Deselect all
+    if (meta && e.key === 'd') { 
+      e.preventDefault();
+      store.setSelectedClipIds([]); store.setActiveClipId(null);
+      return; 
+    }
+    
+    // Ctrl+Z/Y: Undo/Redo
     if (meta && e.key === 'z') { e.preventDefault(); e.shiftKey ? store.redo() : store.undo(); return; }
+    if (meta && e.key === 'y') { e.preventDefault(); store.redo(); return; }
+    
+    // Ctrl+S: Save
     if (meta && e.key === 's') { e.preventDefault(); store.saveToDB(); return; }
+    
+    // Ctrl+C/V/X: Copy/Paste/Cut
     if (meta && e.key === 'c') {
       if (store.activeClipId) { const clip = store.getClip(store.activeClipId); if (clip) store.setCopiedClip(JSON.parse(JSON.stringify(clip))); } return;
     }
@@ -93,10 +126,64 @@ export default function App() {
       }
       return;
     }
+    
+    // +/-: Zoom in/out
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); store.setZoom(Math.min(5, store.zoom + 0.1)); return; }
+    if (e.key === '-') { e.preventDefault(); store.setZoom(Math.max(0.05, store.zoom - 0.1)); return; }
+    
+    // 0: Fit to window
+    if (e.key === '0') { store.setZoom(1); return; }
+    
+    // [/]: Nudge clip left/right
+    if (e.key === '[') {
+      e.preventDefault();
+      store.selectedClipIds.forEach(id => {
+        const clip = store.getClip(id);
+        if (clip) store.updateClip(id, { startAt: Math.max(0, clip.startAt - 0.1) });
+      });
+      return;
+    }
+    if (e.key === ']') {
+      e.preventDefault();
+      store.selectedClipIds.forEach(id => {
+        const clip = store.getClip(id);
+        if (clip) store.updateClip(id, { startAt: clip.startAt + 0.1 });
+      });
+      return;
+    }
+    
+    // M: Toggle marker
+    if (e.key === 'm') { store.toggleMarker(currentTime); return; }
+    
+    // I/O: In/Out points
     if (e.key === 'i') { store.toggleMarker(currentTime); return; }
     if (e.key === 'o') { cropToMarkers(); return; }
+    
+    // Ctrl+Shift+R: Toggle ripple mode
+    if (meta && e.shiftKey && e.key === 'R') { 
+      e.preventDefault();
+      store.setRippleDelete(!store.rippleDelete); 
+      return; 
+    }
+    
+    // ? or Ctrl+/: Show shortcuts
     if (e.key === '?' || (meta && e.key === '/')) { store.setshowShortcuts(!store.showShortcuts); return; }
+    
+    // Ctrl+Shift+N: New project
     if (e.key === 'n' && meta && e.shiftKey) { e.preventDefault(); newProject(); return; }
+    
+    // Ctrl+D: Duplicate selected
+    if (meta && e.key === 'd') {
+      e.preventDefault();
+      store.selectedClipIds.forEach(id => {
+        const clip = store.getClip(id);
+        if (clip) {
+          const nc = store.addClip(clip.trackType, clip.mediaId, clip.sticker);
+          if (nc) store.updateClip(nc.id, { ...clip, id: nc.id, startAt: clip.startAt + clip.duration });
+        }
+      });
+      return;
+    }
   }, [currentTime, cropToMarkers, newProject, togglePlayback]);
 
   useEffect(() => { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); }, [handleKeyDown]);

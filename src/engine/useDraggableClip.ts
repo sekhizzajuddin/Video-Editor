@@ -41,6 +41,10 @@ export function clampTrim(
 
 function buildCandidates(pxPerSec: number) {
   const store = useEditorStore.getState();
+  // Only calculate snap candidates if snap is enabled
+  if (!store.snapEnabled) {
+    return { candidates: { edges: [], markers: [], playhead: -1, zero: -1 }, snapThreshold: 0 };
+  }
   const candidates = collectSnapCandidates(store.project.tracks, store.project.markers, store.currentTime);
   return { candidates, snapThreshold: 10 / pxPerSec };
 }
