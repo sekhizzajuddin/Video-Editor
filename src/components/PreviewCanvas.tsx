@@ -11,6 +11,7 @@ function PauseIcon() { return <svg width="20" height="20" viewBox="0 0 24 24" fi
 function SkipForwardIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 18V6l8.5 6-8.5 6zM4.5 18V6l8.5 6-8.5 6z"/></svg>; }
 function VolumeIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>; }
 function MuteIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>; }
+function CropIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/></svg>; }
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -56,7 +57,7 @@ export default function PreviewCanvas() {
   const {
     project: { tracks, duration: projectDuration, media },
     currentTime, isPlaying, aspectRatio, volume, setVolume, renderTick,
-    activeClipId, updateClip, pushHistory,
+    activeClipId, updateClip, pushHistory, showCrop, cropRect, setShowCrop, setCropRect,
   } = useEditorStore();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -146,20 +147,28 @@ export default function PreviewCanvas() {
 
   const [isDragging, setIsDragging] = useState(false);
   const [isScaling, setIsScaling] = useState(false);
-  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, clipX: 0, clipY: 0, clipScale: 1 });
+  const [isRotating, setIsRotating] = useState(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, clipX: 0, clipY: 0, clipScale: 1, clipRotation: 0 });
 
   const handleBoxMouseDown = (e: React.MouseEvent) => {
     if (!activeClip) return;
     e.stopPropagation(); e.preventDefault();
     setIsDragging(true);
-    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale };
+    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation };
   };
 
   const handleHandleMouseDown = (e: React.MouseEvent) => {
     if (!activeClip) return;
     e.stopPropagation(); e.preventDefault();
     setIsScaling(true);
-    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale };
+    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation };
+  };
+
+  const handleRotateMouseDown = (e: React.MouseEvent) => {
+    if (!activeClip) return;
+    e.stopPropagation(); e.preventDefault();
+    setIsRotating(true);
+    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation };
   };
 
   useEffect(() => {
@@ -170,18 +179,24 @@ export default function PreviewCanvas() {
         updateClip(activeClip.id, { transform: { ...tr, x: dragStartRef.current.clipX + dx / scaleFactor, y: dragStartRef.current.clipY + dy / scaleFactor } });
       } else if (isScaling && activeClip) {
         const dx = e.clientX - dragStartRef.current.mouseX;
-        updateClip(activeClip.id, { transform: { ...tr, scale: Math.max(0.1, Math.min(10, dragStartRef.current.clipScale + dx / 150)) } });
+        const dy = e.clientY - dragStartRef.current.mouseY;
+        // Use both dx and dy for better scaling
+        const delta = (dx + dy) / 2;
+        updateClip(activeClip.id, { transform: { ...tr, scale: Math.max(0.1, Math.min(10, dragStartRef.current.clipScale + delta / 150)) } });
+      } else if (isRotating && activeClip) {
+        const dx = e.clientX - dragStartRef.current.mouseX;
+        updateClip(activeClip.id, { transform: { ...tr, rotation: dragStartRef.current.clipRotation + dx / 2 } });
       }
     };
     const handleMouseUp = () => {
-      if (isDragging || isScaling) { setIsDragging(false); setIsScaling(false); pushHistory(); }
+      if (isDragging || isScaling || isRotating) { setIsDragging(false); setIsScaling(false); setIsRotating(false); pushHistory(); }
     };
-    if (isDragging || isScaling) {
+    if (isDragging || isScaling || isRotating) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-  }, [isDragging, isScaling, activeClip, tr, updateClip, pushHistory, scaleFactor]);
+  }, [isDragging, isScaling, isRotating, activeClip, tr, updateClip, pushHistory, scaleFactor]);
 
   useEffect(() => {
     if (!engineRef.current) return;
@@ -268,6 +283,24 @@ export default function PreviewCanvas() {
             <div className="transform-handle top-right" onMouseDown={handleHandleMouseDown} />
             <div className="transform-handle bottom-left" onMouseDown={handleHandleMouseDown} />
             <div className="transform-handle bottom-right" onMouseDown={handleHandleMouseDown} />
+            <div className="transform-handle rotate-handle" onMouseDown={handleRotateMouseDown} />
+          </div>
+        )}
+        {showCrop && cropRect && (
+          <div className="crop-rectangle" style={{ 
+            left: `${cropRect.x * canvasWidth}px`, 
+            top: `${cropRect.y * canvasHeight}px`, 
+            width: `${cropRect.width * canvasWidth}px`, 
+            height: `${cropRect.height * canvasHeight}px` 
+          }}>
+            <div className="crop-handle top-left" />
+            <div className="crop-handle top-right" />
+            <div className="crop-handle bottom-left" />
+            <div className="crop-handle bottom-right" />
+            <div className="crop-handle top-center" />
+            <div className="crop-handle bottom-center" />
+            <div className="crop-handle center-left" />
+            <div className="crop-handle center-right" />
           </div>
         )}
         {!hasContent && (
@@ -300,6 +333,9 @@ export default function PreviewCanvas() {
           <button className="preview-btn" onClick={skipForward}><SkipForwardIcon /></button>
         </div>
         <div className="preview-control-right">
+          <button className={`preview-btn ${showCrop ? 'active' : ''}`} onClick={() => { setShowCrop(!showCrop); if (!showCrop) setCropRect({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 }); else setCropRect(null); }} title="Toggle crop">
+            <CropIcon />
+          </button>
           <div className="preview-volume-group">
             <button className="preview-btn" onClick={() => { setMuted(!muted); mutedRef.current = !muted; }}>
               {muted ? <MuteIcon /> : <VolumeIcon />}

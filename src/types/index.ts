@@ -101,6 +101,8 @@ export interface Clip {
   volume: number;
   speed: number;
   muted: boolean;
+  preservePitch: boolean;
+  voiceStabilizer: boolean;
   opacity: number;
   blendMode: string;
   transform: Transform;

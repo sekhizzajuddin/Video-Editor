@@ -78,6 +78,9 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
     const snapLinePx = (r: { snapped: boolean; targetTime: number }) =>
       r.snapped ? r.targetTime * pxPerSec : null;
 
+    // Check if dynamic speed mode is enabled
+    const isDynamicSpeedMode = store.dynamicSpeedMode;
+
     if (zone === 'move') {
       let newStart = Math.max(0, origStartAt + deltaTime);
       const endTime = newStart + clip.duration;
@@ -105,30 +108,82 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
       setSnapLine(snapLinePx(snap));
 
     } else if (zone === 'trim-start') {
-      const rawStart = origStartAt + deltaTime;
-      const durationDelta = origStartAt - rawStart;
-      let newDuration = origDuration + durationDelta;
-      let newStart = rawStart;
-      let newSourceStart = origSourceStart + durationDelta;
-      const clamped = clampTrim(newStart, newDuration, newSourceStart, clip, store.project.media);
-      newStart = clamped.startAt; newDuration = clamped.duration; newSourceStart = clamped.sourceStart;
-      const snap = calculateSnap(newStart, newStart + newDuration, 'start', candidates, snapThreshold);
-      if (snap.snapped) {
-        const sd = snap.targetTime - newStart;
-        newStart = snap.targetTime;
-        newDuration = Math.max(MIN_CLIP_DURATION, newDuration - sd);
-        newSourceStart = Math.max(0, newSourceStart + sd);
+      // In dynamic speed mode, dragging start border changes speed instead of trimming
+      if (isDynamicSpeedMode && clip.mediaId) {
+        const mf = clip.mediaId ? store.project.media.find(m => m.id === clip.mediaId) : undefined;
+        if (mf?.duration) {
+          // Calculate new duration based on drag
+          const rawStart = origStartAt + deltaTime;
+          const durationDelta = origStartAt - rawStart;
+          let newDuration = origDuration + durationDelta;
+          
+          // Calculate new speed to maintain the same source content
+          const sourceDuration = mf.duration - origSourceStart;
+          const newSpeed = Math.max(0.1, Math.min(4, sourceDuration / newDuration));
+          
+          // Snap the duration
+          const snap = calculateSnap(origStartAt, origStartAt + newDuration, 'start', candidates, snapThreshold);
+          if (snap.snapped) {
+            newDuration = Math.max(MIN_CLIP_DURATION, snap.targetTime - origStartAt);
+          }
+          
+          setSnapLine(snapLinePx(snap));
+          store.updateClip(s.clipId, { 
+            duration: newDuration, 
+            speed: newSpeed 
+          });
+        }
+      } else {
+        // Normal trimming behavior
+        const rawStart = origStartAt + deltaTime;
+        const durationDelta = origStartAt - rawStart;
+        let newDuration = origDuration + durationDelta;
+        let newStart = rawStart;
+        let newSourceStart = origSourceStart + durationDelta;
+        const clamped = clampTrim(newStart, newDuration, newSourceStart, clip, store.project.media);
+        newStart = clamped.startAt; newDuration = clamped.duration; newSourceStart = clamped.sourceStart;
+        const snap = calculateSnap(newStart, newStart + newDuration, 'start', candidates, snapThreshold);
+        if (snap.snapped) {
+          const sd = snap.targetTime - newStart;
+          newStart = snap.targetTime;
+          newDuration = Math.max(MIN_CLIP_DURATION, newDuration - sd);
+          newSourceStart = Math.max(0, newSourceStart + sd);
+        }
+        setSnapLine(snapLinePx(snap));
+        store.updateClip(s.clipId, { startAt: newStart, duration: newDuration, sourceStart: newSourceStart });
       }
-      setSnapLine(snapLinePx(snap));
-      store.updateClip(s.clipId, { startAt: newStart, duration: newDuration, sourceStart: newSourceStart });
     } else if (zone === 'trim-end') {
-      let newDuration = Math.max(MIN_CLIP_DURATION, origDuration + deltaTime);
-      const mf = clip.mediaId ? store.project.media.find(m => m.id === clip.mediaId) : undefined;
-      if (mf?.duration) newDuration = Math.min(newDuration, (mf.duration - clip.sourceStart) / (clip.speed || 1));
-      const snap = calculateSnap(origStartAt, origStartAt + newDuration, 'end', candidates, snapThreshold);
-      if (snap.snapped) newDuration = Math.max(MIN_CLIP_DURATION, snap.targetTime - origStartAt);
-      setSnapLine(snapLinePx(snap));
-      store.updateClip(s.clipId, { duration: newDuration });
+      // In dynamic speed mode, dragging end border changes speed instead of trimming
+      if (isDynamicSpeedMode && clip.mediaId) {
+        const mf = clip.mediaId ? store.project.media.find(m => m.id === clip.mediaId) : undefined;
+        if (mf?.duration) {
+          // Calculate new duration based on drag
+          let newDuration = Math.max(MIN_CLIP_DURATION, origDuration + deltaTime);
+          
+          // Calculate new speed to maintain the same source content
+          const sourceDuration = mf.duration - clip.sourceStart;
+          const newSpeed = Math.max(0.1, Math.min(4, sourceDuration / newDuration));
+          
+          // Snap the duration
+          const snap = calculateSnap(origStartAt, origStartAt + newDuration, 'end', candidates, snapThreshold);
+          if (snap.snapped) newDuration = Math.max(MIN_CLIP_DURATION, snap.targetTime - origStartAt);
+          
+          setSnapLine(snapLinePx(snap));
+          store.updateClip(s.clipId, { 
+            duration: newDuration, 
+            speed: newSpeed 
+          });
+        }
+      } else {
+        // Normal trimming behavior
+        let newDuration = Math.max(MIN_CLIP_DURATION, origDuration + deltaTime);
+        const mf = clip.mediaId ? store.project.media.find(m => m.id === clip.mediaId) : undefined;
+        if (mf?.duration) newDuration = Math.min(newDuration, (mf.duration - clip.sourceStart) / (clip.speed || 1));
+        const snap = calculateSnap(origStartAt, origStartAt + newDuration, 'end', candidates, snapThreshold);
+        if (snap.snapped) newDuration = Math.max(MIN_CLIP_DURATION, snap.targetTime - origStartAt);
+        setSnapLine(snapLinePx(snap));
+        store.updateClip(s.clipId, { duration: newDuration });
+      }
     }
   }, [pxPerSec, trackHeight]);
 

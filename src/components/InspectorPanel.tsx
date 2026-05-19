@@ -90,6 +90,20 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
             value={Math.round((clip.speed || 1) * 100)}
             onChange={e => update({ speed: parseInt(e.target.value) / 100 })} />
         </div>
+        <div className="inspector-toggle-row">
+          <span className="inspector-toggle-label">Auto Pitch</span>
+          <label className="inspector-toggle">
+            <input type="checkbox" checked={clip.preservePitch || false} onChange={e => update({ preservePitch: e.target.checked })} />
+            <span className="toggle-track"><span className="toggle-thumb" /></span>
+          </label>
+        </div>
+        <div className="inspector-toggle-row">
+          <span className="inspector-toggle-label">AI Voice Stabilizer</span>
+          <label className="inspector-toggle">
+            <input type="checkbox" checked={clip.voiceStabilizer || false} onChange={e => update({ voiceStabilizer: e.target.checked })} />
+            <span className="toggle-track"><span className="toggle-thumb" /></span>
+          </label>
+        </div>
       </CollapsibleSection>
     </div>
   );
@@ -97,6 +111,20 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
 
 function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
   const tr = clip.transform;
+  
+  const applyPipPreset = (preset: string) => {
+    const presets: Record<string, { x: number; y: number; scale: number }> = {
+      'bottom-right': { x: 500, y: 250, scale: 0.35 },
+      'bottom-left': { x: -500, y: 250, scale: 0.35 },
+      'top-right': { x: 500, y: -250, scale: 0.35 },
+      'top-left': { x: -500, y: -250, scale: 0.35 },
+      'center': { x: 0, y: 0, scale: 0.5 },
+      'full': { x: 0, y: 0, scale: 1 },
+    };
+    const p = presets[preset];
+    if (p) update({ transform: { ...tr, x: p.x, y: p.y, scale: p.scale } });
+  };
+  
   return (
     <div className="inspector-scroll">
       <div className="inspector-clip-header">
@@ -145,6 +173,17 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
         </div>
       </CollapsibleSection>
 
+      <CollapsibleSection title="PIP Presets" defaultOpen={false}>
+        <div className="pip-presets-grid">
+          <button className="pip-preset-btn" onClick={() => applyPipPreset('full')}>Full</button>
+          <button className="pip-preset-btn" onClick={() => applyPipPreset('center')}>Center</button>
+          <button className="pip-preset-btn" onClick={() => applyPipPreset('top-left')}>Top Left</button>
+          <button className="pip-preset-btn" onClick={() => applyPipPreset('top-right')}>Top Right</button>
+          <button className="pip-preset-btn" onClick={() => applyPipPreset('bottom-left')}>Bottom Left</button>
+          <button className="pip-preset-btn" onClick={() => applyPipPreset('bottom-right')}>Bottom Right</button>
+        </div>
+      </CollapsibleSection>
+
       <CollapsibleSection title="Audio">
         <div className="inspector-volume-row">
           <span className="inspector-volume-pct">{Math.round((clip.volume ?? 1) * 100)}%</span>
@@ -173,6 +212,20 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
           <input className="inspector-volume-slider" type="range" min={10} max={400} step={5}
             value={Math.round((clip.speed || 1) * 100)}
             onChange={e => update({ speed: parseInt(e.target.value) / 100 })} />
+        </div>
+        <div className="inspector-toggle-row">
+          <span className="inspector-toggle-label">Auto Pitch</span>
+          <label className="inspector-toggle">
+            <input type="checkbox" checked={clip.preservePitch || false} onChange={e => update({ preservePitch: e.target.checked })} />
+            <span className="toggle-track"><span className="toggle-thumb" /></span>
+          </label>
+        </div>
+        <div className="inspector-toggle-row">
+          <span className="inspector-toggle-label">AI Voice Stabilizer</span>
+          <label className="inspector-toggle">
+            <input type="checkbox" checked={clip.voiceStabilizer || false} onChange={e => update({ voiceStabilizer: e.target.checked })} />
+            <span className="toggle-track"><span className="toggle-thumb" /></span>
+          </label>
         </div>
       </CollapsibleSection>
 

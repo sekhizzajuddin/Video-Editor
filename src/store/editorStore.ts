@@ -57,6 +57,9 @@ export interface EditorState {
   zoom: number;
   showShortcuts: boolean;
   rippleDelete: boolean;
+  dynamicSpeedMode: boolean;
+  showCrop: boolean;
+  cropRect: { x: number; y: number; width: number; height: number } | null;
   showOpenProject: boolean;
   saveToast: boolean;
   isDirty: boolean;
@@ -75,6 +78,9 @@ export interface EditorState {
   setExportError: (e: string | null) => void;
   setshowShortcuts: (s: boolean) => void;
   setRippleDelete: (r: boolean) => void;
+  setDynamicSpeedMode: (d: boolean) => void;
+  setShowCrop: (s: boolean) => void;
+  setCropRect: (r: { x: number; y: number; width: number; height: number } | null) => void;
   setShowOpenProject: (s: boolean) => void;
   setSaveToast: (s: boolean) => void;
   setCopiedClip: (c: Clip | null) => void;
@@ -155,6 +161,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
     zoom: 1,
     showShortcuts: false,
     rippleDelete: false,
+    dynamicSpeedMode: false,
+    showCrop: false,
+    cropRect: null,
     showOpenProject: false,
     saveToast: false,
     isDirty: false,
@@ -173,6 +182,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setExportError: (e) => set({ exportError: e }),
     setshowShortcuts: (s) => set({ showShortcuts: s }),
     setRippleDelete: (r) => set({ rippleDelete: r }),
+    setDynamicSpeedMode: (d) => set({ dynamicSpeedMode: d }),
+    setShowCrop: (s) => set({ showCrop: s }),
+    setCropRect: (r) => set({ cropRect: r }),
     setShowOpenProject: (s) => set({ showOpenProject: s }),
     setSaveToast: (s) => set({ saveToast: s }),
     setCopiedClip: (c) => set({ copiedClip: c }),
@@ -242,7 +254,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const newClip: Clip = {
         id, mediaId, trackType, trackId: track.id,
         startAt: 0, duration: 2, sourceStart: 0, sourceEnd: 0,
-        volume: 1, speed: 1, muted: false, opacity: 100, blendMode: 'normal',
+        volume: 1, speed: 1, muted: false, preservePitch: false, voiceStabilizer: false, opacity: 100, blendMode: 'normal',
         transform: { ...defaultTransform },
         sticker,
         textOverlay: trackType === 'text' ? {

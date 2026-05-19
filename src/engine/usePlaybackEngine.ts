@@ -90,13 +90,51 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
         el.playbackRate = speed * (clip.speed || 1);
         el.muted = clip.muted;
         el.preload = 'auto';
+        
+        // Enable pitch preservation if the clip has preservePitch enabled
+        if (clip.preservePitch) {
+          el.preservesPitch = true;
+          // Also set vendor prefixes for compatibility
+          (el as any).mozPreservesPitch = true;
+          (el as any).webkitPreservesPitch = true;
+        }
 
         // Bind HTML5 audio element output to centralized Web Audio Mixer nodes
         try {
           const sourceNode = ctx.createMediaElementSource(el);
           const gainNode = ctx.createGain();
           gainNode.gain.setValueAtTime(Math.max(0, Math.min(2, clip.volume ?? 1)), ctx.currentTime);
-          sourceNode.connect(gainNode);
+          
+          // Apply voice stabilizer if enabled
+          if (clip.voiceStabilizer) {
+            // Add a compressor for voice stabilization
+            const voiceCompressor = ctx.createDynamicsCompressor();
+            voiceCompressor.threshold.setValueAtTime(-24, ctx.currentTime);
+            voiceCompressor.knee.setValueAtTime(30, ctx.currentTime);
+            voiceCompressor.ratio.setValueAtTime(12, ctx.currentTime);
+            voiceCompressor.attack.setValueAtTime(0.003, ctx.currentTime);
+            voiceCompressor.release.setValueAtTime(0.25, ctx.currentTime);
+            
+            // Add a high-pass filter to remove low frequency noise
+            const highPass = ctx.createBiquadFilter();
+            highPass.type = 'highpass';
+            highPass.frequency.setValueAtTime(80, ctx.currentTime);
+            highPass.Q.setValueAtTime(0.5, ctx.currentTime);
+            
+            // Add a low-pass filter to remove high frequency noise
+            const lowPass = ctx.createBiquadFilter();
+            lowPass.type = 'lowpass';
+            lowPass.frequency.setValueAtTime(12000, ctx.currentTime);
+            lowPass.Q.setValueAtTime(0.5, ctx.currentTime);
+            
+            sourceNode.connect(highPass);
+            highPass.connect(lowPass);
+            lowPass.connect(voiceCompressor);
+            voiceCompressor.connect(gainNode);
+          } else {
+            sourceNode.connect(gainNode);
+          }
+          
           gainNode.connect(compressor);
         } catch {
           // Fallback if media elements routing fails (e.g. cross-origin issues)

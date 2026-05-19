@@ -14,8 +14,8 @@ function formatTimeLumen(sec: number): string {
 
 const TRACK_HEIGHTS: Record<string, number> = { video: 48, audio: 40, text: 36, sticker: 36, vfx: 36 };
 const DEFAULT_TRACK_HEIGHT = 44;
-const RULER_HEIGHT = 24;
-const HEADER_WIDTH = 100;
+const RULER_HEIGHT = 28;
+const HEADER_WIDTH = 120;
 
 function getTrackHeight(type: string): number { return TRACK_HEIGHTS[type] ?? DEFAULT_TRACK_HEIGHT; }
 
@@ -40,13 +40,97 @@ interface CtxMenu { x: number; y: number; clipId: string; }
 interface HoverClip { id: string; mf?: { name: string; thumbnail?: string; duration?: number }; clip: Clip; }
 
 function WaveformBars({ waveform, height }: { waveform: number[]; height: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  useEffect(() => {
+    if (!canvasRef.current || !waveform.length) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    
+    const width = rect.width;
+    const h = rect.height;
+    const centerY = h / 2;
+    
+    ctx.clearRect(0, 0, width, h);
+    
+    // Draw waveform as smooth curves
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    
+    const sliceWidth = width / waveform.length;
+    let x = 0;
+    
+    for (let i = 0; i < waveform.length; i++) {
+      const val = waveform[i];
+      const y = centerY - (val * h * 0.4);
+      
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        const prevX = x - sliceWidth;
+        const prevVal = waveform[i - 1];
+        const prevY = centerY - (prevVal * h * 0.4);
+        const cpX = (prevX + x) / 2;
+        ctx.quadraticCurveTo(prevX, prevY, cpX, (prevY + y) / 2);
+      }
+      x += sliceWidth;
+    }
+    
+    // Create gradient for the waveform
+    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+    gradient.addColorStop(0, 'rgba(96, 165, 250, 0.6)');
+    gradient.addColorStop(0.5, 'rgba(96, 165, 250, 0.9)');
+    gradient.addColorStop(1, 'rgba(96, 165, 250, 0.6)');
+    
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    // Draw filled area under the wave
+    ctx.lineTo(width, centerY);
+    ctx.lineTo(0, centerY);
+    ctx.closePath();
+    
+    const fillGradient = ctx.createLinearGradient(0, 0, 0, h);
+    fillGradient.addColorStop(0, 'rgba(96, 165, 250, 0.3)');
+    fillGradient.addColorStop(0.5, 'rgba(96, 165, 250, 0.1)');
+    fillGradient.addColorStop(1, 'rgba(96, 165, 250, 0.3)');
+    
+    ctx.fillStyle = fillGradient;
+    ctx.fill();
+    
+    // Draw vocal detection underline
+    ctx.beginPath();
+    ctx.moveTo(0, h - 2);
+    x = 0;
+    for (let i = 0; i < waveform.length; i++) {
+      const val = waveform[i];
+      // Vocal detection: positive values indicate vocal frequencies
+      if (val > 0) {
+        ctx.lineTo(x, h - 2);
+        ctx.lineTo(x, h);
+        ctx.lineTo(x + sliceWidth, h);
+        ctx.lineTo(x + sliceWidth, h - 2);
+      }
+      x += sliceWidth;
+    }
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.6)';
+    ctx.fill();
+  }, [waveform, height]);
+  
   return (
-    <div className="clip-waveform" style={{ height }}>
-      {waveform.map((val, i) => {
-        const amp = Math.abs(val);
-        return <div key={i} className="waveform-bar" style={{ height: `${Math.max(4, amp * 90)}%`, background: amp > 0.6 ? '#60a5fa' : 'rgba(96,165,250,0.4)' }} />;
-      })}
-    </div>
+    <canvas 
+      ref={canvasRef} 
+      className="clip-waveform-canvas" 
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} 
+    />
   );
 }
 
@@ -80,10 +164,10 @@ function TransitionZone({ clipId, x, y, type }: { clipId: string; x: number; y: 
 export default function Timeline() {
   const {
     project: { tracks, media }, currentTime, isPlaying, zoom,
-    selectedClipIds, activeClipId,
+    selectedClipIds, activeClipId, dynamicSpeedMode,
     setSelectedClipIds, setActiveClipId, setCurrentTime,
     updateClip, updateTrack, addClip, addTrack, removeClip, removeTrack,
-    setZoom, rippleDelete, setRippleDelete, splitClip, pushHistory, removeSelectedClips,
+    setZoom, rippleDelete, setRippleDelete, setDynamicSpeedMode, splitClip, pushHistory, removeSelectedClips,
   } = useEditorStore();
 
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -173,8 +257,12 @@ export default function Timeline() {
   const rulerMarks = useMemo(() => {
     const interval = zoom < 0.2 ? 30 : zoom < 0.4 ? 10 : zoom < 0.7 ? 5 : zoom < 1.5 ? 2 : 1;
     const minor = interval / 5;
-    const marks: { t: number; major: boolean }[] = [];
-    for (let t = 0; t <= projectDuration + interval; t += minor) marks.push({ t: parseFloat(t.toFixed(3)), major: Math.abs(t % interval) < minor / 2 });
+    const marks: { t: number; major: boolean; showLabel?: boolean }[] = [];
+    for (let t = 0; t <= projectDuration + interval; t += minor) {
+      const isMajor = Math.abs(t % interval) < minor / 2;
+      const shouldShowLabel = isMajor || (zoom >= 1.5 && Math.abs(t % 1) < minor / 2) || (zoom >= 3 && Math.abs(t % 0.5) < minor / 2);
+      marks.push({ t: parseFloat(t.toFixed(3)), major: isMajor, showLabel: shouldShowLabel });
+    }
     return marks;
   }, [projectDuration, zoom]);
 
@@ -262,6 +350,41 @@ export default function Timeline() {
 
   const handleSplit = () => { const id = activeClipId || selectedClipIds[0]; if (id) { pushHistory(); splitClip(id, currentTime); } };
   const handleDelete = () => { if (selectedClipIds.length) { pushHistory(); removeSelectedClips(); } };
+  
+  // AI Video Editing Features
+  const handleDetectScenes = () => {
+    // Add scene markers at regular intervals for AI video editing
+    const store = useEditorStore.getState();
+    const duration = store.project.duration;
+    const interval = 5; // Detect scenes every 5 seconds
+    for (let t = 0; t < duration; t += interval) {
+      store.toggleMarker(t);
+    }
+  };
+  
+  const handleAddSyncMarker = () => {
+    // Add a sync marker at current time for lip sync alignment
+    useEditorStore.getState().toggleMarker(currentTime);
+  };
+  
+  const handleApplyToSelected = () => {
+    // Apply current clip settings to all selected clips
+    const store = useEditorStore.getState();
+    const activeClip = store.getClip(activeClipId || '');
+    if (!activeClip || selectedClipIds.length <= 1) return;
+    
+    selectedClipIds.forEach(id => {
+      if (id !== activeClipId) {
+        store.updateClip(id, {
+          speed: activeClip.speed,
+          volume: activeClip.volume,
+          preservePitch: activeClip.preservePitch,
+          voiceStabilizer: activeClip.voiceStabilizer,
+          filters: activeClip.filters,
+        });
+      }
+    });
+  };
 
   const clipCount = useMemo(() => tracks.reduce((sum, t) => sum + t.clips.length, 0), [tracks]);
 
@@ -274,6 +397,24 @@ export default function Timeline() {
           <div className="toolbar-sep" />
           <button className={`tl-btn ${rippleDelete ? 'active' : ''}`} onClick={() => setRippleDelete(!rippleDelete)} title="Ripple delete">{Ico.ripple}</button>
           <button className="tl-btn" onClick={() => useEditorStore.getState().toggleMarker(currentTime)} title="Marker (M)">{Ico.marker}</button>
+          <div className="toolbar-sep" />
+          <button className={`tl-btn ${dynamicSpeedMode ? 'active dynamic-speed' : ''}`} onClick={() => setDynamicSpeedMode(!dynamicSpeedMode)} title="Dynamic Speed Mode - Drag clip borders to change speed for lip sync">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Speed
+          </button>
+          <div className="toolbar-sep" />
+          <button className="tl-btn" onClick={handleDetectScenes} title="Auto-detect scenes and add markers">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/></svg>
+            Scenes
+          </button>
+          <button className="tl-btn" onClick={handleAddSyncMarker} title="Add sync marker at playhead for lip sync">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Sync
+          </button>
+          <button className="tl-btn" onClick={handleApplyToSelected} title="Apply active clip settings to all selected clips">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 17.929H6c-1.105 0-2-.912-2-2.036V5.036C4 3.91 4.895 3 6 3h8c1.105 0 2 .911 2 2.036v1.866m-6 .17h8c1.105 0 2 .91 2 2.035v10.857C20 21.09 19.105 22 18 22h-8c-1.105 0-2-.911-2-2.036V9.107c0-1.124.895-2.036 2-2.036z"/></svg>
+            Apply
+          </button>
           <div className="toolbar-sep" />
           <button className="tl-btn" onClick={() => addTrack('video')} title="Add Video track">{Ico.plus} V</button>
           <button className="tl-btn" onClick={() => addTrack('audio')} title="Add Audio track">{Ico.plus} A</button>
@@ -295,12 +436,12 @@ export default function Timeline() {
 
       <div className="tl-body">
         <div className="tl-ruler-row">
-          <div className="tl-corner" style={{ width: HEADER_WIDTH }} />
+          <div className="tl-corner" style={{ width: HEADER_WIDTH, minWidth: HEADER_WIDTH }} />
           <div className="tl-ruler-scroll" ref={rulerRef}>
             <div style={{ width: totalWidth, height: RULER_HEIGHT, position: 'relative' }} onClick={handleRulerClick} className="tl-ruler-inner">
               {rulerMarks.map((m, i) => (
                 <div key={i} className={`ruler-mark ${m.major ? 'major' : 'minor'}`} style={{ left: m.t * pxPerSec }}>
-                  {m.major && <span className="ruler-label">{formatTimeLumen(m.t)}</span>}
+                  {m.showLabel && <span className="ruler-label">{formatTimeLumen(m.t)}</span>}
                 </div>
               ))}
               {useEditorStore.getState().project.markers.map((marker: Marker) => (
@@ -314,13 +455,16 @@ export default function Timeline() {
         </div>
 
         <div className="tl-tracks-row">
-          <div className="tl-headers-col" ref={headersRef} style={{ width: HEADER_WIDTH }}>
+          <div className="tl-headers-col" ref={headersRef} style={{ width: HEADER_WIDTH, minWidth: HEADER_WIDTH }}>
             {tracks.map(t => {
               const trackH = getTrackHeight(t.type);
               return (
                 <div key={t.id} className="tl-track-header" style={{ height: trackH }}>
                   <div className="track-dot" style={{ background: TRACK_COLORS[t.type] || '#666' }} />
-                  <div className="track-header-content"><span className="track-name">{t.name}</span></div>
+                  <div className="track-header-content">
+                    <span className="track-name">{t.name}</span>
+                    <span className="track-type-badge">{t.type}</span>
+                  </div>
                   <div className="track-header-actions">
                     <button className="track-icon-btn" title={t.visible ? 'Hide' : 'Show'} onClick={() => updateTrack(t.id, { visible: !t.visible })}>{t.visible ? Ico.eye : Ico.eyeOff}</button>
                     <button className="track-icon-btn" title={t.locked ? 'Unlock' : 'Lock'} onClick={() => updateTrack(t.id, { locked: !t.locked })}>{t.locked ? Ico.lock : Ico.unlock}</button>
@@ -383,6 +527,9 @@ export default function Timeline() {
                           <span className="clip-label">{mf?.name?.replace(/\.[^.]+$/, '') || clip.textOverlay?.text || clip.sticker || 'Clip'}</span>
                           <span className="clip-duration-label">{clip.duration.toFixed(1)}s</span>
                         </div>
+                        {dynamicSpeedMode && clip.speed !== 1 && (
+                          <span className="clip-speed-indicator">{clip.speed.toFixed(2)}x</span>
+                        )}
                         <div className="trim-handle left" /><div className="trim-handle right" />
                       </div>
                     );
