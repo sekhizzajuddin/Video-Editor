@@ -335,8 +335,9 @@ body {
 }
 
 .preview-canvas-wrap {
-  flex: 1; display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   padding: 16px; overflow: hidden; position: relative;
+  margin: auto;
 }
 
 .preview-canvas {
@@ -715,25 +716,23 @@ body {
 }
 
 .ruler-label {
-  position: absolute; top: 4px; left: 4px; font-size: 10px; color: var(--text-secondary);
+  position: absolute; top: 4px; left: 0; transform: translateX(-50%);
+  font-size: 9px; color: var(--text-dim);
   user-select: none; pointer-events: none; font-family: var(--font-mono);
   font-weight: 500;
 }
 .ruler-mark { position: absolute; top: 0; height: 100%; pointer-events: none; }
-.ruler-mark.major { 
-  border-left: 1px solid rgba(255,255,255,0.2); 
-}
 .ruler-mark.major::before {
-  content: '';
-  position: absolute;
-  top: 20px;
-  left: 0;
-  width: 1px;
-  height: 8px;
-  background: rgba(255,255,255,0.15);
+  content: ''; position: absolute; bottom: 0; left: 0; width: 1px; height: 10px;
+  background: rgba(255, 255, 255, 0.45);
 }
-.ruler-mark.minor { 
-  border-left: 1px solid rgba(255,255,255,0.08); 
+.ruler-mark.medium::before {
+  content: ''; position: absolute; bottom: 0; left: 0; width: 1px; height: 7px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.ruler-mark.minor::before {
+  content: ''; position: absolute; bottom: 0; left: 0; width: 1px; height: 4px;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 /* Tracks */

@@ -134,10 +134,14 @@ export default function PreviewCanvas() {
   const isVisible = activeClip && currentTime >= activeClip.startAt && currentTime < activeClip.startAt + activeClip.duration;
 
   const baseWidth = activeClip
-    ? activeClip.trackType === 'text' ? 1000 : activeClip.trackType === 'sticker' ? 300 : activeMedia?.width || 1920
+    ? activeClip.trackType === 'text'
+      ? Math.max(200, (activeClip.textOverlay?.text?.length || 4) * (activeClip.textOverlay?.fontSize || 48) * 0.55 + 40)
+      : activeClip.trackType === 'sticker' ? 300 : activeMedia?.width || 1920
     : 1920;
   const baseHeight = activeClip
-    ? activeClip.trackType === 'text' ? 200 : activeClip.trackType === 'sticker' ? 300 : activeMedia?.height || 1080
+    ? activeClip.trackType === 'text'
+      ? (activeClip.textOverlay?.fontSize || 48) * 1.4 + 20
+      : activeClip.trackType === 'sticker' ? 300 : activeMedia?.height || 1080
     : 1080;
 
   const boxWidth = baseWidth * tr.scale * scaleFactor;
@@ -148,27 +152,33 @@ export default function PreviewCanvas() {
   const [isDragging, setIsDragging] = useState(false);
   const [isScaling, setIsScaling] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
-  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, clipX: 0, clipY: 0, clipScale: 1, clipRotation: 0 });
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, clipX: 0, clipY: 0, clipScale: 1, clipRotation: 0, centerX: 0, centerY: 0 });
 
   const handleBoxMouseDown = (e: React.MouseEvent) => {
     if (!activeClip) return;
     e.stopPropagation(); e.preventDefault();
     setIsDragging(true);
-    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation };
+    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation, centerX: 0, centerY: 0 };
   };
 
   const handleHandleMouseDown = (e: React.MouseEvent) => {
-    if (!activeClip) return;
+    if (!activeClip || !canvasRef.current) return;
     e.stopPropagation(); e.preventDefault();
     setIsScaling(true);
-    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation };
+    const rect = canvasRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2 + tr.x * scaleFactor;
+    const centerY = rect.top + rect.height / 2 + tr.y * scaleFactor;
+    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation, centerX, centerY };
   };
 
   const handleRotateMouseDown = (e: React.MouseEvent) => {
-    if (!activeClip) return;
+    if (!activeClip || !canvasRef.current) return;
     e.stopPropagation(); e.preventDefault();
     setIsRotating(true);
-    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation };
+    const rect = canvasRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2 + tr.x * scaleFactor;
+    const centerY = rect.top + rect.height / 2 + tr.y * scaleFactor;
+    dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation, centerX, centerY };
   };
 
   useEffect(() => {
@@ -178,14 +188,25 @@ export default function PreviewCanvas() {
         const dy = e.clientY - dragStartRef.current.mouseY;
         updateClip(activeClip.id, { transform: { ...tr, x: dragStartRef.current.clipX + dx / scaleFactor, y: dragStartRef.current.clipY + dy / scaleFactor } });
       } else if (isScaling && activeClip) {
-        const dx = e.clientX - dragStartRef.current.mouseX;
-        const dy = e.clientY - dragStartRef.current.mouseY;
-        // Use both dx and dy for better scaling
-        const delta = (dx + dy) / 2;
-        updateClip(activeClip.id, { transform: { ...tr, scale: Math.max(0.1, Math.min(10, dragStartRef.current.clipScale + delta / 150)) } });
+        const { centerX, centerY, mouseX, mouseY, clipScale } = dragStartRef.current;
+        const initDx = mouseX - centerX;
+        const initDy = mouseY - centerY;
+        const initDist = Math.sqrt(initDx * initDx + initDy * initDy);
+        
+        const curDx = e.clientX - centerX;
+        const curDy = e.clientY - centerY;
+        const curDist = Math.sqrt(curDx * curDx + curDy * curDy);
+        
+        const newScale = clipScale * (curDist / Math.max(1, initDist));
+        updateClip(activeClip.id, { transform: { ...tr, scale: Math.max(0.1, Math.min(10, newScale)) } });
       } else if (isRotating && activeClip) {
-        const dx = e.clientX - dragStartRef.current.mouseX;
-        updateClip(activeClip.id, { transform: { ...tr, rotation: dragStartRef.current.clipRotation + dx / 2 } });
+        const { centerX, centerY, mouseX, mouseY, clipRotation } = dragStartRef.current;
+        const initAngle = Math.atan2(mouseY - centerY, mouseX - centerX);
+        const curAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+        
+        const angleDeltaRad = curAngle - initAngle;
+        const angleDeltaDeg = (angleDeltaRad * 180) / Math.PI;
+        updateClip(activeClip.id, { transform: { ...tr, rotation: clipRotation + angleDeltaDeg } });
       }
     };
     const handleMouseUp = () => {

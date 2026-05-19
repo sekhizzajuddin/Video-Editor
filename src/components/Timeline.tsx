@@ -12,6 +12,36 @@ function formatTimeLumen(sec: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
 }
 
+function getTimelineRulerScale(pxPerSec: number) {
+  const candidateIntervals = [
+    0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300, 600
+  ];
+  let majorInterval = 10;
+  for (const interval of candidateIntervals) {
+    if (interval * pxPerSec >= 120) {
+      majorInterval = interval;
+      break;
+    }
+  }
+
+  let subdivisions = 5;
+  if (majorInterval === 0.02 || majorInterval === 0.2 || majorInterval === 2 || majorInterval === 20) {
+    subdivisions = 4;
+  } else if (majorInterval === 0.05 || majorInterval === 0.5 || majorInterval === 5 || majorInterval === 50) {
+    subdivisions = 5;
+  } else if (
+    majorInterval === 0.1 || majorInterval === 1 || majorInterval === 10 ||
+    majorInterval === 60 || majorInterval === 120 || majorInterval === 300 || majorInterval === 600
+  ) {
+    subdivisions = 10;
+  }
+
+  const minorInterval = majorInterval / subdivisions;
+  const mediumInterval = subdivisions % 2 === 0 ? majorInterval / 2 : null;
+
+  return { majorInterval, minorInterval, mediumInterval, subdivisions };
+}
+
 const TRACK_HEIGHTS: Record<string, number> = { video: 48, audio: 40, text: 36, sticker: 36, vfx: 36 };
 const DEFAULT_TRACK_HEIGHT = 44;
 const RULER_HEIGHT = 28;
@@ -39,31 +69,24 @@ const Ico = {
 interface CtxMenu { x: number; y: number; clipId: string; }
 interface HoverClip { id: string; mf?: { name: string; thumbnail?: string; duration?: number }; clip: Clip; }
 
-function WaveformBars({ waveform, height }: { waveform: number[]; height: number }) {
+function WaveformBars({ waveform, height, width }: { waveform: number[]; height: number; width: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   useEffect(() => {
-    if (!canvasRef.current || !waveform.length) return;
+    if (!canvasRef.current || !waveform.length || width <= 0) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
     
-    const width = rect.width;
-    const h = rect.height;
+    const h = height;
     const centerY = h / 2;
     
     ctx.clearRect(0, 0, width, h);
-    
-    // CapCut style: vertical bars with mirrored display
-    const barCount = Math.min(waveform.length, Math.floor(width / 2));
-    const barWidth = width / barCount;
-    const gap = 1;
     
     // Draw center line
     ctx.beginPath();
@@ -73,38 +96,56 @@ function WaveformBars({ waveform, height }: { waveform: number[]; height: number
     ctx.lineWidth = 1;
     ctx.stroke();
     
-    // Draw bars - CapCut style
+    const barWidth = 2;
+    const barCount = Math.floor(width / barWidth);
+    
+    // Vocal Detection rolling window VAD
+    const vocalActive = new Array(barCount).fill(false);
+    for (let i = 0; i < barCount; i++) {
+      const idx = Math.floor((i / barCount) * waveform.length);
+      const val = Math.abs(waveform[idx] || 0);
+      if (val > 0.12 && val < 0.85) {
+        vocalActive[i] = true;
+      }
+    }
+    
+    const smoothedActive = [...vocalActive];
+    const windowSize = 6;
+    for (let i = 0; i < barCount; i++) {
+      let count = 0;
+      for (let w = -windowSize; w <= windowSize; w++) {
+        if (vocalActive[i + w]) count++;
+      }
+      smoothedActive[i] = count > windowSize * 0.7;
+    }
+    
     for (let i = 0; i < barCount; i++) {
       const waveIndex = Math.floor((i / barCount) * waveform.length);
       const val = waveform[waveIndex] || 0;
       const absVal = Math.abs(val);
       
-      // Amplitude-based color intensity (louder = brighter)
-      const intensity = Math.min(1, absVal * 1.5 + 0.3);
-      
-      // CapCut gradient: brighter in center, darker at edges
-      const r = Math.floor(59 + intensity * 80);
-      const g = Math.floor(130 + intensity * 80);
-      const b = Math.floor(246);
-      const color = `rgba(${r}, ${g}, ${b}, ${intensity + 0.2})`;
-      
-      const barHeight = absVal * h * 0.45;
+      const isVocal = smoothedActive[i];
+      const barHeight = Math.max(2, absVal * h * 0.42);
       const x = i * barWidth;
       
-      // Top half (mirrored)
-      ctx.fillStyle = color;
-      ctx.fillRect(x + gap / 2, centerY - barHeight, barWidth - gap, barHeight);
+      // Draw waveform line
+      ctx.fillStyle = isVocal ? 'rgba(16, 185, 129, 0.8)' : 'rgba(59, 130, 246, 0.6)';
+      ctx.fillRect(x + 0.4, centerY - barHeight, 1.2, barHeight * 2);
       
-      // Bottom half (mirrored)
-      ctx.fillRect(x + gap / 2, centerY, barWidth - gap, barHeight);
-      
-      // Peak indicator (brighter top edge)
+      // Draw peak dots
       if (absVal > 0.5) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${absVal * 0.5})`;
-        ctx.fillRect(x + gap / 2, centerY - barHeight - 1, barWidth - gap, 2);
+        ctx.fillStyle = isVocal ? 'rgba(52, 211, 153, 0.9)' : 'rgba(147, 197, 253, 0.9)';
+        ctx.fillRect(x + 0.4, centerY - barHeight - 1, 1.2, 1);
+        ctx.fillRect(x + 0.4, centerY + barHeight, 1.2, 1);
+      }
+      
+      // Underline Vocal Bar at the bottom
+      if (isVocal) {
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(x, h - 3, barWidth, 3);
       }
     }
-  }, [waveform, height]);
+  }, [waveform, height, width]);
   
   return (
     <canvas 
@@ -255,20 +296,37 @@ export default function Timeline() {
   }, [isSelecting, selectionBox, tracks, pxPerSec, setSelectedClipIds, setActiveClipId]);
 
   const rulerMarks = useMemo(() => {
-    const interval = zoom < 0.2 ? 30 : zoom < 0.4 ? 10 : zoom < 0.7 ? 5 : zoom < 1.5 ? 2 : 1;
-    const minor = interval / 5;
-    const marks: { t: number; major: boolean; showLabel?: boolean }[] = [];
-    for (let t = 0; t <= projectDuration + interval; t += minor) {
-      const isMajor = Math.abs(t % interval) < minor / 2;
-      const shouldShowLabel = isMajor || (zoom >= 1.5 && Math.abs(t % 1) < minor / 2) || (zoom >= 3 && Math.abs(t % 0.5) < minor / 2);
-      marks.push({ t: parseFloat(t.toFixed(3)), major: isMajor, showLabel: shouldShowLabel });
+    const { majorInterval, minorInterval, mediumInterval } = getTimelineRulerScale(pxPerSec);
+    const marks: { t: number; type: 'major' | 'medium' | 'minor'; showLabel: boolean }[] = [];
+    
+    const step = minorInterval;
+    for (let t = 0; t <= projectDuration + majorInterval; t += step) {
+      const tRounded = parseFloat(t.toFixed(3));
+      
+      const isMajor = Math.abs(tRounded % majorInterval) < step / 2 || Math.abs((tRounded % majorInterval) - majorInterval) < step / 2;
+      
+      let isMedium = false;
+      if (!isMajor && mediumInterval !== null) {
+        isMedium = Math.abs(tRounded % mediumInterval) < step / 2 || Math.abs((tRounded % mediumInterval) - mediumInterval) < step / 2;
+      }
+      
+      const type = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
+      const showLabel = isMajor;
+      
+      marks.push({
+        t: tRounded,
+        type,
+        showLabel,
+      });
     }
     return marks;
-  }, [projectDuration, zoom]);
+  }, [projectDuration, pxPerSec]);
 
   // Draggable playhead
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const [isDraggingRuler, setIsDraggingRuler] = useState(false);
   const playheadDragRef = useRef(false);
+  const rulerDragRef = useRef(false);
   const pxPerSecRef = useRef(pxPerSec);
   const projectDurationRef = useRef(projectDuration);
   const setCurrentTimeRef = useRef(setCurrentTime);
@@ -286,30 +344,54 @@ export default function Timeline() {
     store.setIsPlaying(false);
   }, []);
 
-  useEffect(() => {
-    if (!playheadDragRef.current) return;
-    const onMove = (e: MouseEvent) => {
-      if (!tracksRef.current || !playheadDragRef.current) return;
-      const rect = tracksRef.current.getBoundingClientRect();
+  const handleRulerMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('.tl-marker')) return;
+    e.preventDefault();
+    rulerDragRef.current = true;
+    setIsDraggingRuler(true);
+    const store = useEditorStore.getState();
+    store.setIsPlaying(false);
+    
+    if (tracksRef.current) {
+      const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
-      const time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
-      setCurrentTimeRef.current(time);
+      const time = Math.max(0, Math.min(x / pxPerSec, projectDuration));
+      setCurrentTime(time);
+    }
+  }, [pxPerSec, projectDuration, setCurrentTime]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (playheadDragRef.current && tracksRef.current) {
+        const rect = tracksRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
+        const time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
+        setCurrentTimeRef.current(time);
+      } else if (rulerDragRef.current && rulerRef.current && tracksRef.current) {
+        const rect = rulerRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
+        const time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
+        setCurrentTimeRef.current(time);
+      }
     };
     const onUp = () => {
-      playheadDragRef.current = false;
-      setIsDraggingPlayhead(false);
+      if (playheadDragRef.current) {
+        playheadDragRef.current = false;
+        setIsDraggingPlayhead(false);
+      }
+      if (rulerDragRef.current) {
+        rulerDragRef.current = false;
+        setIsDraggingRuler(false);
+      }
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
   }, []);
-
-  const handleRulerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!tracksRef.current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
-    setCurrentTime(Math.max(0, Math.min(pixelsToTime(x), projectDuration)));
-  };
 
   const lastClickedClipRef = useRef<string | null>(null);
 
@@ -496,9 +578,9 @@ export default function Timeline() {
         <div className="tl-ruler-row">
           <div className="tl-corner" style={{ width: HEADER_WIDTH, minWidth: HEADER_WIDTH }} />
           <div className="tl-ruler-scroll" ref={rulerRef}>
-            <div style={{ width: totalWidth, height: RULER_HEIGHT, position: 'relative' }} onClick={handleRulerClick} className="tl-ruler-inner">
+            <div style={{ width: totalWidth, height: RULER_HEIGHT, position: 'relative' }} onMouseDown={handleRulerMouseDown} className="tl-ruler-inner">
               {rulerMarks.map((m, i) => (
-                <div key={i} className={`ruler-mark ${m.major ? 'major' : 'minor'}`} style={{ left: m.t * pxPerSec }}>
+                <div key={i} className={`ruler-mark ${m.type}`} style={{ left: m.t * pxPerSec }}>
                   {m.showLabel && <span className="ruler-label">{formatTimeLumen(m.t)}</span>}
                 </div>
               ))}
@@ -507,7 +589,7 @@ export default function Timeline() {
                   <div className="tl-marker-flag" style={{ background: marker.color }} />
                 </div>
               ))}
-              <div className="playhead-triangle" style={{ left: currentTime * pxPerSec }} />
+              <div className="playhead-triangle" style={{ left: currentTime * pxPerSec, pointerEvents: 'auto', cursor: 'ew-resize' }} onMouseDown={handlePlayheadMouseDown} />
             </div>
           </div>
         </div>
@@ -577,7 +659,7 @@ export default function Timeline() {
                         onMouseEnter={() => setHoverClip({ id: clip.id, mf, clip })}
                         onMouseLeave={() => setHoverClip(null)}>
                         {clip.trackType === 'video' && mf?.thumbnails?.length ? <Filmstrip thumbnails={mf.thumbnails} clipWidth={width} height={h} /> : null}
-                        {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? <WaveformBars waveform={mf.waveform} height={h} /> : null}
+                        {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? <WaveformBars waveform={mf.waveform} height={h} width={width} /> : null}
                         {clip.textOverlay && <div className="clip-text-label">{clip.textOverlay.text}</div>}
                         {clip.sticker && <div className="clip-sticker-label">{clip.sticker}</div>}
                         {clip.vfxOverlay && <div className="clip-label" style={{ fontSize: 9 }}>✦ {clip.vfxOverlay.type}</div>}

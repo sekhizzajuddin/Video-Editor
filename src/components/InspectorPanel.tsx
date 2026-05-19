@@ -441,12 +441,25 @@ export default function InspectorPanel() {
 
   if (!clip) {
     return (
-      <aside className="inspector-panel collapsed">
-        <div className="inspector-empty">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.3 }}>
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <span className="inspector-empty-text">Select a clip to edit properties</span>
+      <aside className="inspector-panel">
+        <div className="inspector-empty" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="inspector-empty-card" style={{
+            border: '1px dashed var(--border)',
+            borderRadius: 'var(--radius-md)',
+            padding: '24px 16px',
+            margin: '0 16px',
+            width: 'calc(100% - 32px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            background: 'rgba(255, 255, 255, 0.01)',
+          }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-dim)', marginBottom: 12 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 21l8.904-4.218M9.813 15.904L14.5 12.5M9.813 15.904l-4.218-.813M21 9.75c0-1.855-1.542-3.325-3.375-3.325-.56 0-1.077.14-1.53.385C15.19 5.093 13.565 4.5 11.875 4.5c-3.13 0-5.625 2.616-5.625 5.625 0 .235.014.47.043.7-.638.167-1.229.5-1.728.95C3.398 12.87 3 14.135 3 15.48c0 2.925 2.375 5.3 5.3 5.3h10.4c2.925 0 5.3-2.375 5.3-5.3 0-1.724-.82-3.256-2.1-4.23z" />
+            </svg>
+            <span className="inspector-empty-title" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>No Clip Selected</span>
+            <span className="inspector-empty-text" style={{ fontSize: 10, color: 'var(--text-dim)', lineHeight: 1.5, textAlign: 'center' }}>Select any clip on the timeline to edit properties</span>
+          </div>
         </div>
       </aside>
     );
