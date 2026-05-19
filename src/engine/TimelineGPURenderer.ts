@@ -28,7 +28,6 @@ const FILMSTRIP_FRAGMENT_SHADER = `
   uniform float u_clipProgress;
   
   void main() {
-    // Repeat texture across the clip width
     float frameU = fract(v_texCoord.x * u_frameCount);
     vec2 uv = vec2(frameU, v_texCoord.y);
     gl_FragColor = texture2D(u_texture, uv);
@@ -47,24 +46,16 @@ const WAVEFORM_FRAGMENT_SHADER = `
   uniform vec3 u_colorVocal;
   
   void main() {
-    // Calculate which bar we're in
     float barIndex = floor(v_texCoord.x * u_barCount);
     float barProgress = fract(v_texCoord.x * u_barCount);
-    
-    // Sample waveform data
     vec4 waveData = texture2D(u_waveformData, vec2((barIndex + 0.5) / u_barCount, 0.5));
     float amplitude = waveData.r;
     float isVocal = waveData.a;
-    
-    // Calculate bar height
     float barHeight = amplitude * 0.92;
     float yThreshold = 1.0 - barHeight;
-    
     if (v_texCoord.y < yThreshold) {
       discard;
     }
-    
-    // Color based on amplitude
     vec3 color;
     if (isVocal > 0.5) {
       color = u_colorVocal;
@@ -75,8 +66,6 @@ const WAVEFORM_FRAGMENT_SHADER = `
     } else {
       color = u_colorLow;
     }
-    
-    // Smooth top edge
     float edgeSmooth = smoothstep(yThreshold, yThreshold + 0.02, v_texCoord.y);
     gl_FragColor = vec4(color * edgeSmooth, edgeSmooth);
   }
@@ -94,12 +83,9 @@ const CLIP_BG_FRAGMENT_SHADER = `
   void main() {
     vec3 color = mix(u_colorStart, u_colorEnd, v_texCoord.x);
     float alpha = u_opacity;
-    
-    // Selection highlight
     if (u_selected > 0.5) {
       color = mix(color, vec3(1.0), 0.15);
     }
-    
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -111,7 +97,7 @@ class TimelineGPURenderer {
   private textures: Map<string, WebGLTexture> = new Map();
   private initialized = false;
 
-  init(canvas: HTMLCanvasElement, config: TimelineGPUConfig): boolean {
+  init(canvas: HTMLCanvasElement, _config: TimelineGPUConfig): boolean {
     const gl = canvas.getContext('webgl', {
       alpha: true,
       antialias: false,
@@ -122,12 +108,10 @@ class TimelineGPURenderer {
 
     this.gl = gl;
 
-    // Compile shaders
     this.compileProgram('filmstrip', TIMELINE_VERTEX_SHADER, FILMSTRIP_FRAGMENT_SHADER);
     this.compileProgram('waveform', TIMELINE_VERTEX_SHADER, WAVEFORM_FRAGMENT_SHADER);
     this.compileProgram('clipBg', TIMELINE_VERTEX_SHADER, CLIP_BG_FRAGMENT_SHADER);
 
-    // Create quad buffer
     const vertices = new Float32Array([
       -1, -1, 0, 0,
        1, -1, 1, 0,
@@ -144,6 +128,64 @@ class TimelineGPURenderer {
     return true;
   }
 
+  private compileProgram(name: string, vertexSrc: string, fragmentSrc: string): void {
+    if (!this.gl) return;
+    const gl = this.gl;
+
+    const vs = gl.createShader(gl.VERTEX_SHADER)!;
+    gl.shaderSource(vs, vertexSrc);
+    gl.compileShader(vs);
+
+    const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
+    gl.shaderSource(fs, fragmentSrc);
+    gl.compileShader(fs);
+
+    const program = gl.createProgram()!;
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('Shader link failed:', gl.getProgramInfoLog(program));
+      gl.deleteProgram(program);
+      return;
+    }
+
+    this.programs.set(name, program);
+  }
+
+  private useProgram(name: string): WebGLProgram | null {
+    if (!this.gl) return null;
+    const program = this.programs.get(name);
+    if (program) this.gl.useProgram(program);
+    return program || null;
+  }
+
+  private bindQuad(): void {
+    if (!this.gl) return;
+    const gl = this.gl;
+    const buffer = this.buffers.get('quad');
+    if (!buffer) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+    const program = gl.getParameter(gl.CURRENT_PROGRAM);
+    if (!program) return;
+
+    const posLoc = gl.getAttribLocation(program, 'a_position');
+    const texLoc = gl.getAttribLocation(program, 'a_texCoord');
+
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 0);
+
+    gl.enableVertexAttribArray(texLoc);
+    gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 16, 8);
+  }
+
+  private drawQuad(): void {
+    if (!this.gl) return;
+    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
+  }
+
   /** Render filmstrip thumbnails for a video clip */
   renderFilmstrip(
     canvas: HTMLCanvasElement,
@@ -153,7 +195,6 @@ class TimelineGPURenderer {
   ): void {
     if (!this.gl || !this.initialized || thumbnails.length === 0) return;
 
-    // Create composite texture from thumbnails
     const thumbCanvas = document.createElement('canvas');
     const thumbCtx = thumbCanvas.getContext('2d');
     if (!thumbCtx) return;
@@ -189,12 +230,10 @@ class TimelineGPURenderer {
     if (!this.gl) return;
     const gl = this.gl;
 
-    // Set output size
     outputCanvas.width = clipWidth;
     outputCanvas.height = clipHeight;
     gl.viewport(0, 0, clipWidth, clipHeight);
 
-    // Upload texture
     let tex = this.textures.get('filmstrip');
     if (!tex) {
       tex = gl.createTexture() || undefined;
@@ -208,7 +247,6 @@ class TimelineGPURenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    // Render
     const program = this.useProgram('filmstrip');
     if (!program) return;
     this.bindQuad();
@@ -221,13 +259,11 @@ class TimelineGPURenderer {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     this.drawQuad();
 
-    // Read back to output canvas
     const ctx = outputCanvas.getContext('2d');
     if (ctx) {
       const pixels = new Uint8Array(clipWidth * clipHeight * 4);
       gl.readPixels(0, 0, clipWidth, clipHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
 
-      // Flip vertically
       const imageData = ctx.createImageData(clipWidth, clipHeight);
       for (let y = 0; y < clipHeight; y++) {
         for (let x = 0; x < clipWidth; x++) {
@@ -253,16 +289,13 @@ class TimelineGPURenderer {
     if (!this.gl || !this.initialized || waveform.length === 0) return;
     const gl = this.gl;
 
-    // Set output size
     canvas.width = clipWidth;
     canvas.height = clipHeight;
     gl.viewport(0, 0, clipWidth, clipHeight);
 
-    // Create waveform data texture
     const dataTexture = this.createWaveformTexture(waveform);
     if (!dataTexture) return;
 
-    // Render
     const program = this.useProgram('waveform');
     if (!program) return;
     this.bindQuad();
@@ -278,7 +311,6 @@ class TimelineGPURenderer {
     gl.bindTexture(gl.TEXTURE_2D, dataTexture);
     this.drawQuad();
 
-    // Read back
     const ctx = canvas.getContext('2d');
     if (ctx) {
       const pixels = new Uint8Array(clipWidth * clipHeight * 4);
@@ -303,8 +335,6 @@ class TimelineGPURenderer {
     if (!this.gl) return null;
     const gl = this.gl;
 
-    // Pack waveform data into RGBA texture
-    // R = amplitude, G = 0, B = 0, A = isVocal (negative values)
     const data = new Uint8Array(waveform.length * 4);
     for (let i = 0; i < waveform.length; i++) {
       const val = waveform[i];
@@ -367,7 +397,6 @@ class TimelineGPURenderer {
 
     this.drawQuad();
 
-    // Read back
     const ctx = canvas.getContext('2d');
     if (ctx) {
       const pixels = new Uint8Array(clipWidth * clipHeight * 4);
@@ -388,16 +417,15 @@ class TimelineGPURenderer {
     }
   }
 
-  resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
+  resize(_width: number, _height: number): void {
+    // Reserved for future GPU resize optimizations
   }
 
   destroy(): void {
     if (!this.gl) return;
     const gl = this.gl;
 
-    for (const [, fb] of this.textures) gl.deleteTexture(fb);
+    for (const [, tex] of this.textures) gl.deleteTexture(tex);
     for (const [, prog] of this.programs) gl.deleteProgram(prog);
     for (const [, buf] of this.buffers) gl.deleteBuffer(buf);
 
