@@ -25,7 +25,9 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { err
 }
 
 export default function App() {
-  const { currentTime, cropToMarkers, newProject, showOpenProject } = useEditorStore();
+  const showOpenProject = useEditorStore(s => s.showOpenProject);
+  const cropToMarkers = useEditorStore(s => s.cropToMarkers);
+  const newProject = useEditorStore(s => s.newProject);
   const saveToast = useEditorStore(s => s.saveToast);
   const [activeTool, setActiveTool] = useState('media');
   const [dismissMobileWarning, setDismissMobileWarning] = useState(false);
@@ -82,7 +84,7 @@ export default function App() {
     // Escape: Deselect all
     if (e.key === 'Escape') {
       store.setSelectedClipIds([]); store.setActiveClipId(null);
-      store.setShowExport(false); store.setshowShortcuts(false); store.setShowOpenProject(false); return;
+      store.setShowExport(false); store.setShowShortcuts(false); store.setShowOpenProject(false); return;
     }
     
     // Delete/Backspace: Remove selected clips
@@ -108,16 +110,36 @@ export default function App() {
     
     // Ctrl+C/V/X: Copy/Paste/Cut
     if (meta && e.key === 'c') {
-      if (store.activeClipId) { const clip = store.getClip(store.activeClipId); if (clip) store.setCopiedClip(JSON.parse(JSON.stringify(clip))); } return;
+      const ids = store.selectedClipIds.length > 0 ? store.selectedClipIds : store.activeClipId ? [store.activeClipId] : [];
+      const clips = ids.map(id => store.getClip(id)).filter(Boolean);
+      if (clips.length > 0) store.setCopiedClip(JSON.parse(JSON.stringify(clips)));
+      return;
     }
     if (meta && e.key === 'x') {
-      if (store.activeClipId) { const clip = store.getClip(store.activeClipId); if (clip) store.setCopiedClip(JSON.parse(JSON.stringify(clip))); store.pushHistory(); store.removeSelectedClips(); } return;
+      const ids = store.selectedClipIds.length > 0 ? store.selectedClipIds : store.activeClipId ? [store.activeClipId] : [];
+      const clips = ids.map(id => store.getClip(id)).filter(Boolean);
+      if (clips.length > 0) {
+        store.setCopiedClip(JSON.parse(JSON.stringify(clips)));
+        store.pushHistory();
+        store.removeSelectedClips();
+      }
+      return;
     }
     if (meta && e.key === 'v') {
       const { copiedClip, currentTime: ct } = store;
       if (copiedClip) {
-        const newClip = store.addClip(copiedClip.trackType, copiedClip.mediaId, copiedClip.sticker);
-        if (newClip) store.updateClip(newClip.id, { ...copiedClip, id: newClip.id, startAt: Math.max(0, ct) });
+        // Support both single clip (legacy) and array of clips
+        const clips = Array.isArray(copiedClip) ? copiedClip : [copiedClip];
+        const minStart = Math.min(...clips.map((c: any) => c.startAt));
+        store.pushHistory();
+        for (const clip of clips) {
+          const newClip = store.addClip(clip.trackType, clip.mediaId, clip.sticker);
+          if (newClip) {
+            const { id: _id, trackId: _tid, ...rest } = clip;
+            const offset = clip.startAt - minStart;
+            store.updateClip(newClip.id, { ...rest, id: newClip.id, startAt: Math.max(0, ct + offset) });
+          }
+        }
       }
       return;
     }
@@ -163,7 +185,7 @@ export default function App() {
     }
     
     // ? or Ctrl+/: Show shortcuts
-    if (e.key === '?' || (meta && e.key === '/')) { store.setshowShortcuts(!store.showShortcuts); return; }
+    if (e.key === '?' || (meta && e.key === '/')) { store.setShowShortcuts(!store.showShortcuts); return; }
     
     // Ctrl+Shift+N: New project
     if (e.key === 'n' && meta && e.shiftKey) { e.preventDefault(); newProject(); return; }
@@ -180,7 +202,7 @@ export default function App() {
       });
       return;
     }
-  }, [currentTime, cropToMarkers, newProject, togglePlayback]);
+  }, [cropToMarkers, newProject, togglePlayback]);
 
   useEffect(() => { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); }, [handleKeyDown]);
 

@@ -1,10 +1,15 @@
 import type { KeyframeTrack } from '../types';
 import type { Keyframe } from '../types';
 
+/** Returns the interpolated keyframe value for the given property at the given time.
+ *  When no keyframe track exists, returns a neutral default per property:
+ *    opacity → 100, scale → 1, everything else → 0.
+ */
 export function interpolateKeyframes(tracks: KeyframeTrack[] | undefined, time: number, property: string): number {
-  if (!tracks) return 0;
+  const neutralDefault = property === 'opacity' ? 100 : property === 'scale' ? 1 : 0;
+  if (!tracks) return neutralDefault;
   const track = tracks.find(t => t.property === property);
-  if (!track || track.keyframes.length === 0) return 0;
+  if (!track || track.keyframes.length === 0) return neutralDefault;
 
   const sorted = [...track.keyframes].sort((a, b) => a.time - b.time);
 

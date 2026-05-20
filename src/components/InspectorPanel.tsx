@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import type { Clip } from '../types';
 import VFXInspector from './VFXInspector';
@@ -6,7 +6,7 @@ import VFXInspector from './VFXInspector';
 const FONT_FAMILIES = ['Inter, sans-serif', 'Georgia, serif', 'JetBrains Mono, monospace', 'Arial, sans-serif'];
 const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'];
 const FILTER_PRESETS = ['none', 'bw', 'sepia', 'warm', 'cool', 'contrast'];
-const TRANSITION_TYPES = ['none', 'fade', 'wipe', 'slide', 'zoom'];
+const TRANSITION_TYPES = ['none', 'fade', 'dissolve', 'wipe', 'wipe-left', 'wipe-right', 'slide', 'slide-left', 'slide-right', 'zoom', 'spin', 'blur', 'flash'];
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 
 function CollapsibleSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
@@ -499,10 +499,10 @@ function StickerInspector({ clip, update }: { clip: Clip; update: (p: Partial<Cl
   );
 }
 
-export default function InspectorPanel() {
-  const { activeClipId, getClip, updateClip } = useEditorStore();
+export default React.memo(function InspectorPanel() {
+  const { activeClipId, getClip, updateClip, pushHistory } = useEditorStore();
   const clip = activeClipId ? getClip(activeClipId) : null;
-  const update = (patch: Partial<Clip>) => { if (clip) updateClip(clip.id, patch); };
+  const update = (patch: Partial<Clip>) => { if (clip) { pushHistory(); updateClip(clip.id, patch); } };
 
   if (!clip) {
     return (
@@ -540,3 +540,4 @@ export default function InspectorPanel() {
     </aside>
   );
 }
+);

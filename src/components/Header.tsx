@@ -1,3 +1,4 @@
+import React from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { ASPECT_RATIO_PRESETS } from '../types';
 
@@ -9,7 +10,7 @@ function FolderOpenIcon() { return <svg width="14" height="14" viewBox="0 0 24 2
 function PlusIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
 function AspectRatioIcon() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>; }
 
-export default function Header() {
+export default React.memo(function Header() {
   const {
     project: { name: projectName }, setProjectName,
     undo, redo, undoStack, redoStack,
@@ -58,3 +59,4 @@ export default function Header() {
     </header>
   );
 }
+);

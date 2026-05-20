@@ -117,6 +117,7 @@ export interface Clip {
   audioFadeIn?: number;
   audioFadeOut?: number;
   crop?: { x: number; y: number; width: number; height: number };
+  textAnimation?: 'none' | 'fadeIn' | 'typewriter' | 'slideUp' | 'slideDown' | 'scalePop' | 'bounce' | 'glitch' | 'wave';
 }
 
 export interface Track {

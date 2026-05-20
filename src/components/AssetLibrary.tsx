@@ -2,6 +2,7 @@ import { useRef, useCallback, useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { getMediaDuration } from '../utils/fileUtils';
 import { generateWaveformData, generateThumbnail, generateFilmstrip, registerMediaUrl } from '../engine/useMediaManager';
+import AudioTools from './AudioTools';
 import type { MediaFile } from '../types';
 import { v4 as uuid } from 'uuid';
 
@@ -158,6 +159,27 @@ function TextPanel() {
       duration: 4,
     });
   };
+
+  const TEXT_ANIMATION_PRESETS = [
+    { label: 'Fade In', animation: 'fadeIn' as const, icon: '✦' },
+    { label: 'Typewriter', animation: 'typewriter' as const, icon: '⌨️' },
+    { label: 'Slide Up', animation: 'slideUp' as const, icon: '⬆️' },
+    { label: 'Slide Down', animation: 'slideDown' as const, icon: '⬇️' },
+    { label: 'Scale Pop', animation: 'scalePop' as const, icon: '💥' },
+    { label: 'Bounce', animation: 'bounce' as const, icon: '🏀' },
+    { label: 'Glitch Text', animation: 'glitch' as const, icon: '📺' },
+    { label: 'Wave', animation: 'wave' as const, icon: '🌊' },
+  ];
+
+  const handleAddAnimatedText = (anim: typeof TEXT_ANIMATION_PRESETS[number]) => {
+    const clip = addClip('text');
+    if (clip) updateClip(clip.id, {
+      textOverlay: { text: anim.label, fontFamily: 'Inter, sans-serif', fontSize: 48, color: '#ffffff', fontWeight: 600, textAlign: 'center' as const },
+      duration: 4,
+      textAnimation: anim.animation,
+    });
+  };
+
   return (
     <div className="panel-content">
       <p className="panel-hint">Click a preset to add text</p>
@@ -165,6 +187,16 @@ function TextPanel() {
         {TEXT_PRESETS.map(p => (
           <button key={p.label} className="text-preset-btn" onClick={() => handleAddText(p)}>
             <span className="text-preset-label" style={{ fontSize: Math.min(p.fontSize / 3, 18), fontFamily: p.fontFamily, color: p.color, fontWeight: p.fontWeight }}>{p.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <p className="panel-hint" style={{ marginTop: 14 }}>Animated text</p>
+      <div className="text-anim-grid">
+        {TEXT_ANIMATION_PRESETS.map(a => (
+          <button key={a.animation} className="text-anim-btn" onClick={() => handleAddAnimatedText(a)}>
+            <span className="text-anim-icon">{a.icon}</span>
+            <span className="text-anim-label">{a.label}</span>
           </button>
         ))}
       </div>
@@ -301,7 +333,7 @@ function AudioPanel() {
                     <div className="audio-item-name">{a.label}</div>
                     <div className="audio-item-dur">{formatDur(a.duration)}</div>
                   </div>
-                  <button className="audio-item-play" onClick={() => handlePreview(a)}>
+                  <button className="audio-item-play" onClick={(e) => { e.stopPropagation(); handlePreview(a); }}>
                     {playingId === a.id ? <PauseIcon /> : <PlayIcon />}
                   </button>
                 </div>
@@ -323,6 +355,7 @@ const PANEL_MAP: Record<string, () => JSX.Element> = {
   effects: EffectsPanel,
   vfx: VFXPanel,
   audio: AudioPanel,
+  ai: AudioTools,
 };
 
 const TITLE_MAP: Record<string, string> = {
@@ -332,6 +365,7 @@ const TITLE_MAP: Record<string, string> = {
   effects: 'Effects',
   vfx: 'VFX',
   audio: 'Audio',
+  ai: 'AI Tools',
 };
 
 export default function AssetLibrary({ activeTool }: { activeTool: string }) {

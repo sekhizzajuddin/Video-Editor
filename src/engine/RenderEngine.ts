@@ -29,11 +29,16 @@ export class RenderEngine {
   private height = 1080;
   private mediaCache = new Map<string, HTMLVideoElement | HTMLImageElement>();
   private isPlaybackMode = false;
+  private frameCount = 0;
 
   // GPU pipeline
   private gpu: WebGLFilterPipeline | null = null;
   private gpuEnabled = false;
   private layerCanvases: Map<string, OffscreenCanvas> = new Map();
+
+  // Pooled transition canvases (avoid GC pressure)
+  private transCanvasA: HTMLCanvasElement | null = null;
+  private transCanvasB: HTMLCanvasElement | null = null;
 
   constructor(outputCanvas: HTMLCanvasElement) {
     this.output = outputCanvas;
@@ -138,7 +143,8 @@ export class RenderEngine {
     const { ctx, offCtx, width, height } = this;
     if (!ctx || !offCtx) return;
 
-    this.cleanMediaCache();
+    this.frameCount++;
+    if (this.frameCount % 60 === 0) this.cleanMediaCache();
 
     // Clear with GPU-accelerated clearRect
     offCtx.clearRect(0, 0, width, height);
@@ -348,10 +354,12 @@ export class RenderEngine {
     const kfRotation = interpolateKeyframes(clip.keyframeTracks, localTime, 'rotation');
     const kfOpacity = interpolateKeyframes(clip.keyframeTracks, localTime, 'opacity');
 
+    // Keyframes use neutral defaults (scale=1, opacity=100) via interpolateKeyframes.
+    // Scale is multiplicative, others are additive.
     const tr = {
       x: baseTr.x + kfX,
       y: baseTr.y + kfY,
-      scale: baseTr.scale + kfScale,
+      scale: baseTr.scale * kfScale,
       rotation: baseTr.rotation + kfRotation,
     };
 
@@ -370,6 +378,19 @@ export class RenderEngine {
     ctx.restore();
   }
 
+  /** Get or create a pooled transition canvas at the given size */
+  private getTransCanvas(slot: 'A' | 'B', w: number, h: number): HTMLCanvasElement {
+    const field = slot === 'A' ? 'transCanvasA' : 'transCanvasB';
+    let canvas = this[field];
+    if (!canvas || canvas.width !== w || canvas.height !== h) {
+      canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      this[field] = canvas;
+    }
+    return canvas;
+  }
+
   private async renderTransitionLayer(
     clipA: Clip,
     clipB: Clip,
@@ -380,24 +401,20 @@ export class RenderEngine {
     w: number,
     h: number
   ): Promise<void> {
-    const canvasA = document.createElement('canvas');
-    canvasA.width = w;
-    canvasA.height = h;
+    // Reuse pooled canvases instead of creating new ones every frame
+    const canvasA = this.getTransCanvas('A', w, h);
     const ctxA = canvasA.getContext('2d', { alpha: true, desynchronized: true })!;
     ctxA.clearRect(0, 0, w, h);
     await this.renderLayer(clipA, req, ctxA, w, h);
 
-    const canvasB = document.createElement('canvas');
-    canvasB.width = w;
-    canvasB.height = h;
+    const canvasB = this.getTransCanvas('B', w, h);
     const ctxB = canvasB.getContext('2d', { alpha: true, desynchronized: true })!;
     ctxB.clearRect(0, 0, w, h);
 
-    const originalTime = req.time;
+    // Use a safe copy of req instead of mutating the shared object
     const transOffset = progress * clipA.transition!.duration;
-    req.time = clipB.startAt + transOffset;
-    await this.renderLayer(clipB, req, ctxB, w, h);
-    req.time = originalTime;
+    const safeReq: FrameRequest = { ...req, time: clipB.startAt + transOffset };
+    await this.renderLayer(clipB, safeReq, ctxB, w, h);
 
     if (this.gpuEnabled && this.gpu) {
       this.gpu.resize(w, h);
@@ -602,7 +619,9 @@ export class RenderEngine {
         break;
       }
       case 'film-grain': {
-        const imageData = ctx.getImageData(-w / 2, -h / 2, w, h);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const imageData = ctx.getImageData(0, 0, w, h);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
           const noise = (Math.random() - 0.5) * 50 * intensity;
@@ -610,7 +629,8 @@ export class RenderEngine {
           data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
           data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
         }
-        ctx.putImageData(imageData, -w / 2, -h / 2);
+        ctx.putImageData(imageData, 0, 0);
+        ctx.restore();
         break;
       }
       case 'light-leak': {
@@ -636,16 +656,21 @@ export class RenderEngine {
         break;
       }
       case 'glitch': {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         const slices = Math.floor(10 * intensity);
         for (let i = 0; i < slices; i++) {
-          const y = (Math.random() * h) - h / 2;
-          const sliceH = 2 + Math.random() * 8;
-          const offset = (Math.random() - 0.5) * 40 * intensity;
-          const slice = ctx.getImageData(-w / 2, y, w, sliceH);
-          ctx.putImageData(slice, -w / 2 + offset, y);
+          const y = Math.floor(Math.random() * h);
+          const sliceH = Math.max(1, Math.floor(2 + Math.random() * 8));
+          const offset = Math.floor((Math.random() - 0.5) * 40 * intensity);
+          if (y + sliceH <= h) {
+            const slice = ctx.getImageData(0, y, w, sliceH);
+            ctx.putImageData(slice, offset, y);
+          }
           ctx.fillStyle = `rgba(${Math.random() > 0.5 ? '255,0,0' : '0,0,255'}, ${intensity * 0.3})`;
-          ctx.fillRect(-w / 2 + offset, y, w, sliceH);
+          ctx.fillRect(offset, y, w, sliceH);
         }
+        ctx.restore();
         break;
       }
       case 'vhs': {
@@ -655,25 +680,31 @@ export class RenderEngine {
           ctx.fillRect(-w / 2, y, w, 1);
         }
         // Color shift
-        const imageData = ctx.getImageData(-w / 2, -h / 2, w, h);
-        const data = imageData.data;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const vhsImageData = ctx.getImageData(0, 0, w, h);
+        const vhsData = vhsImageData.data;
         const shift = Math.floor(3 * intensity);
-        for (let i = 0; i < data.length - shift * 4; i += 4) {
-          data[i] = data[i + shift * 4]; // Red channel shift
+        for (let i = 0; i < vhsData.length - shift * 4; i += 4) {
+          vhsData[i] = vhsData[i + shift * 4]; // Red channel shift
         }
-        ctx.putImageData(imageData, -w / 2, -h / 2);
+        ctx.putImageData(vhsImageData, 0, 0);
+        ctx.restore();
         break;
       }
       case 'chromatic': {
-        const offset = 4 * intensity;
-        const imageData = ctx.getImageData(-w / 2, -h / 2, w, h);
-        const data = imageData.data;
-        const copy = new Uint8ClampedArray(data);
-        for (let i = 0; i < data.length - offset * 4; i += 4) {
-          data[i] = copy[i + offset * 4];       // Red shifted right
-          data[i + 2] = copy[Math.max(0, i - offset * 4) + 2]; // Blue shifted left
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const chrOffset = Math.floor(4 * intensity);
+        const chrImageData = ctx.getImageData(0, 0, w, h);
+        const chrData = chrImageData.data;
+        const chrCopy = new Uint8ClampedArray(chrData);
+        for (let i = 0; i < chrData.length - chrOffset * 4; i += 4) {
+          chrData[i] = chrCopy[i + chrOffset * 4];       // Red shifted right
+          chrData[i + 2] = chrCopy[Math.max(0, i - chrOffset * 4) + 2]; // Blue shifted left
         }
-        ctx.putImageData(imageData, -w / 2, -h / 2);
+        ctx.putImageData(chrImageData, 0, 0);
+        ctx.restore();
         break;
       }
       case 'bloom': {
@@ -730,6 +761,8 @@ export class RenderEngine {
     }
     this.mediaCache.clear();
     this.layerCanvases.clear();
+    this.transCanvasA = null;
+    this.transCanvasB = null;
     this.ctx?.clearRect(0, 0, this.width, this.height);
   }
 }

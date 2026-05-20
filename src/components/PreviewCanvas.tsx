@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { usePlaybackEngine } from '../engine/usePlaybackEngine';
 import { useMediaManager } from '../engine/useMediaManager';
@@ -53,7 +53,7 @@ class PerformanceMonitor {
   getFPS(): number { return this.fps; }
 }
 
-export default function PreviewCanvas() {
+export default React.memo(function PreviewCanvas() {
   const {
     project: { tracks, duration: projectDuration, media },
     currentTime, isPlaying, aspectRatio, volume, setVolume, renderTick,
@@ -483,3 +483,4 @@ export default function PreviewCanvas() {
     </div>
   );
 }
+);

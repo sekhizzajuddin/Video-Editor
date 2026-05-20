@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { getMediaUrl } from './useMediaManager';
+import type { Clip } from '../types';
 
 export interface PlaybackEngine {
   play: () => void;
@@ -21,7 +22,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   const speedRef = useRef(1);
   const durationRef = useRef(10);
   const lastFrameRef = useRef(0);
-  const audioEls = useRef<{ el: HTMLAudioElement; clipId: string }[]>([]);
+  const audioEls = useRef<{ el: HTMLAudioElement; clipId: string; clip: Clip }[]>([]);
   const isStartingRef = useRef(false);
   const store = useEditorStore;
 
@@ -88,7 +89,6 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
         el.src = url;
         el.crossOrigin = 'anonymous'; // Avoid Web Audio CORS issues
         el.playbackRate = speed * (clip.speed || 1);
-        el.muted = clip.muted;
         el.preload = 'auto';
         
         // Enable pitch preservation if the clip has preservePitch enabled
@@ -152,7 +152,7 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
           el.play().catch(() => {});
         }
 
-        audioEls.current.push({ el, clipId: clip.id });
+        audioEls.current.push({ el, clipId: clip.id, clip });
       }
     }
   }, [stopAllAudio, store, getAudioCtx]);
@@ -217,9 +217,13 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     if (isPlayingRef.current) {
       startWallRef.current = performance.now();
       startTimeRef.current = clamped;
-      // Re-sync audio
-      for (const { el } of audioEls.current) {
-        try { el.currentTime = clamped; } catch {}
+      // Re-sync audio to correct per-clip source time
+      for (const { el, clip } of audioEls.current) {
+        try {
+          const localTime = clamped - clip.startAt;
+          const sourceTime = clip.sourceStart + localTime * (clip.speed || 1);
+          el.currentTime = Math.max(0, sourceTime);
+        } catch {}
       }
     }
   }, [store]);

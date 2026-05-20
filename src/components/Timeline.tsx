@@ -3,7 +3,7 @@ import { useEditorStore } from '../store/editorStore';
 import { useTimelineMath } from '../engine/useTimelineMath';
 import { useDraggableClip, detectDragZone } from '../engine/useDraggableClip';
 import { formatTime } from '../utils/fileUtils';
-import type { Clip, TransitionType, Marker } from '../types';
+import type { Clip, TransitionType, Marker, SpeedRampPoint } from '../types';
 
 function formatTimeLumen(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -164,6 +164,80 @@ function Filmstrip({ thumbnails, clipWidth, height }: { thumbnails: string[]; cl
   return (
     <div className="clip-filmstrip" style={{ height }}>
       {frames.map((src, i) => <img key={i} src={src} className="filmstrip-frame" alt="" style={{ width: frameW, height }} />)}
+    </div>
+  );
+}
+
+function SpeedRampOverlay({ speedRampPoints, width, height }: { speedRampPoints: SpeedRampPoint[]; width: number; height: number }) {
+  if (!speedRampPoints.length || width <= 0 || height <= 0) return null;
+
+  const sorted = [...speedRampPoints].sort((a, b) => a.time - b.time);
+
+  // Determine the time range and speed range for normalization
+  const maxTime = sorted[sorted.length - 1].time || 1;
+  const speeds = sorted.map(p => p.speed);
+  const minSpeed = Math.min(...speeds, 0.5);
+  const maxSpeed = Math.max(...speeds, 2);
+  const speedRange = maxSpeed - minSpeed || 1;
+
+  // Convert points to SVG coordinates
+  // x = normalized time → width, y = inverted speed → height (higher speed = higher on screen)
+  const padding = 3;
+  const drawH = height - padding * 2;
+  const drawW = width - padding * 2;
+
+  const svgPoints = sorted.map(p => ({
+    x: padding + (p.time / maxTime) * drawW,
+    y: padding + drawH - ((p.speed - minSpeed) / speedRange) * drawH,
+    speed: p.speed,
+  }));
+
+  // Build colored segments (each pair of consecutive points)
+  const segments: JSX.Element[] = [];
+  for (let i = 0; i < svgPoints.length - 1; i++) {
+    const a = svgPoints[i];
+    const b = svgPoints[i + 1];
+    const avgSpeed = (a.speed + b.speed) / 2;
+    const color = avgSpeed > 1.05 ? '#22c55e' : avgSpeed < 0.95 ? '#f59e0b' : 'rgba(255,255,255,0.5)';
+    segments.push(
+      <line
+        key={`seg-${i}`}
+        x1={a.x} y1={a.y}
+        x2={b.x} y2={b.y}
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+      />
+    );
+  }
+
+  // Baseline at speed=1 (if within range)
+  const baselineY = padding + drawH - ((1 - minSpeed) / speedRange) * drawH;
+  const showBaseline = minSpeed < 1 && maxSpeed > 1;
+
+  return (
+    <div className="speed-ramp-overlay" style={{ width, height }}>
+      <svg width={width} height={height} className="speed-ramp-svg">
+        {showBaseline && (
+          <line
+            x1={padding} y1={baselineY}
+            x2={width - padding} y2={baselineY}
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={1}
+            strokeDasharray="3,3"
+          />
+        )}
+        {segments}
+        {svgPoints.map((p, i) => (
+          <circle
+            key={`pt-${i}`}
+            cx={p.x} cy={p.y} r={2}
+            fill={p.speed > 1.05 ? '#22c55e' : p.speed < 0.95 ? '#f59e0b' : '#fff'}
+            stroke="rgba(0,0,0,0.5)"
+            strokeWidth={0.5}
+          />
+        ))}
+      </svg>
     </div>
   );
 }
@@ -588,7 +662,7 @@ export default function Timeline() {
                   {m.showLabel && <span className="ruler-label">{formatTimeLumen(m.t)}</span>}
                 </div>
               ))}
-              {useEditorStore.getState().project.markers.map((marker: Marker) => (
+              {project.markers.map((marker: Marker) => (
                 <div key={marker.id} className="tl-marker" style={{ left: marker.time * pxPerSec }} title={marker.label} onClick={e => { e.stopPropagation(); setCurrentTime(marker.time); }}>
                   <div className="tl-marker-flag" style={{ background: marker.color }} />
                 </div>
@@ -673,6 +747,9 @@ export default function Timeline() {
                         </div>
                         {dynamicSpeedMode && clip.speed !== 1 && (
                           <span className="clip-speed-indicator">{clip.speed.toFixed(2)}x</span>
+                        )}
+                        {dynamicSpeedMode && clip.speedRampPoints && clip.speedRampPoints.length >= 2 && (
+                          <SpeedRampOverlay speedRampPoints={clip.speedRampPoints} width={width} height={h} />
                         )}
                         <div 
                           className="trim-handle left" 

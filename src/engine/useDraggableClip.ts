@@ -16,6 +16,8 @@ export interface DragSnapshot {
   origTrackId: string;
   startPixel: number;
   startClientY: number;
+  /** Multi-select: original positions of all selected clips relative to primary */
+  multiOffsets: Map<string, { origStartAt: number; origTrackId: string }>;
 }
 
 export function detectDragZone(mouseX: number, elementRect: DOMRect): 'trim-start' | 'trim-end' | 'move' {
@@ -54,14 +56,31 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
   const dragRef = useRef<DragSnapshot>({
     zone: 'none', clipId: '', origStartAt: 0, origDuration: 0,
     origSourceStart: 0, origTrackId: '', startPixel: 0, startClientY: 0,
+    multiOffsets: new Map(),
   });
 
   const onDragStart = useCallback((clip: Clip, zone: DragZone, pixelX: number, clientY: number) => {
+    const store = useEditorStore.getState();
+    const selectedIds = store.selectedClipIds;
+
+    // Build multi-select offsets for move operations
+    const multiOffsets = new Map<string, { origStartAt: number; origTrackId: string }>();
+    if (zone === 'move' && selectedIds.includes(clip.id) && selectedIds.length > 1) {
+      for (const id of selectedIds) {
+        if (id === clip.id) continue;
+        const other = store.getClip(id);
+        if (other) {
+          multiOffsets.set(id, { origStartAt: other.startAt, origTrackId: other.trackId });
+        }
+      }
+    }
+
     dragRef.current = {
       zone, clipId: clip.id,
       origStartAt: clip.startAt, origDuration: clip.duration,
       origSourceStart: clip.sourceStart, origTrackId: clip.trackId,
       startPixel: pixelX, startClientY: clientY,
+      multiOffsets,
     };
     setSnapLine(null);
   }, []);
@@ -110,6 +129,13 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
         store.updateClip(s.clipId, { startAt: newStart });
       }
       setSnapLine(snapLinePx(snap));
+
+      // Multi-select: move all other selected clips by the same delta
+      const primaryDelta = newStart - origStartAt;
+      for (const [otherId, orig] of s.multiOffsets) {
+        const otherNewStart = Math.max(0, orig.origStartAt + primaryDelta);
+        store.updateClip(otherId, { startAt: otherNewStart });
+      }
 
     } else if (zone === 'trim-start') {
       // In dynamic speed mode, dragging start border changes speed instead of trimming

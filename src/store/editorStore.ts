@@ -10,8 +10,7 @@ import { revokeMediaUrl } from '../engine/useMediaManager';
 import { addKeyframe, removeKeyframe } from '../utils/keyframeUtils';
 import type { Keyframe } from '../types';
 
-let clipCounter = 0;
-function genId(): string { clipCounter += 1; return `clip_${Date.now()}_${clipCounter}`; }
+function genId(): string { return crypto.randomUUID(); }
 
 function clone<T>(o: T): T { return structuredClone(o); }
 
@@ -77,7 +76,7 @@ export interface EditorState {
   setExportProgress: (p: number) => void;
   setExportStage: (s: string) => void;
   setExportError: (e: string | null) => void;
-  setshowShortcuts: (s: boolean) => void;
+  setShowShortcuts: (s: boolean) => void;
   setRippleDelete: (r: boolean) => void;
   setSnapEnabled: (s: boolean) => void;
   setDynamicSpeedMode: (d: boolean) => void;
@@ -129,6 +128,8 @@ export interface EditorState {
   newProject: () => void;
   cropToMarkers: () => void;
   recalcDuration: () => void;
+  /** Internal debounced version */
+  _recalcDurationImmediate: () => void;
   saveToDB: () => Promise<void>;
 
   getClip: (id: string) => Clip | undefined;
@@ -139,6 +140,8 @@ export interface EditorState {
   addKeyframe: (clipId: string, property: string, time: number, value: number, easing?: Keyframe['easing']) => void;
   removeKeyframe: (clipId: string, keyframeId: string) => void;
 }
+
+let _recalcTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useEditorStore = create<EditorState>((set, get) => {
   const ep = emptyProject();
@@ -185,7 +188,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setExportProgress: (p) => set({ exportProgress: p }),
     setExportStage: (s) => set({ exportStage: s }),
     setExportError: (e) => set({ exportError: e }),
-    setshowShortcuts: (s) => set({ showShortcuts: s }),
+    setShowShortcuts: (s) => set({ showShortcuts: s }),
     setRippleDelete: (r) => set({ rippleDelete: r }),
     setSnapEnabled: (s) => set({ snapEnabled: s }),
     setDynamicSpeedMode: (d) => set({ dynamicSpeedMode: d }),
@@ -204,10 +207,13 @@ export const useEditorStore = create<EditorState>((set, get) => {
         project: {
           ...st.project,
           tracks: st.project.tracks.map((t) => {
-            if (t.id === sourceTrackId && !t.clips.some(c => c.id === clip.id)) {
-              return { ...t, clips: [...t.clips, clip] };
+            if (t.id === sourceTrackId) {
+              // Remove any stale version, then re-add the original clip
+              const withoutClip = t.clips.filter(c => c.id !== clip.id);
+              return { ...t, clips: [...withoutClip, clip] };
             }
-            if (t.id === clip.trackId && t.clips.some(c => c.id === clip.id) && t.id !== sourceTrackId) {
+            if (t.id !== sourceTrackId) {
+              // Remove the clip from any track it was dragged to
               return { ...t, clips: t.clips.filter(c => c.id !== clip.id) };
             }
             return t;
@@ -230,6 +236,11 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const s = get();
       const snapshot = clone(s.project);
       snapshot.id = s.project.id || '';
+      // Exclude media blobs from undo snapshots to avoid memory bloat
+      snapshot.media = snapshot.media.map(m => {
+        const { blob, ...rest } = m as MediaFile & { blob?: unknown };
+        return rest as MediaFile;
+      });
       set((st) => ({ undoStack: [...st.undoStack.slice(-49), snapshot], redoStack: [] }));
     },
 
@@ -239,7 +250,18 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const prev = undoStack[undoStack.length - 1];
       const s = get();
       const currentSnapshot = clone(s.project);
-      set({ project: clone(prev), undoStack: undoStack.slice(0, -1), redoStack: [...s.redoStack, currentSnapshot], isDirty: true, currentTime: s.currentTime });
+      // Exclude blobs from redo snapshot
+      currentSnapshot.media = currentSnapshot.media.map(m => {
+        const { blob, ...rest } = m as MediaFile & { blob?: unknown };
+        return rest as MediaFile;
+      });
+      // Restore media blobs from current state into the undo snapshot
+      const restored = clone(prev);
+      restored.media = restored.media.map(m => {
+        const current = s.project.media.find(cm => cm.id === m.id);
+        return current ? { ...m, ...current } : m;
+      });
+      set({ project: restored, undoStack: undoStack.slice(0, -1), redoStack: [...s.redoStack, currentSnapshot], isDirty: true, currentTime: s.currentTime });
     },
 
     redo: () => {
@@ -248,7 +270,18 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const next = redoStack[redoStack.length - 1];
       const s = get();
       const currentSnapshot = clone(s.project);
-      set({ project: clone(next), redoStack: redoStack.slice(0, -1), undoStack: [...s.undoStack, currentSnapshot], isDirty: true, currentTime: s.currentTime });
+      // Exclude blobs from undo snapshot
+      currentSnapshot.media = currentSnapshot.media.map(m => {
+        const { blob, ...rest } = m as MediaFile & { blob?: unknown };
+        return rest as MediaFile;
+      });
+      // Restore media blobs from current state into the redo snapshot
+      const restored = clone(next);
+      restored.media = restored.media.map(m => {
+        const current = s.project.media.find(cm => cm.id === m.id);
+        return current ? { ...m, ...current } : m;
+      });
+      set({ project: restored, redoStack: redoStack.slice(0, -1), undoStack: [...s.undoStack, currentSnapshot], isDirty: true, currentTime: s.currentTime });
     },
 
     addClip: (trackType, mediaId, sticker) => {
@@ -304,17 +337,20 @@ export const useEditorStore = create<EditorState>((set, get) => {
         return {
           project: {
             ...st.project,
-            tracks: st.project.tracks.map((t) => ({
-              ...t,
-              clips: t.clips.map((c) => {
+            tracks: st.project.tracks.map((t) => {
+              const newClips = t.clips.map((c) => {
                 if (c.id !== id) return c;
                 let updated = { ...c, ...patch };
                 if (patch.startAt !== undefined || patch.duration !== undefined) {
+                  // Compute overlap from the track's own clips (not stale get() state)
                   let hasOverlap = true;
                   let safetyCounter = 0;
                   while (hasOverlap && safetyCounter < 50) {
-                    const overlap = get().getClipsInRange(t.id, updated.startAt, updated.startAt + updated.duration)
-                      .filter((o) => o.id !== id);
+                    const overlap = t.clips.filter((o) =>
+                      o.id !== id &&
+                      o.startAt < updated.startAt + updated.duration &&
+                      o.startAt + o.duration > updated.startAt
+                    );
                     if (overlap.length > 0) {
                       const firstOverlap = overlap[0];
                       updated.startAt = firstOverlap.startAt + firstOverlap.duration;
@@ -325,8 +361,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
                   }
                 }
                 return updated;
-              }),
-            })),
+              });
+              return { ...t, clips: newClips };
+            }),
           },
           isDirty: true,
           renderTick: st.renderTick + (affectsVisual ? 1 : 0),
@@ -337,26 +374,26 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     removeClip: (id, ripple) => {
       get().pushHistory();
-      let removedStart = 0;
-      let removedDuration = 0;
       set((st) => {
+        const doRipple = ripple !== false && (st.rippleDelete || ripple);
         const newTracks = st.project.tracks.map((t) => {
           const idx = t.clips.findIndex((c) => c.id === id);
-          if (idx === -1) return t;
+          if (idx === -1) {
+            // Clip not on this track — no ripple shift here
+            return t;
+          }
           const clip = t.clips[idx];
-          removedStart = clip.startAt;
-          removedDuration = clip.duration;
-          return { ...t, clips: t.clips.filter((c) => c.id !== id) };
+          let filtered = t.clips.filter((c) => c.id !== id);
+          if (doRipple) {
+            // Only shift clips on the SAME track as the removed clip
+            filtered = filtered.map((c) =>
+              c.startAt >= clip.startAt ? { ...c, startAt: Math.max(0, c.startAt - clip.duration) } : c
+            );
+          }
+          return { ...t, clips: filtered };
         });
-        const doRipple = ripple !== false && (st.rippleDelete || ripple);
         return {
-          project: {
-            ...st.project,
-            tracks: doRipple ? newTracks.map((t) => ({
-              ...t,
-              clips: t.clips.map((c) => c.startAt >= removedStart ? { ...c, startAt: Math.max(0, c.startAt - removedDuration) } : c),
-            })) : newTracks,
-          },
+          project: { ...st.project, tracks: newTracks },
           selectedClipIds: st.selectedClipIds.filter((cid) => cid !== id),
           activeClipId: st.activeClipId === id ? null : st.activeClipId,
           isDirty: true,
@@ -378,26 +415,42 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const overlap = get().getClipsInRange(toTrackId, finalTime, finalTime + clip.duration).filter((o) => o.id !== id);
       if (overlap.length > 0) return false;
       get().pushHistory();
-      set((st) => ({
-        project: {
-          ...st.project,
-          tracks: st.project.tracks.map((t) => ({
-            ...t,
-            clips: t.id === sourceTrack.id
-              ? t.clips.filter((c) => c.id !== id)
-              : t.id === toTrackId
-                ? [...t.clips, { ...clip, trackId: toTrackId, startAt: finalTime }]
-                : t.clips,
-          })),
-        },
-        isDirty: true,
-      }));
+      // Handle same-track vs cross-track move
+      if (sourceTrack.id === toTrackId) {
+        // Same track: just update startAt in place
+        set((st) => ({
+          project: {
+            ...st.project,
+            tracks: st.project.tracks.map((t) =>
+              t.id === toTrackId
+                ? { ...t, clips: t.clips.map((c) => c.id === id ? { ...c, startAt: finalTime } : c) }
+                : t
+            ),
+          },
+          isDirty: true,
+        }));
+      } else {
+        // Cross-track: remove from source, add to destination
+        set((st) => ({
+          project: {
+            ...st.project,
+            tracks: st.project.tracks.map((t) => {
+              if (t.id === sourceTrack.id) return { ...t, clips: t.clips.filter((c) => c.id !== id) };
+              if (t.id === toTrackId) return { ...t, clips: [...t.clips, { ...clip, trackId: toTrackId, startAt: finalTime }] };
+              return t;
+            }),
+          },
+          isDirty: true,
+        }));
+      }
       get().recalcDuration();
       return true;
     },
 
     moveClipDrag: (id, toTrackId, toStartAt) => {
       const state = get();
+      // Use original sourceTrackId from pendingDrag on subsequent calls
+      const originalSourceTrackId = state.pendingDrag?.sourceTrackId;
       const sourceTrack = state.project.tracks.find((t) => t.clips.some((c) => c.id === id));
       if (!sourceTrack) return false;
       const clip = sourceTrack.clips.find((c) => c.id === id);
@@ -407,23 +460,39 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const finalTime = Math.max(0, toStartAt);
 
       if (!state.pendingDrag) {
+        // Capture original source on first drag call
         get().setPendingDrag({ clip: { ...clip }, sourceTrackId: sourceTrack.id });
       }
 
-      set((st) => ({
-        project: {
-          ...st.project,
-          tracks: st.project.tracks.map((t) => ({
-            ...t,
-            clips: t.id === sourceTrack.id
-              ? t.clips.filter((c) => c.id !== id)
-              : t.id === toTrackId
-                ? [...t.clips, { ...clip, trackId: toTrackId, startAt: finalTime }]
-                : t.clips,
-          })),
-        },
-        isDirty: true,
-      }));
+      const effectiveSourceId = originalSourceTrackId ?? sourceTrack.id;
+
+      if (effectiveSourceId === toTrackId && sourceTrack.id === toTrackId) {
+        // Same track: just update startAt in place
+        set((st) => ({
+          project: {
+            ...st.project,
+            tracks: st.project.tracks.map((t) =>
+              t.id === toTrackId
+                ? { ...t, clips: t.clips.map((c) => c.id === id ? { ...c, startAt: finalTime } : c) }
+                : t
+            ),
+          },
+          isDirty: true,
+        }));
+      } else {
+        // Cross-track: remove from current track, add to destination
+        set((st) => ({
+          project: {
+            ...st.project,
+            tracks: st.project.tracks.map((t) => {
+              if (t.id === sourceTrack.id) return { ...t, clips: t.clips.filter((c) => c.id !== id) };
+              if (t.id === toTrackId) return { ...t, clips: [...t.clips, { ...clip, trackId: toTrackId, startAt: finalTime }] };
+              return t;
+            }),
+          },
+          isDirty: true,
+        }));
+      }
       return true;
     },
 
@@ -439,7 +508,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         const mf = clip.mediaId ? state.project.media.find(m => m.id === clip.mediaId) : undefined;
         get().pushHistory();
         const newId = genId();
-        const originalSourceEnd = clip.sourceEnd || (mf?.duration ?? clip.sourceStart + clip.duration * clip.speed);
+        const originalSourceEnd = (clip.sourceEnd !== undefined && clip.sourceEnd !== 0) ? clip.sourceEnd : (mf?.duration ?? clip.sourceStart + clip.duration * clip.speed);
         const splitSourcePoint = clip.sourceStart + splitPoint * clip.speed;
         const newClip: Clip = {
           ...clone(clip), id: newId, startAt: splitAt,
@@ -479,21 +548,19 @@ export const useEditorStore = create<EditorState>((set, get) => {
           .sort((a, b) => b.startAt - a.startAt);
 
         for (const clip of clipsToDelete) {
-          currentTracks = currentTracks.map((t) => ({
-            ...t,
-            clips: t.clips.filter((c) => c.id !== clip.id),
-          }));
-
-          if (rippleDelete) {
-            currentTracks = currentTracks.map((t) => ({
-              ...t,
-              clips: t.clips.map((c) =>
+          currentTracks = currentTracks.map((t) => {
+            const hasClip = t.clips.some((c) => c.id === clip.id);
+            let filtered = t.clips.filter((c) => c.id !== clip.id);
+            // Only ripple-shift clips on the SAME track as the deleted clip
+            if (rippleDelete && hasClip) {
+              filtered = filtered.map((c) =>
                 c.startAt >= clip.startAt
                   ? { ...c, startAt: Math.max(0, c.startAt - clip.duration) }
                   : c
-              ),
-            }));
-          }
+              );
+            }
+            return { ...t, clips: filtered };
+          });
         }
 
         return {
@@ -511,7 +578,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const existing = get().project.tracks.filter((t) => t.type === type);
       const num = existing.length + 1;
       const nameMap: Record<string, string> = { video: 'Video', audio: 'Audio', text: 'Text', sticker: 'Sticker', vfx: 'VFX' };
-      const newTrack: Track = { id: `track_${type}_${num}`, type, name: `${nameMap[type] || type} ${num}`, locked: false, visible: true, clips: [] };
+      const newTrack: Track = { id: `track_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, type, name: `${nameMap[type] || type} ${num}`, locked: false, visible: true, clips: [] };
       set((st) => ({ project: { ...st.project, tracks: [...st.project.tracks, newTrack] }, isDirty: true }));
     },
 
@@ -584,7 +651,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     newProject: () => {
       const oldMedia = get().project.media;
       for (const m of oldMedia) revokeMediaUrl(m.id);
-      clipCounter = 0;
+      // genId uses crypto.randomUUID, no counter to reset
       set({
         project: clone(emptyProject()),
         currentTime: 0, isPlaying: false,
@@ -631,7 +698,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
                 startAt: newStart - start,
                 duration: newDuration,
                 sourceStart: c.sourceStart + (newStart - c.startAt) * c.speed,
-                sourceEnd: Math.max(0, c.sourceEnd + (c.duration - newDuration) * c.speed),
+                sourceEnd: c.sourceStart + (newEnd - c.startAt) * c.speed,
               };
             }).filter(Boolean) as Clip[],
           })),
@@ -671,13 +738,22 @@ export const useEditorStore = create<EditorState>((set, get) => {
       });
     },
 
-    recalcDuration: () => {
+    _recalcDurationImmediate: () => {
       const { project: { tracks } } = get();
       let maxEnd = 0;
       for (const t of tracks) {
         for (const c of t.clips) maxEnd = Math.max(maxEnd, c.startAt + c.duration);
       }
       set((s) => ({ project: { ...s.project, duration: Math.max(maxEnd + 5, 10) } }));
+    },
+
+    recalcDuration: () => {
+      // Debounce: coalesce rapid successive calls into a single recalc
+      if (_recalcTimer) clearTimeout(_recalcTimer);
+      _recalcTimer = setTimeout(() => {
+        _recalcTimer = null;
+        get()._recalcDurationImmediate();
+      }, 50);
     },
 
     saveToDB: async () => {

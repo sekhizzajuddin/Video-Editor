@@ -94,7 +94,11 @@ async function exportWithFFmpeg(
     if (m.type === 'video') {
       const el = document.createElement('video');
       el.src = url; el.muted = true; el.preload = 'auto';
-      await new Promise<void>(res => { el.oncanplay = () => res(); el.load(); });
+      await new Promise<void>(res => {
+        if (el.readyState >= 2) { res(); return; }
+        el.oncanplay = () => res();
+        el.load();
+      });
       mediaElMap.set(m.id, el);
     } else if (m.type === 'image') {
       const img = new Image(); img.src = url;
@@ -111,11 +115,17 @@ async function exportWithFFmpeg(
     const time = fi * frameInterval;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
-    renderProjectFrame(ctx, canvas, tracks, mediaElMap, time);
+    await renderProjectFrame(ctx, canvas, tracks, mediaElMap, time);
     
     const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), 'image/png'));
     const buf = new Uint8Array(await blob.arrayBuffer());
-    await ffmpeg.writeFile(`frame${String(fi).padStart(6, '0')}.png`, buf);
+    const frameFile = `frame${String(fi).padStart(6, '0')}.png`;
+    await ffmpeg.writeFile(frameFile, buf);
+
+    // Cleanup previous frame to avoid memory exhaustion
+    if (fi > 0) {
+      try { await ffmpeg.deleteFile(`frame${String(fi - 1).padStart(6, '0')}.png`); } catch {}
+    }
 
     if (fi % 30 === 0) {
       onProgress({
@@ -135,17 +145,32 @@ async function exportWithFFmpeg(
   const ffmpegArgs: string[] = [];
   ffmpegArgs.push('-framerate', String(fps), '-i', 'frame%06d.png');
 
-  // Add audio inputs
+  // Add audio inputs — only for media that has active, non-muted clips on the timeline
   let audioInputCount = 0;
   const audioInputs: string[] = [];
+  const audioDelays: number[] = []; // delay in ms for each audio input
   for (const m of media) {
-    if (m.type === 'audio' || m.type === 'video') {
-      const ext = m.mimeType.split('/')[1]?.split(';')[0] || 'mp4';
-      const fname = `input_${m.id}.${ext}`;
-      ffmpegArgs.push('-i', fname);
-      audioInputs.push(`[${audioInputCount + 1}:a]`);
-      audioInputCount++;
+    if (m.type !== 'audio' && m.type !== 'video') continue;
+    // Find first non-muted clip using this media
+    let hasActiveClip = false;
+    let clipDelay = 0;
+    for (const t of tracks) {
+      for (const c of t.clips) {
+        if (c.mediaId === m.id && !c.muted) {
+          hasActiveClip = true;
+          clipDelay = Math.max(0, c.startAt * 1000); // delay in ms
+          break;
+        }
+      }
+      if (hasActiveClip) break;
     }
+    if (!hasActiveClip) continue;
+    const ext = m.mimeType.split('/')[1]?.split(';')[0] || 'mp4';
+    const fname = `input_${m.id}.${ext}`;
+    ffmpegArgs.push('-i', fname);
+    audioInputs.push(`[${audioInputCount + 1}:a]`);
+    audioDelays.push(clipDelay);
+    audioInputCount++;
   }
   const hasAudio = audioInputCount > 0;
 
@@ -193,7 +218,7 @@ async function exportWithFFmpeg(
 }
 
 // ─── Render project frame onto canvas ───────────────────────────
-function renderProjectFrame(
+async function renderProjectFrame(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   tracks: any[],
@@ -230,17 +255,17 @@ function renderProjectFrame(
 
   for (const layer of layers) {
     if (layer.transition) {
-      renderTransitionLayer(ctx, canvas, layer.clip, layer.transition.nextClip, layer.transition.type, layer.transition.progress, mediaElMap, time, w, h);
+      await renderTransitionLayer(ctx, canvas, layer.clip, layer.transition.nextClip, layer.transition.type, layer.transition.progress, mediaElMap, time, w, h);
     } else {
-      renderClipLayer(ctx, canvas, layer.clip, mediaElMap, time, w, h);
+      await renderClipLayer(ctx, canvas, layer.clip, mediaElMap, time, w, h);
     }
   }
 }
 
-function renderClipLayer(
+async function renderClipLayer(
   ctx: CanvasRenderingContext2D, _canvas: HTMLCanvasElement, clip: any,
   mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number, w: number, h: number,
-) {
+): Promise<void> {
   const tr = clip.transform || { x: 0, y: 0, scale: 1, rotation: 0 };
   const alpha = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
   const localTime = time - clip.startAt;
@@ -254,7 +279,11 @@ function renderClipLayer(
   if (clip.mediaId) {
     const el = mediaElMap.get(clip.mediaId);
     if (el instanceof HTMLVideoElement) {
-      if (Math.abs(el.currentTime - sourceTime) > 0.08) el.currentTime = sourceTime;
+      // Await seek to correct frame to prevent black/wrong frames
+      if (Math.abs(el.currentTime - sourceTime) > 0.04) {
+        el.currentTime = sourceTime;
+        await new Promise<void>(res => { el.onseeked = () => res(); });
+      }
       if (el.videoWidth > 0) {
         lCtx.fillStyle = '#000'; lCtx.fillRect(0, 0, w, h);
         const crop = clip.crop;
@@ -334,7 +363,7 @@ function renderClipLayer(
   ctx.restore();
 }
 
-function renderTransitionLayer(
+async function renderTransitionLayer(
   ctx: CanvasRenderingContext2D, _canvas: HTMLCanvasElement,
   clipA: any, clipB: any, type: string, progress: number,
   mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number,
@@ -343,13 +372,13 @@ function renderTransitionLayer(
   const canvasA = document.createElement('canvas');
   canvasA.width = w; canvasA.height = h;
   const ctxA = canvasA.getContext('2d')!;
-  renderClipLayer(ctxA, canvasA, clipA, mediaElMap, time, w, h);
+  await renderClipLayer(ctxA, canvasA, clipA, mediaElMap, time, w, h);
 
   const canvasB = document.createElement('canvas');
   canvasB.width = w; canvasB.height = h;
   const ctxB = canvasB.getContext('2d')!;
   const transOffset = progress * (clipA.transition?.duration || 0.3);
-  renderClipLayer(ctxB, canvasB, clipB, mediaElMap, clipB.startAt + transOffset, w, h);
+  await renderClipLayer(ctxB, canvasB, clipB, mediaElMap, clipB.startAt + transOffset, w, h);
 
   ctx.save();
   switch (type) {

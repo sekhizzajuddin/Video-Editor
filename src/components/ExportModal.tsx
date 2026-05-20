@@ -1,6 +1,18 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { startExport } from '../engine/exportEngine';
+import type { ExportFormat, ExportResolution } from '../types';
+
+const EXPORT_PRESETS = [
+  { id: 'youtube', label: 'YouTube', icon: '▶️', format: 'mp4' as ExportFormat, resolution: '1080p' as ExportResolution, quality: 'high' as const, desc: '1080p H.264, High quality' },
+  { id: 'tiktok', label: 'TikTok', icon: '🎵', format: 'mp4' as ExportFormat, resolution: '1080p' as ExportResolution, quality: 'medium' as const, desc: '9:16 vertical, optimized' },
+  { id: 'instagram-reel', label: 'IG Reel', icon: '📸', format: 'mp4' as ExportFormat, resolution: '1080p' as ExportResolution, quality: 'medium' as const, desc: '9:16 vertical' },
+  { id: 'twitter', label: 'X/Twitter', icon: '🐦', format: 'mp4' as ExportFormat, resolution: '720p' as ExportResolution, quality: 'medium' as const, desc: '720p, fast upload' },
+  { id: 'discord', label: 'Discord', icon: '💬', format: 'webm' as ExportFormat, resolution: '720p' as ExportResolution, quality: 'low' as const, desc: 'Under 8MB target' },
+  { id: 'podcast', label: 'Podcast', icon: '🎧', format: 'mp3' as ExportFormat, resolution: '720p' as ExportResolution, quality: 'high' as const, desc: 'Audio only, high quality' },
+  { id: 'gif-preview', label: 'GIF Preview', icon: '🎞️', format: 'webm' as ExportFormat, resolution: '720p' as ExportResolution, quality: 'low' as const, desc: 'Quick preview' },
+  { id: 'archive', label: '4K Archive', icon: '💎', format: 'mp4' as ExportFormat, resolution: '4k' as ExportResolution, quality: 'high' as const, desc: 'Maximum quality' },
+];
 
 export default function ExportModal() {
   const {
@@ -13,12 +25,21 @@ export default function ExportModal() {
   const { tracks, duration: projectDuration, media, name: projectName } = project;
 
   const [eta, setEta] = useState<string>('');
+  const [activePreset, setActivePreset] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Reset state every time modal opens
   useEffect(() => {
     if (showExport) { setExportProgress(0); setExportStage(''); setExportError(null); setEta(''); }
   }, [showExport, setExportProgress, setExportStage, setExportError]);
+
+  // Detect if current settings match a preset
+  useEffect(() => {
+    const match = EXPORT_PRESETS.find(
+      p => p.format === exportSettings.format && p.resolution === exportSettings.resolution && p.quality === exportSettings.quality
+    );
+    setActivePreset(match?.id ?? null);
+  }, [exportSettings]);
 
   const handleExport = useCallback(async () => {
     setExportProgress(0);
@@ -75,7 +96,8 @@ export default function ExportModal() {
       a.href = blobUrl;
       a.download = `${projectName || 'export'}.${ext}`;
       a.click();
-      URL.revokeObjectURL(blobUrl);
+      // Delay revocation to ensure the download has started
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
 
       setTimeout(() => setShowExport(false), 1500);
     } catch (err: any) {
@@ -99,10 +121,32 @@ export default function ExportModal() {
 
   const isExporting = exportProgress > 0 && exportProgress < 100;
 
+  const handlePresetClick = (preset: typeof EXPORT_PRESETS[number]) => {
+    if (isExporting) return;
+    setExportSettings({ format: preset.format, resolution: preset.resolution, quality: preset.quality });
+    setActivePreset(preset.id);
+  };
+
   return (
     <div className="modal-overlay" onClick={() => { if (!isExporting) setShowExport(false); }}>
       <div className="modal export-modal" onClick={(e) => e.stopPropagation()}>
         <h2>Export</h2>
+
+        <div className="export-preset-row">
+          {EXPORT_PRESETS.map(p => (
+            <button
+              key={p.id}
+              className={`export-preset-card ${activePreset === p.id ? 'export-preset-active' : ''}`}
+              onClick={() => handlePresetClick(p)}
+              disabled={isExporting}
+              title={p.desc}
+            >
+              <span className="export-preset-icon">{p.icon}</span>
+              <span className="export-preset-label">{p.label}</span>
+              <span className="export-preset-desc">{p.desc}</span>
+            </button>
+          ))}
+        </div>
 
         <div className="export-settings">
           <label className="export-label">
