@@ -116,6 +116,7 @@ export interface Clip {
   speedRampPoints?: SpeedRampPoint[];
   audioFadeIn?: number;
   audioFadeOut?: number;
+  crop?: { x: number; y: number; width: number; height: number };
 }
 
 export interface Track {

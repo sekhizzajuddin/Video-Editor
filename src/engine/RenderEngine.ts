@@ -84,22 +84,22 @@ export class RenderEngine {
   }
 
   setSize(w: number, h: number) {
-    this.width = w;
-    this.height = h;
-    this.output.width = w;
-    this.output.height = h;
+    this.width = Math.max(1, Math.round(w));
+    this.height = Math.max(1, Math.round(h));
+    this.output.width = this.width;
+    this.output.height = this.height;
 
     if (this.offscreen instanceof OffscreenCanvas) {
-      this.offscreen.width = w;
-      this.offscreen.height = h;
+      this.offscreen.width = this.width;
+      this.offscreen.height = this.height;
       this.offCtx = this.offscreen.getContext('2d', {
         alpha: false,
         desynchronized: true,
         willReadFrequently: false,
       }) as OffscreenCanvasRenderingContext2D;
     } else {
-      this.offscreen.width = w;
-      this.offscreen.height = h;
+      this.offscreen.width = this.width;
+      this.offscreen.height = this.height;
       this.offCtx = this.offscreen.getContext('2d', {
         alpha: false,
         desynchronized: true,
@@ -108,7 +108,7 @@ export class RenderEngine {
     }
 
     // Resize GPU pipeline
-    this.gpu?.resize(w, h);
+    this.gpu?.resize(this.width, this.height);
   }
 
   setPlaybackMode(playing: boolean) {
@@ -166,14 +166,16 @@ export class RenderEngine {
   }
 
   private getLayerCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
-    const key = `${w}x${h}`;
+    const rw = Math.max(1, Math.round(w));
+    const rh = Math.max(1, Math.round(h));
+    const key = `${rw}x${rh}`;
     if (!this.layerCanvases.has(key)) {
       if (typeof OffscreenCanvas !== 'undefined') {
-        this.layerCanvases.set(key, new OffscreenCanvas(w, h));
+        this.layerCanvases.set(key, new OffscreenCanvas(rw, rh));
       } else {
         const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
+        c.width = rw;
+        c.height = rh;
         this.layerCanvases.set(key, c as unknown as OffscreenCanvas);
       }
     }
@@ -245,16 +247,16 @@ export class RenderEngine {
         } else {
           if (Math.abs(el.currentTime - sourceTime) > 0.04) el.currentTime = sourceTime;
         }
-        renderVideoFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, el);
+        renderVideoFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, el, clip.crop);
       } else if (el instanceof HTMLImageElement && el.complete) {
-        renderImageFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, el);
+        renderImageFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, el, clip.crop);
       } else {
         const elem = await this.getOrLoadMedia(clip.mediaId, mediaUrl, clip.trackType);
         if (elem instanceof HTMLVideoElement && elem.readyState >= 2) {
           if (!this.isPlaybackMode) elem.currentTime = sourceTime;
-          renderVideoFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, elem);
+          renderVideoFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, elem, clip.crop);
         } else if (elem instanceof HTMLImageElement && elem.complete) {
-          renderImageFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, elem);
+          renderImageFrame(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, elem, clip.crop);
         }
       }
     }
@@ -354,7 +356,7 @@ export class RenderEngine {
     };
 
     const baseAlpha = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
-    const alpha = baseAlpha * (1 - Math.max(0, Math.min(1, kfOpacity / 100)));
+    const alpha = baseAlpha * Math.max(0, Math.min(1, kfOpacity / 100));
     const mode = clip.blendMode && clip.blendMode !== 'normal' ? clip.blendMode as GlobalCompositeOperation : undefined;
 
     ctx.save();

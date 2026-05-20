@@ -28,6 +28,7 @@ export default function App() {
   const { currentTime, cropToMarkers, newProject, showOpenProject } = useEditorStore();
   const saveToast = useEditorStore(s => s.saveToast);
   const [activeTool, setActiveTool] = useState('media');
+  const [dismissMobileWarning, setDismissMobileWarning] = useState(false);
 
   // Auto-load most recent project on startup
   useEffect(() => {
@@ -97,13 +98,7 @@ export default function App() {
       return; 
     }
     
-    // Ctrl+D: Deselect all
-    if (meta && e.key === 'd') { 
-      e.preventDefault();
-      store.setSelectedClipIds([]); store.setActiveClipId(null);
-      return; 
-    }
-    
+
     // Ctrl+Z/Y: Undo/Redo
     if (meta && e.key === 'z') { e.preventDefault(); e.shiftKey ? store.redo() : store.undo(); return; }
     if (meta && e.key === 'y') { e.preventDefault(); store.redo(); return; }
@@ -153,11 +148,12 @@ export default function App() {
     }
     
     // M: Toggle marker
-    if (e.key === 'm') { store.toggleMarker(currentTime); return; }
+    if (e.key === 'm' || e.key === 'M') { store.toggleMarker(store.currentTime); return; }
     
-    // I/O: In/Out points
-    if (e.key === 'i') { store.toggleMarker(currentTime); return; }
-    if (e.key === 'o') { cropToMarkers(); return; }
+    // I/O: In/Out points and Enter: Crop
+    if (e.key === 'i' || e.key === 'I') { store.setInPoint(store.currentTime); return; }
+    if (e.key === 'o' || e.key === 'O') { store.setOutPoint(store.currentTime); return; }
+    if (e.key === 'Enter') { e.preventDefault(); store.cropToMarkers(); return; }
     
     // Ctrl+Shift+R: Toggle ripple mode
     if (meta && e.shiftKey && e.key === 'R') { 
@@ -218,6 +214,21 @@ export default function App() {
         <ShortcutsModal />
         {showOpenProject && <ProjectManagerModal />}
         {saveToast && <div className="toast">✓ Project saved</div>}
+        
+        {!dismissMobileWarning && (
+          <div className="mobile-warning-overlay">
+            <div className="mobile-warning-card">
+              <span className="mobile-warning-icon">⚠</span>
+              <h3 className="mobile-warning-title">Desktop Optimized</h3>
+              <p className="mobile-warning-text">
+                VidForge Pro is a professional video editor designed for desktop viewports. For the best editing experience, please use a tablet or laptop/desktop computer.
+              </p>
+              <button className="btn primary mobile-warning-btn" onClick={() => setDismissMobileWarning(true)}>
+                Continue Anyway
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </ErrorBoundary>
   );

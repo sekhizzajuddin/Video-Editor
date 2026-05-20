@@ -105,29 +105,24 @@ async function exportWithFFmpeg(
 
   if (signal?.aborted) { ffmpeg.terminate(); return { type: 'cancelled' }; }
 
-  // Render all frames sequentially
-  const rawFrames: ImageData[] = [];
+  // Render and write all frames sequentially directly to FFmpeg virtual FS
   for (let fi = 0; fi < totalFrames; fi++) {
     if (signal?.aborted) { ffmpeg.terminate(); return { type: 'cancelled' }; }
     const time = fi * frameInterval;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
     renderProjectFrame(ctx, canvas, tracks, mediaElMap, time);
-    rawFrames.push(ctx.getImageData(0, 0, w, h));
-    if (fi % 30 === 0) onProgress({ stage: `Rendering frame ${fi + 1}/${totalFrames}`, percent: Math.round(10 + (fi / totalFrames) * 50) });
-  }
-
-  // Write frames as PNG sequence to FFmpeg FS
-  onProgress({ stage: 'Writing frames to encoder...', percent: 60 });
-  for (let fi = 0; fi < rawFrames.length; fi++) {
-    const imgCanvas = document.createElement('canvas');
-    imgCanvas.width = w; imgCanvas.height = h;
-    const imgCtx = imgCanvas.getContext('2d')!;
-    imgCtx.putImageData(rawFrames[fi], 0, 0);
-    const blob = await new Promise<Blob>(res => imgCanvas.toBlob(b => res(b!), 'image/png'));
+    
+    const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), 'image/png'));
     const buf = new Uint8Array(await blob.arrayBuffer());
     await ffmpeg.writeFile(`frame${String(fi).padStart(6, '0')}.png`, buf);
-    if (fi % 60 === 0) onProgress({ stage: `Writing frame ${fi + 1}/${rawFrames.length}`, percent: Math.round(60 + (fi / rawFrames.length) * 20) });
+
+    if (fi % 30 === 0) {
+      onProgress({
+        stage: `Rendering and writing frame ${fi + 1}/${totalFrames}`,
+        percent: Math.round(10 + (fi / totalFrames) * 70),
+      });
+    }
   }
 
   if (signal?.aborted) { ffmpeg.terminate(); return { type: 'cancelled' }; }
@@ -262,16 +257,25 @@ function renderClipLayer(
       if (Math.abs(el.currentTime - sourceTime) > 0.08) el.currentTime = sourceTime;
       if (el.videoWidth > 0) {
         lCtx.fillStyle = '#000'; lCtx.fillRect(0, 0, w, h);
-        const sw = el.videoWidth; const sh = el.videoHeight;
+        const crop = clip.crop;
+        const sx = crop ? crop.x * el.videoWidth : 0;
+        const sy = crop ? crop.y * el.videoHeight : 0;
+        const sw = crop ? crop.width * el.videoWidth : el.videoWidth;
+        const sh = crop ? crop.height * el.videoHeight : el.videoHeight;
         const ratio = Math.min(w / sw, h / sh);
         const dx = (w - sw * ratio) / 2; const dy = (h - sh * ratio) / 2;
-        lCtx.drawImage(el, dx, dy, sw * ratio, sh * ratio);
+        lCtx.drawImage(el, sx, sy, sw, sh, dx, dy, sw * ratio, sh * ratio);
       }
     } else if (el instanceof HTMLImageElement && el.complete) {
       lCtx.fillStyle = '#000'; lCtx.fillRect(0, 0, w, h);
-      const ratio = Math.min(w / el.naturalWidth, h / el.naturalHeight);
-      const dx = (w - el.naturalWidth * ratio) / 2; const dy = (h - el.naturalHeight * ratio) / 2;
-      lCtx.drawImage(el, dx, dy, el.naturalWidth * ratio, el.naturalHeight * ratio);
+      const crop = clip.crop;
+      const sx = crop ? crop.x * el.naturalWidth : 0;
+      const sy = crop ? crop.y * el.naturalHeight : 0;
+      const sw = crop ? crop.width * el.naturalWidth : el.naturalWidth;
+      const sh = crop ? crop.height * el.naturalHeight : el.naturalHeight;
+      const ratio = Math.min(w / sw, h / sh);
+      const dx = (w - sw * ratio) / 2; const dy = (h - sh * ratio) / 2;
+      lCtx.drawImage(el, sx, sy, sw, sh, dx, dy, sw * ratio, sh * ratio);
     }
   }
 

@@ -62,26 +62,40 @@ export function calculateAspectRatioFit(
 export function renderVideoFrame(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
-  video: HTMLVideoElement
+  video: HTMLVideoElement,
+  crop?: { x: number; y: number; width: number; height: number }
 ): RenderDimensions | undefined {
   if (!video || !video.videoWidth) return;
   ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const dims = calculateAspectRatioFit(video.videoWidth, video.videoHeight, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, dims.offsetX, dims.offsetY, dims.renderWidth, dims.renderHeight);
+  
+  const sx = crop ? crop.x * video.videoWidth : 0;
+  const sy = crop ? crop.y * video.videoHeight : 0;
+  const sw = crop ? crop.width * video.videoWidth : video.videoWidth;
+  const sh = crop ? crop.height * video.videoHeight : video.videoHeight;
+  
+  const dims = calculateAspectRatioFit(sw, sh, canvas.width, canvas.height);
+  ctx.drawImage(video, sx, sy, sw, sh, dims.offsetX, dims.offsetY, dims.renderWidth, dims.renderHeight);
   return dims;
 }
 
 export function renderImageFrame(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
-  img: HTMLImageElement
+  img: HTMLImageElement,
+  crop?: { x: number; y: number; width: number; height: number }
 ): RenderDimensions | undefined {
   if (!img || !img.complete || !img.naturalWidth) return;
   ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const dims = calculateAspectRatioFit(img.naturalWidth, img.naturalHeight, canvas.width, canvas.height);
-  ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dims.offsetX, dims.offsetY, dims.renderWidth, dims.renderHeight);
+  
+  const sx = crop ? crop.x * img.naturalWidth : 0;
+  const sy = crop ? crop.y * img.naturalHeight : 0;
+  const sw = crop ? crop.width * img.naturalWidth : img.naturalWidth;
+  const sh = crop ? crop.height * img.naturalHeight : img.naturalHeight;
+  
+  const dims = calculateAspectRatioFit(sw, sh, canvas.width, canvas.height);
+  ctx.drawImage(img, sx, sy, sw, sh, dims.offsetX, dims.offsetY, dims.renderWidth, dims.renderHeight);
   return dims;
 }
 

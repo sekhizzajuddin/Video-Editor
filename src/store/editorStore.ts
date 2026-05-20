@@ -13,7 +13,7 @@ import type { Keyframe } from '../types';
 let clipCounter = 0;
 function genId(): string { clipCounter += 1; return `clip_${Date.now()}_${clipCounter}`; }
 
-function clone<T>(o: T): T { return JSON.parse(JSON.stringify(o)); }
+function clone<T>(o: T): T { return structuredClone(o); }
 
 function emptyProject(): Project {
   return {
@@ -83,6 +83,8 @@ export interface EditorState {
   setDynamicSpeedMode: (d: boolean) => void;
   setShowCrop: (s: boolean) => void;
   setCropRect: (r: { x: number; y: number; width: number; height: number } | null) => void;
+  setInPoint: (time: number) => void;
+  setOutPoint: (time: number) => void;
   setShowOpenProject: (s: boolean) => void;
   setSaveToast: (s: boolean) => void;
   setCopiedClip: (c: Clip | null) => void;
@@ -468,33 +470,47 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (selectedClipIds.length === 0) return;
       get().pushHistory();
       set((st) => {
-        let removedLen = 0;
-        let removedStart = Infinity;
-        let newTracks = st.project.tracks.map((t) => {
-          const filtered = t.clips.filter((c) => !selectedClipIds.includes(c.id));
-          for (const c of t.clips) {
-            if (selectedClipIds.includes(c.id)) {
-              removedStart = Math.min(removedStart, c.startAt);
-              removedLen = Math.max(removedLen, c.startAt + c.duration - removedStart);
-            }
-          }
-          return { ...t, clips: filtered };
-        });
-        if (rippleDelete) {
-          newTracks = newTracks.map((t) => ({
+        let currentTracks = st.project.tracks;
+        
+        // Sort selected clips in descending order of start time
+        const clipsToDelete = currentTracks
+          .flatMap((t) => t.clips)
+          .filter((c) => selectedClipIds.includes(c.id))
+          .sort((a, b) => b.startAt - a.startAt);
+
+        for (const clip of clipsToDelete) {
+          currentTracks = currentTracks.map((t) => ({
             ...t,
-            clips: t.clips.map((c) => c.startAt >= removedStart ? { ...c, startAt: Math.max(0, c.startAt - removedLen) } : c),
+            clips: t.clips.filter((c) => c.id !== clip.id),
           }));
+
+          if (rippleDelete) {
+            currentTracks = currentTracks.map((t) => ({
+              ...t,
+              clips: t.clips.map((c) =>
+                c.startAt >= clip.startAt
+                  ? { ...c, startAt: Math.max(0, c.startAt - clip.duration) }
+                  : c
+              ),
+            }));
+          }
         }
-        return { project: { ...st.project, tracks: newTracks }, selectedClipIds: [], activeClipId: null, isDirty: true };
+
+        return {
+          project: { ...st.project, tracks: currentTracks },
+          selectedClipIds: [],
+          activeClipId: null,
+          isDirty: true,
+        };
       });
+      get().recalcDuration();
     },
 
     addTrack: (type) => {
       get().pushHistory();
       const existing = get().project.tracks.filter((t) => t.type === type);
       const num = existing.length + 1;
-      const nameMap: Record<string, string> = { video: 'Video', audio: 'Audio', text: 'Text', sticker: 'Sticker' };
+      const nameMap: Record<string, string> = { video: 'Video', audio: 'Audio', text: 'Text', sticker: 'Sticker', vfx: 'VFX' };
       const newTrack: Track = { id: `track_${type}_${num}`, type, name: `${nameMap[type] || type} ${num}`, locked: false, visible: true, clips: [] };
       set((st) => ({ project: { ...st.project, tracks: [...st.project.tracks, newTrack] }, isDirty: true }));
     },
@@ -579,10 +595,25 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     cropToMarkers: () => {
       const { project: { markers } } = get();
-      if (markers.length < 2) return;
-      const sorted = [...markers].sort((a, b) => a.time - b.time);
-      const start = sorted[0].time;
-      const end = sorted[sorted.length - 1].time;
+      if (markers.length === 0) return;
+      
+      let start = 0;
+      let end = 0;
+      
+      const inMarker = markers.find(m => m.label === 'In');
+      const outMarker = markers.find(m => m.label === 'Out');
+      
+      if (inMarker && outMarker) {
+        start = Math.min(inMarker.time, outMarker.time);
+        end = Math.max(inMarker.time, outMarker.time);
+      } else if (markers.length >= 2) {
+        const sorted = [...markers].sort((a, b) => a.time - b.time);
+        start = sorted[0].time;
+        end = sorted[sorted.length - 1].time;
+      } else {
+        return;
+      }
+
       get().pushHistory();
       set((st) => ({
         project: {
@@ -608,6 +639,36 @@ export const useEditorStore = create<EditorState>((set, get) => {
           duration: end - start,
         },
       }));
+    },
+
+    setInPoint: (time) => {
+      get().pushHistory();
+      set((st) => {
+        const filtered = st.project.markers.filter(m => m.label !== 'In');
+        const newMarker: Marker = { id: `in_${Date.now()}`, time, label: 'In', color: '#10b981' };
+        return {
+          project: {
+            ...st.project,
+            markers: [...filtered, newMarker].sort((a, b) => a.time - b.time),
+          },
+          isDirty: true,
+        };
+      });
+    },
+
+    setOutPoint: (time) => {
+      get().pushHistory();
+      set((st) => {
+        const filtered = st.project.markers.filter(m => m.label !== 'Out');
+        const newMarker: Marker = { id: `out_${Date.now()}`, time, label: 'Out', color: '#ef4444' };
+        return {
+          project: {
+            ...st.project,
+            markers: [...filtered, newMarker].sort((a, b) => a.time - b.time),
+          },
+          isDirty: true,
+        };
+      });
     },
 
     recalcDuration: () => {

@@ -782,9 +782,11 @@ class WebGLFilterPipeline {
   }
 
   resize(width: number, height: number): void {
-    if (this.width === width && this.height === height) return;
-    this.width = width;
-    this.height = height;
+    const w = Math.max(1, Math.round(width));
+    const h = Math.max(1, Math.round(height));
+    if (this.width === w && this.height === h) return;
+    this.width = w;
+    this.height = h;
 
     const gl = this.gl;
     if (gl) {
@@ -795,11 +797,11 @@ class WebGLFilterPipeline {
     // Recreate framebuffers and textures
     this.framebuffers.clear();
     this.textures.clear();
-    this.createFramebuffer('fb_a', width, height);
-    this.createFramebuffer('fb_b', width, height);
-    this.createTexture('tex_a', width, height);
-    this.createTexture('tex_b', width, height);
-    this.createTexture('tex_video', width, height);
+    this.createFramebuffer('fb_a', w, h);
+    this.createFramebuffer('fb_b', w, h);
+    this.createTexture('tex_a', w, h);
+    this.createTexture('tex_b', w, h);
+    this.createTexture('tex_video', w, h);
   }
 
   destroy(): void {

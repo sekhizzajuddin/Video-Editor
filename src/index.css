@@ -1241,3 +1241,61 @@ body {
 }
 .audio-item-play:hover { color: var(--accent); }
 
+/* Mobile screen warning overlay */
+.mobile-warning-overlay {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-warning-overlay {
+    display: flex;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(10, 10, 10, 0.98);
+    z-index: 99999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    text-align: center;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+  }
+  
+  .mobile-warning-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px 24px;
+    max-width: 360px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .mobile-warning-icon {
+    font-size: 40px;
+    color: #f59e0b;
+    margin-bottom: 8px;
+  }
+
+  .mobile-warning-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .mobile-warning-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  .mobile-warning-btn {
+    margin-top: 8px;
+    width: 100%;
+  }
+}
+

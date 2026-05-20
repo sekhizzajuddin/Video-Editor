@@ -94,8 +94,8 @@ export default function PreviewCanvas() {
     return () => window.removeEventListener('resize', updateSize);
   }, [aspectRatio]);
 
-  const canvasWidth = containerWidth;
-  const canvasHeight = Math.round((canvasWidth * aspectRatio.h) / aspectRatio.w);
+  const canvasWidth = Math.max(1, containerWidth);
+  const canvasHeight = Math.max(1, Math.round((canvasWidth * aspectRatio.h) / aspectRatio.w));
 
   const { getUrl } = useMediaManager();
 
@@ -154,6 +154,10 @@ export default function PreviewCanvas() {
   const [isRotating, setIsRotating] = useState(false);
   const dragStartRef = useRef({ mouseX: 0, mouseY: 0, clipX: 0, clipY: 0, clipScale: 1, clipRotation: 0, centerX: 0, centerY: 0 });
 
+  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const [cropDragHandle, setCropDragHandle] = useState<string | null>(null);
+  const cropDragStartRef = useRef({ mouseX: 0, mouseY: 0, rect: { x: 0, y: 0, width: 0, height: 0 } });
+
   const handleBoxMouseDown = (e: React.MouseEvent) => {
     if (!activeClip) return;
     e.stopPropagation(); e.preventDefault();
@@ -180,6 +184,37 @@ export default function PreviewCanvas() {
     const centerY = rect.top + rect.height / 2 + tr.y * scaleFactor;
     dragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, clipX: tr.x, clipY: tr.y, clipScale: tr.scale, clipRotation: tr.rotation, centerX, centerY };
   };
+
+  const handleCropBoxMouseDown = (e: React.MouseEvent) => {
+    if (!activeClip || !cropRect) return;
+    e.stopPropagation(); e.preventDefault();
+    setIsDraggingCrop(true);
+    setCropDragHandle(null);
+    cropDragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, rect: { ...cropRect } };
+  };
+
+  const handleCropHandleMouseDown = (handle: string, e: React.MouseEvent) => {
+    if (!activeClip || !cropRect) return;
+    e.stopPropagation(); e.preventDefault();
+    setIsDraggingCrop(true);
+    setCropDragHandle(handle);
+    cropDragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, rect: { ...cropRect } };
+  };
+
+  useEffect(() => {
+    if (activeClip) {
+      if (activeClip.crop) {
+        setCropRect(activeClip.crop);
+      } else {
+        setCropRect(null);
+        setShowCrop(false);
+      }
+    } else {
+      setCropRect(null);
+      setShowCrop(false);
+    }
+  }, [activeClipId]);
+
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -218,6 +253,60 @@ export default function PreviewCanvas() {
     }
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [isDragging, isScaling, isRotating, activeClip, tr, updateClip, pushHistory, scaleFactor]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingCrop && activeClip && cropRect) {
+        const dx = e.clientX - cropDragStartRef.current.mouseX;
+        const dy = e.clientY - cropDragStartRef.current.mouseY;
+        const relDx = dx / canvasWidth;
+        const relDy = dy / canvasHeight;
+        const startRect = cropDragStartRef.current.rect;
+        
+        let newRect = { ...startRect };
+        
+        if (!cropDragHandle) {
+          newRect.x = Math.max(0, Math.min(1 - startRect.width, startRect.x + relDx));
+          newRect.y = Math.max(0, Math.min(1 - startRect.height, startRect.y + relDy));
+        } else {
+          if (cropDragHandle.includes('left')) {
+            const maxX = startRect.x + startRect.width - 0.05;
+            newRect.x = Math.max(0, Math.min(maxX, startRect.x + relDx));
+            newRect.width = Math.max(0.05, startRect.width - (newRect.x - startRect.x));
+          }
+          if (cropDragHandle.includes('right')) {
+            newRect.width = Math.max(0.05, Math.min(1 - startRect.x, startRect.width + relDx));
+          }
+          if (cropDragHandle.includes('top')) {
+            const maxY = startRect.y + startRect.height - 0.05;
+            newRect.y = Math.max(0, Math.min(maxY, startRect.y + relDy));
+            newRect.height = Math.max(0.05, startRect.height - (newRect.y - startRect.y));
+          }
+          if (cropDragHandle.includes('bottom')) {
+            newRect.height = Math.max(0.05, Math.min(1 - startRect.y, startRect.height + relDy));
+          }
+        }
+        
+        setCropRect(newRect);
+        updateClip(activeClip.id, { crop: newRect });
+      }
+    };
+    const handleMouseUp = () => {
+      if (isDraggingCrop) {
+        setIsDraggingCrop(false);
+        setCropDragHandle(null);
+        pushHistory();
+      }
+    };
+    if (isDraggingCrop) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingCrop, cropDragHandle, activeClip, cropRect, canvasWidth, canvasHeight, updateClip, pushHistory, setCropRect]);
 
   useEffect(() => {
     if (!engineRef.current) return;
@@ -308,20 +397,23 @@ export default function PreviewCanvas() {
           </div>
         )}
         {showCrop && cropRect && (
-          <div className="crop-rectangle" style={{ 
-            left: `${cropRect.x * canvasWidth}px`, 
-            top: `${cropRect.y * canvasHeight}px`, 
-            width: `${cropRect.width * canvasWidth}px`, 
-            height: `${cropRect.height * canvasHeight}px` 
-          }}>
-            <div className="crop-handle top-left" />
-            <div className="crop-handle top-right" />
-            <div className="crop-handle bottom-left" />
-            <div className="crop-handle bottom-right" />
-            <div className="crop-handle top-center" />
-            <div className="crop-handle bottom-center" />
-            <div className="crop-handle center-left" />
-            <div className="crop-handle center-right" />
+          <div className="crop-rectangle" 
+            onMouseDown={handleCropBoxMouseDown}
+            style={{ 
+              left: `${cropRect.x * canvasWidth}px`, 
+              top: `${cropRect.y * canvasHeight}px`, 
+              width: `${cropRect.width * canvasWidth}px`, 
+              height: `${cropRect.height * canvasHeight}px`,
+              cursor: 'move',
+            }}>
+            <div className="crop-handle top-left" onMouseDown={(e) => handleCropHandleMouseDown('top-left', e)} />
+            <div className="crop-handle top-right" onMouseDown={(e) => handleCropHandleMouseDown('top-right', e)} />
+            <div className="crop-handle bottom-left" onMouseDown={(e) => handleCropHandleMouseDown('bottom-left', e)} />
+            <div className="crop-handle bottom-right" onMouseDown={(e) => handleCropHandleMouseDown('bottom-right', e)} />
+            <div className="crop-handle top-center" onMouseDown={(e) => handleCropHandleMouseDown('top', e)} />
+            <div className="crop-handle bottom-center" onMouseDown={(e) => handleCropHandleMouseDown('bottom', e)} />
+            <div className="crop-handle center-left" onMouseDown={(e) => handleCropHandleMouseDown('left', e)} />
+            <div className="crop-handle center-right" onMouseDown={(e) => handleCropHandleMouseDown('right', e)} />
           </div>
         )}
         {!hasContent && (
@@ -354,7 +446,21 @@ export default function PreviewCanvas() {
           <button className="preview-btn" onClick={skipForward}><SkipForwardIcon /></button>
         </div>
         <div className="preview-control-right">
-          <button className={`preview-btn ${showCrop ? 'active' : ''}`} onClick={() => { setShowCrop(!showCrop); if (!showCrop) setCropRect({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 }); else setCropRect(null); }} title="Toggle crop">
+          <button 
+            className={`preview-btn ${showCrop ? 'active' : ''}`} 
+            disabled={!activeClip}
+            onClick={() => { 
+              setShowCrop(!showCrop); 
+              if (!showCrop) {
+                const initialCrop = activeClip?.crop || { x: 0.1, y: 0.1, width: 0.8, height: 0.8 };
+                setCropRect(initialCrop); 
+                if (activeClip) updateClip(activeClip.id, { crop: initialCrop });
+              } else {
+                setCropRect(null);
+              }
+            }} 
+            title={activeClip ? "Toggle crop" : "Select a clip to crop"}
+          >
             <CropIcon />
           </button>
           <div className="preview-volume-group">

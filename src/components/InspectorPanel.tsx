@@ -184,6 +184,71 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
         </div>
       </CollapsibleSection>
 
+      <CollapsibleSection title="Crop" defaultOpen={false}>
+        <div className="inspector-crop-section" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="inspector-transform-row">
+            <span className="inspector-transform-label">Crop X</span>
+            <input className="inspector-transform-slider" type="range" min={0} max={95} step={1}
+              value={Math.round((clip.crop?.x ?? 0) * 100)}
+              onChange={e => {
+                const newX = parseFloat(e.target.value) / 100;
+                const currentW = clip.crop?.width ?? 1;
+                const width = Math.min(currentW, 1 - newX);
+                const newCrop = { x: newX, y: clip.crop?.y ?? 0, width, height: clip.crop?.height ?? 1 };
+                update({ crop: newCrop });
+              }} />
+            <span className="inspector-transform-value">{Math.round((clip.crop?.x ?? 0) * 100)}%</span>
+          </div>
+          <div className="inspector-transform-row">
+            <span className="inspector-transform-label">Crop Y</span>
+            <input className="inspector-transform-slider" type="range" min={0} max={95} step={1}
+              value={Math.round((clip.crop?.y ?? 0) * 100)}
+              onChange={e => {
+                const newY = parseFloat(e.target.value) / 100;
+                const currentH = clip.crop?.height ?? 1;
+                const height = Math.min(currentH, 1 - newY);
+                const newCrop = { x: clip.crop?.x ?? 0, y: newY, width: clip.crop?.width ?? 1, height };
+                update({ crop: newCrop });
+              }} />
+            <span className="inspector-transform-value">{Math.round((clip.crop?.y ?? 0) * 100)}%</span>
+          </div>
+          <div className="inspector-transform-row">
+            <span className="inspector-transform-label">Width</span>
+            <input className="inspector-transform-slider" type="range" min={5} max={100} step={1}
+              value={Math.round((clip.crop?.width ?? 1) * 100)}
+              onChange={e => {
+                const width = parseFloat(e.target.value) / 100;
+                const currentX = clip.crop?.x ?? 0;
+                const x = Math.min(currentX, 1 - width);
+                const newCrop = { x, y: clip.crop?.y ?? 0, width, height: clip.crop?.height ?? 1 };
+                update({ crop: newCrop });
+              }} />
+            <span className="inspector-transform-value">{Math.round((clip.crop?.width ?? 1) * 100)}%</span>
+          </div>
+          <div className="inspector-transform-row">
+            <span className="inspector-transform-label">Height</span>
+            <input className="inspector-transform-slider" type="range" min={5} max={100} step={1}
+              value={Math.round((clip.crop?.height ?? 1) * 100)}
+              onChange={e => {
+                const height = parseFloat(e.target.value) / 100;
+                const currentY = clip.crop?.y ?? 0;
+                const y = Math.min(currentY, 1 - height);
+                const newCrop = { x: clip.crop?.x ?? 0, y, width: clip.crop?.width ?? 1, height };
+                update({ crop: newCrop });
+              }} />
+            <span className="inspector-transform-value">{Math.round((clip.crop?.height ?? 1) * 100)}%</span>
+          </div>
+          <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+            <button className="btn secondary size-sm" style={{ flex: 1, padding: '4px 8px', fontSize: '12px' }} onClick={() => update({ crop: undefined })}>
+              Reset Crop
+            </button>
+            <button className="btn primary size-sm" style={{ flex: 1, padding: '4px 8px', fontSize: '12px' }} onClick={() => update({ crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 } })}>
+              Preset (80%)
+            </button>
+          </div>
+        </div>
+      </CollapsibleSection>
+
       <CollapsibleSection title="Audio">
         <div className="inspector-volume-row">
           <span className="inspector-volume-pct">{Math.round((clip.volume ?? 1) * 100)}%</span>
