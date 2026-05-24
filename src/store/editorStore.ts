@@ -99,7 +99,8 @@ export interface EditorState {
   /** Push a snapshot for undo — called only on drag-end / split / delete, not on every pixel */
   pushHistory: () => void;
   /** Convenience: pushHistory then clear redo */
-  commitDrag: () => void;
+  commitDrag: (clipId?: string) => void;
+  resolveTrackCollisions: (trackId: string) => void;
   undo: () => void;
   redo: () => void;
 
@@ -228,8 +229,49 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setSelectedClipIds: (ids) => set({ selectedClipIds: ids }),
     setDirty: (d) => set({ isDirty: d }),
 
-    commitDrag: () => {
+    commitDrag: (clipId) => {
       get().pushHistory();
+      if (clipId) {
+        const clip = get().getClip(clipId);
+        if (clip) {
+          get().resolveTrackCollisions(clip.trackId);
+        }
+      }
+    },
+
+    resolveTrackCollisions: (trackId) => {
+      const state = get();
+      const track = state.project.tracks.find((t) => t.id === trackId);
+      if (!track || track.locked) return;
+
+      const clips = [...track.clips].sort((a, b) => a.startAt - b.startAt);
+      let changed = false;
+
+      for (let i = 0; i < clips.length; i++) {
+        if (i === 0) continue;
+        const prev = clips[i - 1];
+        const curr = clips[i];
+        if (prev.startAt + prev.duration > curr.startAt) {
+          const overlap = (prev.startAt + prev.duration) - curr.startAt;
+          for (let j = i; j < clips.length; j++) {
+            clips[j] = { ...clips[j], startAt: clips[j].startAt + overlap };
+          }
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        set((st) => ({
+          project: {
+            ...st.project,
+            tracks: st.project.tracks.map((t) =>
+              t.id === trackId ? { ...t, clips } : t
+            ),
+          },
+          isDirty: true,
+        }));
+        get().recalcDuration();
+      }
     },
 
     pushHistory: () => {

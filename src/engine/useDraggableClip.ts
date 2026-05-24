@@ -220,7 +220,7 @@ export function useDraggableClip(pxPerSec: number, trackHeight: number) {
   const onDragEnd = useCallback(() => {
     const store = useEditorStore.getState();
     if (dragRef.current.zone !== 'none') {
-      store.commitDrag();
+      store.commitDrag(dragRef.current.clipId);
       store.commitPendingDrag();
       dragRef.current.zone = 'none';
     } else {

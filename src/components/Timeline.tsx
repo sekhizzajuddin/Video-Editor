@@ -1,9 +1,10 @@
-import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
+import { useRef, useState, useMemo, useEffect, useCallback, memo } from 'react';
 import { useEditorStore } from '../store/editorStore';
+import { calculateSnap, collectSnapCandidates } from '../engine/useSnapping';
 import { useTimelineMath } from '../engine/useTimelineMath';
 import { useDraggableClip, detectDragZone } from '../engine/useDraggableClip';
 import { formatTime } from '../utils/fileUtils';
-import type { Clip, TransitionType, Marker, SpeedRampPoint } from '../types';
+import type { Clip, TransitionType, Marker, SpeedRampPoint, Track } from '../types';
 
 function formatTimeLumen(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -69,7 +70,7 @@ const Ico = {
 interface CtxMenu { x: number; y: number; clipId: string; }
 interface HoverClip { id: string; mf?: { name: string; thumbnail?: string; duration?: number }; clip: Clip; }
 
-function WaveformBars({ waveform, height, width }: { waveform: number[]; height: number; width: number }) {
+const WaveformBars = memo(function WaveformBars({ waveform, height, width }: { waveform: number[]; height: number; width: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   useEffect(() => {
@@ -154,9 +155,9 @@ function WaveformBars({ waveform, height, width }: { waveform: number[]; height:
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} 
     />
   );
-}
+});
 
-function Filmstrip({ thumbnails, clipWidth, height }: { thumbnails: string[]; clipWidth: number; height: number }) {
+const Filmstrip = memo(function Filmstrip({ thumbnails, clipWidth, height }: { thumbnails: string[]; clipWidth: number; height: number }) {
   if (!thumbnails.length) return null;
   const frameW = 60; const needed = Math.ceil(clipWidth / frameW) + 1;
   const frames: string[] = [];
@@ -166,9 +167,9 @@ function Filmstrip({ thumbnails, clipWidth, height }: { thumbnails: string[]; cl
       {frames.map((src, i) => <img key={i} src={src} className="filmstrip-frame" alt="" style={{ width: frameW, height }} />)}
     </div>
   );
-}
+});
 
-function SpeedRampOverlay({ speedRampPoints, width, height }: { speedRampPoints: SpeedRampPoint[]; width: number; height: number }) {
+const SpeedRampOverlay = memo(function SpeedRampOverlay({ speedRampPoints, width, height }: { speedRampPoints: SpeedRampPoint[]; width: number; height: number }) {
   if (!speedRampPoints.length || width <= 0 || height <= 0) return null;
 
   const sorted = [...speedRampPoints].sort((a, b) => a.time - b.time);
@@ -240,9 +241,9 @@ function SpeedRampOverlay({ speedRampPoints, width, height }: { speedRampPoints:
       </svg>
     </div>
   );
-}
+});
 
-function TransitionZone({ clipId, x, y, type }: { clipId: string; x: number; y: number; type?: TransitionType }) {
+const TransitionZone = memo(function TransitionZone({ clipId, x, y, type }: { clipId: string; x: number; y: number; type?: TransitionType }) {
   const { updateClip } = useEditorStore();
   const [over, setOver] = useState(false);
   const has = type && type !== 'none';
@@ -255,7 +256,202 @@ function TransitionZone({ clipId, x, y, type }: { clipId: string; x: number; y: 
       onClick={() => { if (has) updateClip(clipId, { transition: { type: 'none', duration: 0.5 } }); }}
     >{has ? type!.charAt(0).toUpperCase() : '+'}</div>
   );
-}
+});
+
+const TimelineRulerMarks = memo(function TimelineRulerMarks({
+  rulerMarks,
+  pxPerSec,
+  markers,
+  onMarkerClick,
+}: {
+  rulerMarks: any[];
+  pxPerSec: number;
+  markers: Marker[];
+  onMarkerClick: (time: number) => void;
+}) {
+  return (
+    <>
+      {rulerMarks.map((m, i) => (
+        <div key={i} className={`ruler-mark ${m.type}`} style={{ left: m.t * pxPerSec }}>
+          {m.showLabel && <span className="ruler-label">{formatTimeLumen(m.t)}</span>}
+        </div>
+      ))}
+      {markers.map((marker: Marker) => (
+        <div key={marker.id} className="tl-marker" style={{ left: marker.time * pxPerSec }} title={marker.label} onClick={e => { e.stopPropagation(); onMarkerClick(marker.time); }}>
+          <div className="tl-marker-flag" style={{ background: marker.color }} />
+        </div>
+      ))}
+    </>
+  );
+});
+
+const TimelineHeaders = memo(function TimelineHeaders({
+  tracks,
+  updateTrack,
+  removeTrack,
+}: {
+  tracks: Track[];
+  updateTrack: (id: string, patch: Partial<Track>) => void;
+  removeTrack: (id: string) => void;
+}) {
+  return (
+    <>
+      {tracks.map(t => {
+        const trackH = getTrackHeight(t.type);
+        return (
+          <div key={t.id} className="tl-track-header" style={{ height: trackH }}>
+            <div className="track-dot" style={{ background: TRACK_COLORS[t.type] || '#666' }} />
+            <div className="track-header-content">
+              <span className="track-name">{t.name}</span>
+              <span className="track-type-badge">{t.type}</span>
+            </div>
+            <div className="track-header-actions">
+              <button className="track-icon-btn" title={t.visible ? 'Hide' : 'Show'} onClick={() => updateTrack(t.id, { visible: !t.visible })}>{t.visible ? Ico.eye : Ico.eyeOff}</button>
+              <button className="track-icon-btn" title={t.locked ? 'Unlock' : 'Lock'} onClick={() => updateTrack(t.id, { locked: !t.locked })}>{t.locked ? Ico.lock : Ico.unlock}</button>
+              <button className="track-icon-btn track-del-btn" title="Remove track" onClick={() => removeTrack(t.id)}>×</button>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
+const TimelineTracks = memo(function TimelineTracks({
+  tracks,
+  media,
+  selectedClipIds,
+  pxPerSec,
+  dynamicSpeedMode,
+  onClipMouseDown,
+  handleContextMenu,
+  setHoverClip,
+  handleTrimStart,
+}: {
+  tracks: Track[];
+  media: any[];
+  selectedClipIds: string[];
+  pxPerSec: number;
+  dynamicSpeedMode: boolean;
+  onClipMouseDown: (e: React.MouseEvent, clip: Clip) => void;
+  handleContextMenu: (e: React.MouseEvent, clipId: string) => void;
+  setHoverClip: (hover: HoverClip | null) => void;
+  handleTrimStart: (e: React.MouseEvent, clip: Clip, zone: 'trim-start' | 'trim-end') => void;
+}) {
+  return (
+    <>
+      {/* Background tracks */}
+      {(() => {
+        let trackTopOffset = 0;
+        return tracks.map((t, i) => {
+          const trackH = getTrackHeight(t.type);
+          const row = <div key={`bg-${t.id}`} className={`tl-row-bg ${i % 2 ? 'alt' : ''} ${t.locked ? 'locked' : ''}`} style={{ top: trackTopOffset, height: trackH }} />;
+          trackTopOffset += trackH; return row;
+        });
+      })()}
+
+      {/* Render clips */}
+      {(() => {
+        let trackTopOffset = 0;
+        return tracks.map((track) => {
+          const trackH = getTrackHeight(track.type);
+          const top = trackTopOffset + 2; const h = trackH - 4;
+          trackTopOffset += trackH;
+          return track.clips.map(clip => {
+            const left = clip.startAt * pxPerSec;
+            const width = Math.max(6, clip.duration * pxPerSec);
+            const sel = selectedClipIds.includes(clip.id);
+            const mf = media.find(m => m.id === clip.mediaId);
+            return (
+              <div key={clip.id} id={`clip-${clip.id}`}
+                className={`timeline-clip clip-${clip.trackType} ${sel ? 'selected' : ''} ${!track.visible ? 'hidden-clip' : ''}`}
+                style={{ left, width, top, height: h }}
+                onMouseDown={e => onClipMouseDown(e, clip)}
+                onContextMenu={e => handleContextMenu(e, clip.id)}
+                onMouseEnter={() => setHoverClip({ id: clip.id, mf, clip })}
+                onMouseLeave={() => setHoverClip(null)}>
+                {clip.trackType === 'video' && mf?.thumbnails?.length ? <Filmstrip thumbnails={mf.thumbnails} clipWidth={width} height={h} /> : null}
+                {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? <WaveformBars waveform={mf.waveform} height={h} width={width} /> : null}
+                {clip.textOverlay && <div className="clip-text-label">{clip.textOverlay.text}</div>}
+                {clip.sticker && <div className="clip-sticker-label">{clip.sticker}</div>}
+                {clip.vfxOverlay && <div className="clip-label" style={{ fontSize: 9 }}>✦ {clip.vfxOverlay.type}</div>}
+                <div className="clip-overlay">
+                  <span className="clip-label">
+                    {clip.trackType === 'video' || clip.trackType === 'audio'
+                      ? (mf?.name?.replace(/\.[^.]+$/, '') || 'Media Clip')
+                      : clip.trackType === 'text'
+                        ? 'Text'
+                        : clip.trackType === 'sticker'
+                          ? 'Sticker'
+                          : clip.trackType === 'vfx'
+                            ? 'VFX'
+                            : 'Clip'}
+                  </span>
+                  <span className="clip-duration-label">{clip.duration.toFixed(1)}s</span>
+                </div>
+                {dynamicSpeedMode && clip.speed !== 1 && (
+                  <span className="clip-speed-indicator">{clip.speed.toFixed(2)}x</span>
+                )}
+                {dynamicSpeedMode && clip.speedRampPoints && clip.speedRampPoints.length >= 2 && (
+                  <SpeedRampOverlay speedRampPoints={clip.speedRampPoints} width={width} height={h} />
+                )}
+                {/* Keyframe diamonds overlay */}
+                {clip.keyframeTracks && clip.keyframeTracks.length > 0 && (
+                  <div className="clip-keyframes-overlay" style={{ position: 'absolute', bottom: 2, left: 0, right: 0, height: 8, pointerEvents: 'none' }}>
+                    {Array.from(new Set(clip.keyframeTracks.flatMap((t: any) => t.keyframes.map((k: any) => k.time)))).map((time: any) => {
+                      const kfLeft = time * pxPerSec;
+                      if (kfLeft < 0 || kfLeft > width) return null;
+                      return (
+                        <div key={String(time)} style={{
+                          position: 'absolute',
+                          left: kfLeft,
+                          bottom: 1,
+                          width: 6,
+                          height: 6,
+                          transform: 'translateX(-50%) rotate(45deg)',
+                          backgroundColor: '#f43f5e',
+                          border: '1px solid #ffffff',
+                          zIndex: 10,
+                        }} title={`Keyframe at ${Number(time).toFixed(2)}s`} />
+                      );
+                    })}
+                  </div>
+                )}
+                <div 
+                  className="trim-handle left" 
+                  onMouseDown={(e) => { e.stopPropagation(); handleTrimStart(e, clip, 'trim-start'); }}
+                  title="Trim start"
+                />
+                <div 
+                  className="trim-handle right" 
+                  onMouseDown={(e) => { e.stopPropagation(); handleTrimStart(e, clip, 'trim-end'); }}
+                  title="Trim end"
+                />
+              </div>
+            );
+          });
+        });
+      })()}
+
+      {/* Render transition zones */}
+      {(() => {
+        let trackTopOffset = 0;
+        return tracks.map((track) => {
+          const trackH = getTrackHeight(track.type);
+          const y = trackTopOffset; trackTopOffset += trackH;
+          const sorted = [...track.clips].sort((a, b) => a.startAt - b.startAt);
+          return sorted.slice(0, -1).map((a, ci) => {
+            const b = sorted[ci + 1];
+            if (b.startAt - (a.startAt + a.duration) < 0.6) {
+              return <TransitionZone key={`tz-${a.id}`} clipId={a.id} x={(a.startAt + a.duration) * pxPerSec} y={y} type={a.transition?.type} />;
+            }
+            return null;
+          });
+        });
+      })()}
+    </>
+  );
+});
 
 export default function Timeline() {
   const {
@@ -443,22 +639,47 @@ export default function Timeline() {
     if (tracksRef.current) {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
-      const time = Math.max(0, Math.min(x / pxPerSec, projectDuration));
+      let time = Math.max(0, Math.min(x / pxPerSec, projectDuration));
+      
+      if (store.snapEnabled) {
+        const candidates = collectSnapCandidates(store.project.tracks, store.project.markers, store.currentTime);
+        const threshold = 10 / pxPerSec;
+        const snap = calculateSnap(time, time, 'start', candidates, threshold);
+        if (snap.snapped) time = snap.targetTime;
+      }
+      
       setCurrentTime(time);
     }
   }, [pxPerSec, projectDuration, setCurrentTime]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
+      const store = useEditorStore.getState();
       if (playheadDragRef.current && tracksRef.current) {
         const rect = tracksRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
-        const time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
+        let time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
+        
+        if (store.snapEnabled) {
+          const candidates = collectSnapCandidates(store.project.tracks, store.project.markers, store.currentTime);
+          const threshold = 10 / pxPerSecRef.current;
+          const snap = calculateSnap(time, time, 'start', candidates, threshold);
+          if (snap.snapped) time = snap.targetTime;
+        }
+        
         setCurrentTimeRef.current(time);
       } else if (rulerDragRef.current && rulerRef.current && tracksRef.current) {
         const rect = rulerRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left + tracksRef.current.scrollLeft;
-        const time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
+        let time = Math.max(0, Math.min(x / pxPerSecRef.current, projectDurationRef.current));
+        
+        if (store.snapEnabled) {
+          const candidates = collectSnapCandidates(store.project.tracks, store.project.markers, store.currentTime);
+          const threshold = 10 / pxPerSecRef.current;
+          const snap = calculateSnap(time, time, 'start', candidates, threshold);
+          if (snap.snapped) time = snap.targetTime;
+        }
+        
         setCurrentTimeRef.current(time);
       }
     };
@@ -527,11 +748,11 @@ export default function Timeline() {
     activeDragRef.current = zone; onDragStart(clip, zone, e.clientX, e.clientY);
   }, [selectedClipIds, setSelectedClipIds, setActiveClipId, onDragStart, tracks]);
 
-  const handleContextMenu = (e: React.MouseEvent, clipId: string) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, clipId: string) => {
     e.preventDefault();
     if (!selectedClipIds.includes(clipId)) { setSelectedClipIds([clipId]); setActiveClipId(clipId); }
     setCtxMenu({ x: e.clientX, y: e.clientY, clipId });
-  };
+  }, [selectedClipIds, setSelectedClipIds, setActiveClipId]);
 
   // Handle trim start - initiate trim operation from trim handles
   const handleTrimStart = useCallback((e: React.MouseEvent, clip: Clip, zone: 'trim-start' | 'trim-end') => {
@@ -665,16 +886,12 @@ export default function Timeline() {
           <div className="tl-corner" style={{ width: HEADER_WIDTH, minWidth: HEADER_WIDTH }} />
           <div className="tl-ruler-scroll" ref={rulerRef}>
             <div style={{ width: totalWidth, height: RULER_HEIGHT, position: 'relative' }} onMouseDown={handleRulerMouseDown} className="tl-ruler-inner">
-              {rulerMarks.map((m, i) => (
-                <div key={i} className={`ruler-mark ${m.type}`} style={{ left: m.t * pxPerSec }}>
-                  {m.showLabel && <span className="ruler-label">{formatTimeLumen(m.t)}</span>}
-                </div>
-              ))}
-              {project.markers.map((marker: Marker) => (
-                <div key={marker.id} className="tl-marker" style={{ left: marker.time * pxPerSec }} title={marker.label} onClick={e => { e.stopPropagation(); setCurrentTime(marker.time); }}>
-                  <div className="tl-marker-flag" style={{ background: marker.color }} />
-                </div>
-              ))}
+              <TimelineRulerMarks
+                rulerMarks={rulerMarks}
+                pxPerSec={pxPerSec}
+                markers={project.markers}
+                onMarkerClick={setCurrentTime}
+              />
               <div className="playhead-triangle" style={{ left: currentTime * pxPerSec, pointerEvents: 'auto', cursor: 'ew-resize' }} onMouseDown={handlePlayheadMouseDown} />
             </div>
           </div>
@@ -682,23 +899,11 @@ export default function Timeline() {
 
         <div className="tl-tracks-row">
           <div className="tl-headers-col" ref={headersRef} style={{ width: HEADER_WIDTH, minWidth: HEADER_WIDTH }}>
-            {tracks.map(t => {
-              const trackH = getTrackHeight(t.type);
-              return (
-                <div key={t.id} className="tl-track-header" style={{ height: trackH }}>
-                  <div className="track-dot" style={{ background: TRACK_COLORS[t.type] || '#666' }} />
-                  <div className="track-header-content">
-                    <span className="track-name">{t.name}</span>
-                    <span className="track-type-badge">{t.type}</span>
-                  </div>
-                  <div className="track-header-actions">
-                    <button className="track-icon-btn" title={t.visible ? 'Hide' : 'Show'} onClick={() => updateTrack(t.id, { visible: !t.visible })}>{t.visible ? Ico.eye : Ico.eyeOff}</button>
-                    <button className="track-icon-btn" title={t.locked ? 'Unlock' : 'Lock'} onClick={() => updateTrack(t.id, { locked: !t.locked })}>{t.locked ? Ico.lock : Ico.unlock}</button>
-                    <button className="track-icon-btn track-del-btn" title="Remove track" onClick={() => removeTrack(t.id)}>×</button>
-                  </div>
-                </div>
-              );
-            })}
+            <TimelineHeaders
+              tracks={tracks}
+              updateTrack={updateTrack}
+              removeTrack={removeTrack}
+            />
           </div>
 
           <div className="tl-clips-scroll" ref={tracksRef} onScroll={onTracksScroll}
@@ -714,114 +919,19 @@ export default function Timeline() {
             }}>
 
             <div style={{ width: totalWidth, height: totalTracksH, position: 'relative' }}>
-              {(() => {
-                let trackTopOffset = 0;
-                return tracks.map((t, i) => {
-                  const trackH = getTrackHeight(t.type);
-                  const row = <div key={`bg-${t.id}`} className={`tl-row-bg ${i % 2 ? 'alt' : ''} ${t.locked ? 'locked' : ''}`} style={{ top: trackTopOffset, height: trackH }} />;
-                  trackTopOffset += trackH; return row;
-                });
-              })()}
+              <TimelineTracks
+                tracks={tracks}
+                media={media}
+                selectedClipIds={selectedClipIds}
+                pxPerSec={pxPerSec}
+                dynamicSpeedMode={dynamicSpeedMode}
+                onClipMouseDown={onClipMouseDown}
+                handleContextMenu={handleContextMenu}
+                setHoverClip={setHoverClip}
+                handleTrimStart={handleTrimStart}
+              />
 
               {selectionBox && <div className="tl-selection-box" style={{ left: selectionBox.x, top: selectionBox.y, width: selectionBox.w, height: selectionBox.h }} />}
-
-              {(() => {
-                let trackTopOffset = 0;
-                return tracks.map((track, _) => {
-                  const trackH = getTrackHeight(track.type);
-                  const top = trackTopOffset + 2; const h = trackH - 4;
-                  trackTopOffset += trackH;
-                  return track.clips.map(clip => {
-                    const left = clip.startAt * pxPerSec;
-                    const width = Math.max(6, clip.duration * pxPerSec);
-                    const sel = selectedClipIds.includes(clip.id);
-                    const mf = media.find(m => m.id === clip.mediaId);
-                    return (
-                      <div key={clip.id} id={`clip-${clip.id}`}
-                        className={`timeline-clip clip-${clip.trackType} ${sel ? 'selected' : ''} ${!track.visible ? 'hidden-clip' : ''}`}
-                        style={{ left, width, top, height: h }}
-                        onMouseDown={e => onClipMouseDown(e, clip)}
-                        onContextMenu={e => handleContextMenu(e, clip.id)}
-                        onMouseEnter={() => setHoverClip({ id: clip.id, mf, clip })}
-                        onMouseLeave={() => setHoverClip(null)}>
-                        {clip.trackType === 'video' && mf?.thumbnails?.length ? <Filmstrip thumbnails={mf.thumbnails} clipWidth={width} height={h} /> : null}
-                        {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? <WaveformBars waveform={mf.waveform} height={h} width={width} /> : null}
-                        {clip.textOverlay && <div className="clip-text-label">{clip.textOverlay.text}</div>}
-                        {clip.sticker && <div className="clip-sticker-label">{clip.sticker}</div>}
-                        {clip.vfxOverlay && <div className="clip-label" style={{ fontSize: 9 }}>✦ {clip.vfxOverlay.type}</div>}
-                        <div className="clip-overlay">
-                          <span className="clip-label">
-                            {clip.trackType === 'video' || clip.trackType === 'audio'
-                              ? (mf?.name?.replace(/\.[^.]+$/, '') || 'Media Clip')
-                              : clip.trackType === 'text'
-                                ? 'Text'
-                                : clip.trackType === 'sticker'
-                                  ? 'Sticker'
-                                  : clip.trackType === 'vfx'
-                                    ? 'VFX'
-                                    : 'Clip'}
-                          </span>
-                          <span className="clip-duration-label">{clip.duration.toFixed(1)}s</span>
-                        </div>
-                        {dynamicSpeedMode && clip.speed !== 1 && (
-                          <span className="clip-speed-indicator">{clip.speed.toFixed(2)}x</span>
-                        )}
-                        {dynamicSpeedMode && clip.speedRampPoints && clip.speedRampPoints.length >= 2 && (
-                          <SpeedRampOverlay speedRampPoints={clip.speedRampPoints} width={width} height={h} />
-                        )}
-                        {/* Keyframe diamonds overlay */}
-                        {clip.keyframeTracks && clip.keyframeTracks.length > 0 && (
-                          <div className="clip-keyframes-overlay" style={{ position: 'absolute', bottom: 2, left: 0, right: 0, height: 8, pointerEvents: 'none' }}>
-                            {Array.from(new Set(clip.keyframeTracks.flatMap(t => t.keyframes.map(k => k.time)))).map(time => {
-                              const kfLeft = time * pxPerSec;
-                              if (kfLeft < 0 || kfLeft > width) return null;
-                              return (
-                                <div key={time} style={{
-                                  position: 'absolute',
-                                  left: kfLeft,
-                                  bottom: 1,
-                                  width: 6,
-                                  height: 6,
-                                  transform: 'translateX(-50%) rotate(45deg)',
-                                  backgroundColor: '#f43f5e',
-                                  border: '1px solid #ffffff',
-                                  zIndex: 10,
-                                }} title={`Keyframe at ${time.toFixed(2)}s`} />
-                              );
-                            })}
-                          </div>
-                        )}
-                        <div 
-                          className="trim-handle left" 
-                          onMouseDown={(e) => { e.stopPropagation(); handleTrimStart(e, clip, 'trim-start'); }}
-                          title="Trim start"
-                        />
-                        <div 
-                          className="trim-handle right" 
-                          onMouseDown={(e) => { e.stopPropagation(); handleTrimStart(e, clip, 'trim-end'); }}
-                          title="Trim end"
-                        />
-                      </div>
-                    );
-                  });
-                });
-              })()}
-
-              {(() => {
-                let trackTopOffset = 0;
-                return tracks.map((track, _) => {
-                  const trackH = getTrackHeight(track.type);
-                  const y = trackTopOffset; trackTopOffset += trackH;
-                  const sorted = [...track.clips].sort((a, b) => a.startAt - b.startAt);
-                  return sorted.slice(0, -1).map((a, ci) => {
-                    const b = sorted[ci + 1];
-                    if (b.startAt - (a.startAt + a.duration) < 0.6) {
-                      return <TransitionZone key={`tz-${a.id}`} clipId={a.id} x={(a.startAt + a.duration) * pxPerSec} y={y} type={a.transition?.type} />;
-                    }
-                    return null;
-                  });
-                });
-              })()}
 
               <div className={`playhead ${isDraggingPlayhead ? 'dragging' : ''}`}
                 style={{ left: currentTime * pxPerSec, height: totalTracksH }}
