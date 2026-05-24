@@ -742,7 +742,17 @@ export default function Timeline() {
                         {clip.sticker && <div className="clip-sticker-label">{clip.sticker}</div>}
                         {clip.vfxOverlay && <div className="clip-label" style={{ fontSize: 9 }}>✦ {clip.vfxOverlay.type}</div>}
                         <div className="clip-overlay">
-                          <span className="clip-label">{mf?.name?.replace(/\.[^.]+$/, '') || clip.textOverlay?.text || clip.sticker || 'Clip'}</span>
+                          <span className="clip-label">
+                            {clip.trackType === 'video' || clip.trackType === 'audio'
+                              ? (mf?.name?.replace(/\.[^.]+$/, '') || 'Media Clip')
+                              : clip.trackType === 'text'
+                                ? 'Text'
+                                : clip.trackType === 'sticker'
+                                  ? 'Sticker'
+                                  : clip.trackType === 'vfx'
+                                    ? 'VFX'
+                                    : 'Clip'}
+                          </span>
                           <span className="clip-duration-label">{clip.duration.toFixed(1)}s</span>
                         </div>
                         {dynamicSpeedMode && clip.speed !== 1 && (
