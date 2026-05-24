@@ -341,25 +341,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
               const newClips = t.clips.map((c) => {
                 if (c.id !== id) return c;
                 let updated = { ...c, ...patch };
-                if (patch.startAt !== undefined || patch.duration !== undefined) {
-                  // Compute overlap from the track's own clips (not stale get() state)
-                  let hasOverlap = true;
-                  let safetyCounter = 0;
-                  while (hasOverlap && safetyCounter < 50) {
-                    const overlap = t.clips.filter((o) =>
-                      o.id !== id &&
-                      o.startAt < updated.startAt + updated.duration &&
-                      o.startAt + o.duration > updated.startAt
-                    );
-                    if (overlap.length > 0) {
-                      const firstOverlap = overlap[0];
-                      updated.startAt = firstOverlap.startAt + firstOverlap.duration;
-                    } else {
-                      hasOverlap = false;
-                    }
-                    safetyCounter++;
-                  }
-                }
                 return updated;
               });
               return { ...t, clips: newClips };

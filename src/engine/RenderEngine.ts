@@ -269,8 +269,9 @@ export class RenderEngine {
 
     if (clip.textOverlay) {
       const to = clip.textOverlay;
+      const scaledFontSize = clip.textOverlay.fontSize * (h / 1080);
       renderTextOverlay(layerCtx as CanvasRenderingContext2D, layerCanvas as HTMLCanvasElement, clip.textOverlay.text, {
-        fontSize: clip.textOverlay.fontSize,
+        fontSize: scaledFontSize,
         fontFamily: clip.textOverlay.fontFamily,
         color: clip.textOverlay.color,
         align: clip.textOverlay.textAlign,
@@ -283,7 +284,8 @@ export class RenderEngine {
 
     if (clip.trackType === 'sticker' && clip.sticker) {
       layerCtx.save();
-      layerCtx.font = `${Math.round(h * 0.12)}px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`;
+      const stickerFontSize = 300 * (h / 1080);
+      layerCtx.font = `${Math.round(stickerFontSize)}px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`;
       layerCtx.textAlign = 'center';
       layerCtx.textBaseline = 'middle';
       layerCtx.fillStyle = '#ffffff';
@@ -356,9 +358,12 @@ export class RenderEngine {
 
     // Keyframes use neutral defaults (scale=1, opacity=100) via interpolateKeyframes.
     // Scale is multiplicative, others are additive.
+    const scaleFactorX = w / 1920;
+    const scaleFactorY = h / 1080;
+
     const tr = {
-      x: baseTr.x + kfX,
-      y: baseTr.y + kfY,
+      x: (baseTr.x + kfX) * scaleFactorX,
+      y: (baseTr.y + kfY) * scaleFactorY,
       scale: baseTr.scale * kfScale,
       rotation: baseTr.rotation + kfRotation,
     };
