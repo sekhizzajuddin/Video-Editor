@@ -729,7 +729,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       for (const t of tracks) {
         for (const c of t.clips) maxEnd = Math.max(maxEnd, c.startAt + c.duration);
       }
-      set((s) => ({ project: { ...s.project, duration: Math.max(maxEnd + 5, 10) } }));
+      set((s) => ({ project: { ...s.project, duration: maxEnd > 0 ? maxEnd : 10 } }));
     },
 
     recalcDuration: () => {

@@ -335,8 +335,16 @@ export default function Timeline() {
 
   useEffect(() => {
     if (!isPlaying || !tracksRef.current) return;
-    const el = tracksRef.current; const px = currentTime * pxPerSec;
-    if (px < el.scrollLeft || px > el.scrollLeft + el.clientWidth - 80) el.scrollLeft = px - el.clientWidth / 3;
+    const el = tracksRef.current;
+    const px = currentTime * pxPerSec;
+    const pivot = el.clientWidth * 0.7;
+    if (px >= pivot) {
+      el.scrollLeft = px - pivot;
+    } else {
+      if (px < el.scrollLeft) {
+        el.scrollLeft = Math.max(0, px - 100);
+      }
+    }
   }, [currentTime, isPlaying, pxPerSec]);
 
   useEffect(() => {
