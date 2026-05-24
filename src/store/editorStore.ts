@@ -331,7 +331,11 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     updateClip: (id, patch) => {
       set((st) => {
-        const visualProps = ['transform', 'opacity', 'blendMode', 'filters', 'textOverlay', 'volume', 'speed', 'muted'];
+        const visualProps = [
+          'transform', 'opacity', 'blendMode', 'filters', 'textOverlay',
+          'volume', 'speed', 'muted', 'sticker', 'vfxOverlay', 'crop',
+          'transition', 'textAnimation', 'keyframeTracks'
+        ];
         const affectsVisual = Object.keys(patch).some((k) => visualProps.includes(k));
 
         return {
