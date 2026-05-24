@@ -159,41 +159,122 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
 
   const tick = useCallback((now: number) => {
     if (!isPlayingRef.current) return;
+    const state = store.getState();
+    const selectedIds = state.selectedClipIds;
+    const tracks = state.project.tracks;
+
+    let loopStart = 0;
+    let loopEnd = state.project.duration;
+    let isSelectedLoop = false;
+
+    if (selectedIds && selectedIds.length > 0) {
+      let minStart = Infinity;
+      let maxEnd = -Infinity;
+      for (const t of tracks) {
+        for (const c of t.clips) {
+          if (selectedIds.includes(c.id)) {
+            minStart = Math.min(minStart, c.startAt);
+            maxEnd = Math.max(maxEnd, c.startAt + c.duration);
+          }
+        }
+      }
+      if (minStart !== Infinity && maxEnd !== -Infinity) {
+        loopStart = minStart;
+        loopEnd = maxEnd;
+        isSelectedLoop = true;
+      }
+    }
+
+    if (!isSelectedLoop) {
+      let maxContentEnd = 0;
+      for (const t of tracks) {
+        for (const c of t.clips) {
+          maxContentEnd = Math.max(maxContentEnd, c.startAt + c.duration);
+        }
+      }
+      if (maxContentEnd > 0) {
+        loopEnd = maxContentEnd;
+      }
+    }
+
     const elapsed = (now - startWallRef.current) / 1000 * speedRef.current;
     let projectTime = startTimeRef.current + elapsed;
-    if (projectTime >= durationRef.current) {
-      projectTime = durationRef.current;
-      isPlayingRef.current = false;
-      store.getState().setCurrentTime(projectTime);
-      store.getState().setIsPlaying(false);
-      if (rAF.current) cancelAnimationFrame(rAF.current);
-      stopAllAudio();
-      return;
+
+    if (projectTime >= loopEnd) {
+      // Loop back to loopStart
+      projectTime = loopStart;
+      startWallRef.current = now;
+      startTimeRef.current = loopStart;
+      currentTimeRef.current = loopStart;
+      state.setCurrentTime(loopStart);
+      startAudio(loopStart);
+    } else {
+      currentTimeRef.current = projectTime;
+      state.setCurrentTime(projectTime);
     }
-    currentTimeRef.current = projectTime;
-    store.getState().setCurrentTime(projectTime);
+
     const dt = lastFrameRef.current ? (now - lastFrameRef.current) / 1000 : 0;
     lastFrameRef.current = now;
-    onFrame?.(projectTime, dt);
+    onFrame?.(currentTimeRef.current, dt);
     rAF.current = requestAnimationFrame(tick);
-  }, [onFrame, store, stopAllAudio]);
+  }, [onFrame, store, stopAllAudio, startAudio]);
 
   const play = useCallback(() => {
     if (isPlayingRef.current || isStartingRef.current) return;
     const state = store.getState();
-    if (state.currentTime >= state.project.duration) {
-      store.getState().setCurrentTime(0);
-      currentTimeRef.current = 0;
+    const selectedIds = state.selectedClipIds;
+    const tracks = state.project.tracks;
+
+    let loopStart = 0;
+    let loopEnd = state.project.duration;
+    let isSelectedLoop = false;
+
+    if (selectedIds && selectedIds.length > 0) {
+      let minStart = Infinity;
+      let maxEnd = -Infinity;
+      for (const t of tracks) {
+        for (const c of t.clips) {
+          if (selectedIds.includes(c.id)) {
+            minStart = Math.min(minStart, c.startAt);
+            maxEnd = Math.max(maxEnd, c.startAt + c.duration);
+          }
+        }
+      }
+      if (minStart !== Infinity && maxEnd !== -Infinity) {
+        loopStart = minStart;
+        loopEnd = maxEnd;
+        isSelectedLoop = true;
+      }
     }
+
+    if (!isSelectedLoop) {
+      let maxContentEnd = 0;
+      for (const t of tracks) {
+        for (const c of t.clips) {
+          maxContentEnd = Math.max(maxContentEnd, c.startAt + c.duration);
+        }
+      }
+      if (maxContentEnd > 0) {
+        loopEnd = maxContentEnd;
+      }
+    }
+
+    let targetStart = currentTimeRef.current;
+    if (targetStart < loopStart || targetStart >= loopEnd) {
+      targetStart = loopStart;
+    }
+
     isStartingRef.current = true;
     isPlayingRef.current = true;
     startWallRef.current = performance.now();
-    startTimeRef.current = currentTimeRef.current;
+    startTimeRef.current = targetStart;
+    currentTimeRef.current = targetStart;
+    state.setCurrentTime(targetStart);
     speedRef.current = state.speed;
-    durationRef.current = state.project.duration;
+    durationRef.current = loopEnd;
     lastFrameRef.current = 0;
-    store.getState().setIsPlaying(true);
-    startAudio(currentTimeRef.current);
+    state.setIsPlaying(true);
+    startAudio(targetStart);
     rAF.current = requestAnimationFrame(tick);
     setTimeout(() => { isStartingRef.current = false; }, 100);
   }, [tick, store, startAudio]);
