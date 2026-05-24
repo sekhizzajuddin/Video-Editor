@@ -2,12 +2,69 @@ import React, { useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import type { Clip } from '../types';
 import VFXInspector from './VFXInspector';
+import { interpolateKeyframes } from '../utils/keyframeUtils';
 
 const FONT_FAMILIES = ['Inter, sans-serif', 'Georgia, serif', 'JetBrains Mono, monospace', 'Arial, sans-serif'];
 const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'];
 const FILTER_PRESETS = ['none', 'bw', 'sepia', 'warm', 'cool', 'contrast'];
 const TRANSITION_TYPES = ['none', 'fade', 'dissolve', 'wipe', 'wipe-left', 'wipe-right', 'slide', 'slide-left', 'slide-right', 'zoom', 'spin', 'blur', 'flash'];
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+interface KeyframeButtonProps {
+  clip: Clip;
+  property: string;
+  currentTime: number;
+  currentValue: number;
+  addKeyframe: (clipId: string, property: string, time: number, value: number) => void;
+  removeKeyframe: (clipId: string, kfId: string) => void;
+}
+
+function KeyframeButton({
+  clip,
+  property,
+  currentTime,
+  currentValue,
+  addKeyframe,
+  removeKeyframe,
+}: KeyframeButtonProps) {
+  const localTime = currentTime - clip.startAt;
+  const track = clip.keyframeTracks?.find(t => t.property === property);
+  const existingKf = track?.keyframes.find(k => Math.abs(k.time - localTime) < 0.05);
+  const active = !!existingKf;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (active && existingKf) {
+      removeKeyframe(clip.id, existingKf.id);
+    } else {
+      addKeyframe(clip.id, property, localTime, currentValue);
+    }
+  };
+
+  return (
+    <button
+      className={`inspector-keyframe-btn ${active ? 'active' : ''}`}
+      onClick={handleClick}
+      title={active ? 'Remove Keyframe' : 'Add Keyframe'}
+      style={{
+        background: 'none',
+        border: 'none',
+        color: active ? '#6366f1' : '#71717a',
+        cursor: 'pointer',
+        fontSize: '15px',
+        padding: '0 4px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'color 0.15s, transform 0.1s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.25)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; }}
+    >
+      {active ? '◆' : '◇'}
+    </button>
+  );
+}
 
 function CollapsibleSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -109,9 +166,43 @@ function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
   );
 }
 
-function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+interface VideoInspectorProps {
+  clip: Clip;
+  update: (p: Partial<Clip>) => void;
+  currentTime: number;
+  addKeyframe: (clipId: string, property: string, time: number, value: number) => void;
+  removeKeyframe: (clipId: string, kfId: string) => void;
+}
+
+function VideoInspector({ clip, update, currentTime, addKeyframe, removeKeyframe }: VideoInspectorProps) {
   const tr = clip.transform;
-  
+  const localTime = currentTime - clip.startAt;
+
+  // Compute interpolated keyframe values or fallback to static defaults
+  const hasScaleKfs = !!clip.keyframeTracks?.some(t => t.property === 'scale' && t.keyframes.length > 0);
+  const currentScale = hasScaleKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'scale') : tr.scale;
+
+  const hasXKfs = !!clip.keyframeTracks?.some(t => t.property === 'x' && t.keyframes.length > 0);
+  const currentX = hasXKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'x') : tr.x;
+
+  const hasYKfs = !!clip.keyframeTracks?.some(t => t.property === 'y' && t.keyframes.length > 0);
+  const currentY = hasYKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'y') : tr.y;
+
+  const hasRotationKfs = !!clip.keyframeTracks?.some(t => t.property === 'rotation' && t.keyframes.length > 0);
+  const currentRotation = hasRotationKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'rotation') : tr.rotation;
+
+  const hasOpacityKfs = !!clip.keyframeTracks?.some(t => t.property === 'opacity' && t.keyframes.length > 0);
+  const currentOpacity = hasOpacityKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'opacity') : (clip.opacity ?? 100);
+
+  const handlePropertyChange = (property: string, value: number, basePatch: Partial<Clip>) => {
+    const hasKfs = !!clip.keyframeTracks?.some(t => t.property === property && t.keyframes.length > 0);
+    if (hasKfs) {
+      addKeyframe(clip.id, property, localTime, value);
+    } else {
+      update(basePatch);
+    }
+  };
+
   const applyPipPreset = (preset: string) => {
     const presets: Record<string, { x: number; y: number; scale: number }> = {
       'bottom-right': { x: 500, y: 250, scale: 0.35 },
@@ -147,29 +238,53 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
 
       <CollapsibleSection title="Transform">
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Scale</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Scale</span>
+            <KeyframeButton clip={clip} property="scale" currentTime={currentTime} currentValue={currentScale} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={10} max={300} step={1}
-            value={Math.round(tr.scale * 100)}
-            onChange={e => update({ transform: { ...tr, scale: parseInt(e.target.value) / 100 } })} />
-          <span className="inspector-transform-value">{tr.scale.toFixed(2)}</span>
+            value={Math.round(currentScale * 100)}
+            onChange={e => {
+              const val = parseInt(e.target.value) / 100;
+              handlePropertyChange('scale', val, { transform: { ...tr, scale: val } });
+            }} />
+          <span className="inspector-transform-value">{currentScale.toFixed(2)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Position X</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Position X</span>
+            <KeyframeButton clip={clip} property="x" currentTime={currentTime} currentValue={currentX} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-960} max={960}
-            value={tr.x} onChange={e => update({ transform: { ...tr, x: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.x.toFixed(0)}</span>
+            value={currentX} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('x', val, { transform: { ...tr, x: val } });
+            }} />
+          <span className="inspector-transform-value">{currentX.toFixed(0)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Position Y</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Position Y</span>
+            <KeyframeButton clip={clip} property="y" currentTime={currentTime} currentValue={currentY} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-540} max={540}
-            value={tr.y} onChange={e => update({ transform: { ...tr, y: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.y.toFixed(0)}</span>
+            value={currentY} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('y', val, { transform: { ...tr, y: val } });
+            }} />
+          <span className="inspector-transform-value">{currentY.toFixed(0)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Rotation</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Rotation</span>
+            <KeyframeButton clip={clip} property="rotation" currentTime={currentTime} currentValue={currentRotation} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-180} max={180}
-            value={tr.rotation} onChange={e => update({ transform: { ...tr, rotation: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.rotation}°</span>
+            value={currentRotation} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('rotation', val, { transform: { ...tr, rotation: val } });
+            }} />
+          <span className="inspector-transform-value">{currentRotation}°</span>
         </div>
       </CollapsibleSection>
 
@@ -295,11 +410,17 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
       </CollapsibleSection>
 
       <CollapsibleSection title="Opacity">
-        <div className="inspector-volume-row">
-          <span className="inspector-volume-pct">{Math.round(clip.opacity ?? 100)}%</span>
-          <input className="inspector-volume-slider" type="range" min={0} max={100}
-            value={Math.round(clip.opacity ?? 100)}
-            onChange={e => update({ opacity: parseInt(e.target.value) })} />
+        <div className="inspector-volume-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: '80px' }}>
+            <span className="inspector-volume-pct">{Math.round(currentOpacity)}%</span>
+            <KeyframeButton clip={clip} property="opacity" currentTime={currentTime} currentValue={currentOpacity} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
+          <input className="inspector-volume-slider" type="range" min={0} max={100} style={{ flex: 1 }}
+            value={Math.round(currentOpacity)}
+            onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('opacity', val, { opacity: val });
+            }} />
         </div>
       </CollapsibleSection>
 
@@ -351,9 +472,41 @@ function VideoInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip
   );
 }
 
-function TextInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+interface TextInspectorProps {
+  clip: Clip;
+  update: (p: Partial<Clip>) => void;
+  currentTime: number;
+  addKeyframe: (clipId: string, property: string, time: number, value: number) => void;
+  removeKeyframe: (clipId: string, kfId: string) => void;
+}
+
+function TextInspector({ clip, update, currentTime, addKeyframe, removeKeyframe }: TextInspectorProps) {
   const to = clip.textOverlay || { text: '', fontFamily: 'Inter, sans-serif', fontSize: 48, color: '#ffffff', fontWeight: 700, textAlign: 'center' as const };
   const tr = clip.transform;
+  const localTime = currentTime - clip.startAt;
+
+  // Compute interpolated keyframe values or fallback to static defaults
+  const hasScaleKfs = !!clip.keyframeTracks?.some(t => t.property === 'scale' && t.keyframes.length > 0);
+  const currentScale = hasScaleKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'scale') : tr.scale;
+
+  const hasXKfs = !!clip.keyframeTracks?.some(t => t.property === 'x' && t.keyframes.length > 0);
+  const currentX = hasXKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'x') : tr.x;
+
+  const hasYKfs = !!clip.keyframeTracks?.some(t => t.property === 'y' && t.keyframes.length > 0);
+  const currentY = hasYKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'y') : tr.y;
+
+  const hasOpacityKfs = !!clip.keyframeTracks?.some(t => t.property === 'opacity' && t.keyframes.length > 0);
+  const currentOpacity = hasOpacityKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'opacity') : (clip.opacity ?? 100);
+
+  const handlePropertyChange = (property: string, value: number, basePatch: Partial<Clip>) => {
+    const hasKfs = !!clip.keyframeTracks?.some(t => t.property === property && t.keyframes.length > 0);
+    if (hasKfs) {
+      addKeyframe(clip.id, property, localTime, value);
+    } else {
+      update(basePatch);
+    }
+  };
+
   return (
     <div className="inspector-scroll">
       <div className="inspector-clip-header">
@@ -409,38 +562,97 @@ function TextInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>
 
       <CollapsibleSection title="Position">
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Scale</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Scale</span>
+            <KeyframeButton clip={clip} property="scale" currentTime={currentTime} currentValue={currentScale} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={10} max={300}
-            value={Math.round(tr.scale * 100)}
-            onChange={e => update({ transform: { ...tr, scale: parseInt(e.target.value) / 100 } })} />
-          <span className="inspector-transform-value">{tr.scale.toFixed(2)}</span>
+            value={Math.round(currentScale * 100)}
+            onChange={e => {
+              const val = parseInt(e.target.value) / 100;
+              handlePropertyChange('scale', val, { transform: { ...tr, scale: val } });
+            }} />
+          <span className="inspector-transform-value">{currentScale.toFixed(2)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Position X</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Position X</span>
+            <KeyframeButton clip={clip} property="x" currentTime={currentTime} currentValue={currentX} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-960} max={960}
-            value={tr.x} onChange={e => update({ transform: { ...tr, x: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.x.toFixed(0)}</span>
+            value={currentX} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('x', val, { transform: { ...tr, x: val } });
+            }} />
+          <span className="inspector-transform-value">{currentX.toFixed(0)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Position Y</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Position Y</span>
+            <KeyframeButton clip={clip} property="y" currentTime={currentTime} currentValue={currentY} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-540} max={540}
-            value={tr.y} onChange={e => update({ transform: { ...tr, y: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.y.toFixed(0)}</span>
+            value={currentY} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('y', val, { transform: { ...tr, y: val } });
+            }} />
+          <span className="inspector-transform-value">{currentY.toFixed(0)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Opacity</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Opacity</span>
+            <KeyframeButton clip={clip} property="opacity" currentTime={currentTime} currentValue={currentOpacity} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={0} max={100}
-            value={clip.opacity ?? 100}
-            onChange={e => update({ opacity: parseInt(e.target.value) })} />
-          <span className="inspector-transform-value">{clip.opacity ?? 100}%</span>
+            value={Math.round(currentOpacity)}
+            onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('opacity', val, { opacity: val });
+            }} />
+          <span className="inspector-transform-value">{currentOpacity}%</span>
         </div>
       </CollapsibleSection>
     </div>
   );
 }
 
-function StickerInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+interface StickerInspectorProps {
+  clip: Clip;
+  update: (p: Partial<Clip>) => void;
+  currentTime: number;
+  addKeyframe: (clipId: string, property: string, time: number, value: number) => void;
+  removeKeyframe: (clipId: string, kfId: string) => void;
+}
+
+function StickerInspector({ clip, update, currentTime, addKeyframe, removeKeyframe }: StickerInspectorProps) {
   const tr = clip.transform;
+  const localTime = currentTime - clip.startAt;
+
+  // Compute interpolated keyframe values or fallback to static defaults
+  const hasScaleKfs = !!clip.keyframeTracks?.some(t => t.property === 'scale' && t.keyframes.length > 0);
+  const currentScale = hasScaleKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'scale') : tr.scale;
+
+  const hasXKfs = !!clip.keyframeTracks?.some(t => t.property === 'x' && t.keyframes.length > 0);
+  const currentX = hasXKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'x') : tr.x;
+
+  const hasYKfs = !!clip.keyframeTracks?.some(t => t.property === 'y' && t.keyframes.length > 0);
+  const currentY = hasYKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'y') : tr.y;
+
+  const hasRotationKfs = !!clip.keyframeTracks?.some(t => t.property === 'rotation' && t.keyframes.length > 0);
+  const currentRotation = hasRotationKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'rotation') : tr.rotation;
+
+  const hasOpacityKfs = !!clip.keyframeTracks?.some(t => t.property === 'opacity' && t.keyframes.length > 0);
+  const currentOpacity = hasOpacityKfs ? interpolateKeyframes(clip.keyframeTracks, localTime, 'opacity') : (clip.opacity ?? 100);
+
+  const handlePropertyChange = (property: string, value: number, basePatch: Partial<Clip>) => {
+    const hasKfs = !!clip.keyframeTracks?.some(t => t.property === property && t.keyframes.length > 0);
+    if (hasKfs) {
+      addKeyframe(clip.id, property, localTime, value);
+    } else {
+      update(basePatch);
+    }
+  };
+
   return (
     <div className="inspector-scroll">
       <div className="inspector-clip-header">
@@ -463,36 +675,66 @@ function StickerInspector({ clip, update }: { clip: Clip; update: (p: Partial<Cl
 
       <CollapsibleSection title="Position">
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Scale</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Scale</span>
+            <KeyframeButton clip={clip} property="scale" currentTime={currentTime} currentValue={currentScale} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={10} max={300}
-            value={Math.round(tr.scale * 100)}
-            onChange={e => update({ transform: { ...tr, scale: parseInt(e.target.value) / 100 } })} />
-          <span className="inspector-transform-value">{tr.scale.toFixed(2)}</span>
+            value={Math.round(currentScale * 100)}
+            onChange={e => {
+              const val = parseInt(e.target.value) / 100;
+              handlePropertyChange('scale', val, { transform: { ...tr, scale: val } });
+            }} />
+          <span className="inspector-transform-value">{currentScale.toFixed(2)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Position X</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Position X</span>
+            <KeyframeButton clip={clip} property="x" currentTime={currentTime} currentValue={currentX} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-960} max={960}
-            value={tr.x} onChange={e => update({ transform: { ...tr, x: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.x.toFixed(0)}</span>
+            value={currentX} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('x', val, { transform: { ...tr, x: val } });
+            }} />
+          <span className="inspector-transform-value">{currentX.toFixed(0)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Position Y</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Position Y</span>
+            <KeyframeButton clip={clip} property="y" currentTime={currentTime} currentValue={currentY} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-540} max={540}
-            value={tr.y} onChange={e => update({ transform: { ...tr, y: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.y.toFixed(0)}</span>
+            value={currentY} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('y', val, { transform: { ...tr, y: val } });
+            }} />
+          <span className="inspector-transform-value">{currentY.toFixed(0)}</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Rotation</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Rotation</span>
+            <KeyframeButton clip={clip} property="rotation" currentTime={currentTime} currentValue={currentRotation} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={-180} max={180}
-            value={tr.rotation} onChange={e => update({ transform: { ...tr, rotation: parseInt(e.target.value) } })} />
-          <span className="inspector-transform-value">{tr.rotation}°</span>
+            value={currentRotation} onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('rotation', val, { transform: { ...tr, rotation: val } });
+            }} />
+          <span className="inspector-transform-value">{currentRotation}°</span>
         </div>
         <div className="inspector-transform-row">
-          <span className="inspector-transform-label">Opacity</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="inspector-transform-label">Opacity</span>
+            <KeyframeButton clip={clip} property="opacity" currentTime={currentTime} currentValue={currentOpacity} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />
+          </div>
           <input className="inspector-transform-slider" type="range" min={0} max={100}
-            value={clip.opacity ?? 100}
-            onChange={e => update({ opacity: parseInt(e.target.value) })} />
-          <span className="inspector-transform-value">{clip.opacity ?? 100}%</span>
+            value={Math.round(currentOpacity)}
+            onChange={e => {
+              const val = parseInt(e.target.value);
+              handlePropertyChange('opacity', val, { opacity: val });
+            }} />
+          <span className="inspector-transform-value">{currentOpacity}%</span>
         </div>
       </CollapsibleSection>
     </div>
@@ -500,7 +742,7 @@ function StickerInspector({ clip, update }: { clip: Clip; update: (p: Partial<Cl
 }
 
 export default React.memo(function InspectorPanel() {
-  const { activeClipId, getClip, updateClip, pushHistory } = useEditorStore();
+  const { activeClipId, getClip, updateClip, pushHistory, addKeyframe, removeKeyframe, currentTime } = useEditorStore();
   const clip = activeClipId ? getClip(activeClipId) : null;
   const update = (patch: Partial<Clip>) => { if (clip) { pushHistory(); updateClip(clip.id, patch); } };
 
@@ -533,9 +775,9 @@ export default React.memo(function InspectorPanel() {
   return (
     <aside className="inspector-panel">
       {clip.trackType === 'audio' && <AudioInspector clip={clip} update={update} />}
-      {clip.trackType === 'video' && <VideoInspector clip={clip} update={update} />}
-      {clip.trackType === 'text' && <TextInspector clip={clip} update={update} />}
-      {clip.trackType === 'sticker' && <StickerInspector clip={clip} update={update} />}
+      {clip.trackType === 'video' && <VideoInspector clip={clip} update={update} currentTime={currentTime} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />}
+      {clip.trackType === 'text' && <TextInspector clip={clip} update={update} currentTime={currentTime} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />}
+      {clip.trackType === 'sticker' && <StickerInspector clip={clip} update={update} currentTime={currentTime} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />}
       {clip.trackType === 'vfx' && <VFXInspector clip={clip} />}
     </aside>
   );

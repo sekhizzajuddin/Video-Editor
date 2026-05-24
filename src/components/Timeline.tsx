@@ -769,6 +769,28 @@ export default function Timeline() {
                         {dynamicSpeedMode && clip.speedRampPoints && clip.speedRampPoints.length >= 2 && (
                           <SpeedRampOverlay speedRampPoints={clip.speedRampPoints} width={width} height={h} />
                         )}
+                        {/* Keyframe diamonds overlay */}
+                        {clip.keyframeTracks && clip.keyframeTracks.length > 0 && (
+                          <div className="clip-keyframes-overlay" style={{ position: 'absolute', bottom: 2, left: 0, right: 0, height: 8, pointerEvents: 'none' }}>
+                            {Array.from(new Set(clip.keyframeTracks.flatMap(t => t.keyframes.map(k => k.time)))).map(time => {
+                              const kfLeft = time * pxPerSec;
+                              if (kfLeft < 0 || kfLeft > width) return null;
+                              return (
+                                <div key={time} style={{
+                                  position: 'absolute',
+                                  left: kfLeft,
+                                  bottom: 1,
+                                  width: 6,
+                                  height: 6,
+                                  transform: 'translateX(-50%) rotate(45deg)',
+                                  backgroundColor: '#f43f5e',
+                                  border: '1px solid #ffffff',
+                                  zIndex: 10,
+                                }} title={`Keyframe at ${time.toFixed(2)}s`} />
+                              );
+                            })}
+                          </div>
+                        )}
                         <div 
                           className="trim-handle left" 
                           onMouseDown={(e) => { e.stopPropagation(); handleTrimStart(e, clip, 'trim-start'); }}
