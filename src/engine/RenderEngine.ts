@@ -279,6 +279,9 @@ export class RenderEngine {
         outlineWidth: to.outlineWidth || 0,
         backgroundColor: to.backgroundColor,
         backgroundOpacity: to.backgroundOpacity ?? 0.5,
+        animation: clip.textAnimation,
+        localTime: localTime,
+        duration: clip.duration,
       });
     }
 

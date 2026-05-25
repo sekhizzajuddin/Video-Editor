@@ -23,6 +23,9 @@ export interface TextOverlayOptions {
   outlineWidth?: number;
   backgroundColor?: string;
   backgroundOpacity?: number;
+  animation?: 'none' | 'fadeIn' | 'typewriter' | 'slideUp' | 'slideDown' | 'scalePop' | 'bounce' | 'glitch' | 'wave';
+  localTime?: number;
+  duration?: number;
 }
 
 export interface WaveformOptions {
@@ -112,21 +115,112 @@ export function renderTextOverlay(
     shadowColor = 'rgba(0,0,0,0.5)', shadowBlur = 4,
     shadowOffsetX = 2, shadowOffsetY = 2, maxWidth = canvas.width - 40,
     outlineColor, outlineWidth = 0, backgroundColor, backgroundOpacity = 0.5,
+    animation = 'none', localTime = 0,
   } = options;
+
+  // Apply Typewriter character slice first before line splitting or measuring
+  let animatedText = text;
+  if (animation === 'typewriter') {
+    const progress = Math.min(1, localTime / 1.5);
+    const visibleChars = Math.floor(text.length * progress);
+    animatedText = text.substring(0, visibleChars);
+  }
+
   ctx.save();
   ctx.font = `bold ${fontSize}px ${fontFamily}`;
-  ctx.textAlign = align;
+
+  // Calculate maximum line width to center the bounding box correctly
+  const lines = animatedText.split('\n');
+  let maxLineWidth = 0;
+  lines.forEach(line => {
+    const widthMeasure = ctx.measureText(line).width;
+    if (widthMeasure > maxLineWidth) maxLineWidth = widthMeasure;
+  });
+
+  // Mathematically align the text block correctly relative to the anchor x
+  let drawX = x;
+  let drawAlign = align;
+  if (align === 'left') {
+    drawX = x - maxLineWidth / 2;
+    drawAlign = 'left';
+  } else if (align === 'right') {
+    drawX = x + maxLineWidth / 2;
+    drawAlign = 'right';
+  } else {
+    drawX = x;
+    drawAlign = 'center';
+  }
+
+  ctx.textAlign = drawAlign;
   ctx.textBaseline = baseline;
 
+  let drawY = y;
+
+  // Apply other coordinate/transform animations (like slide, bounce, scale, fade)
+  if (animation === 'fadeIn') {
+    const progress = Math.min(1, localTime / 1.0);
+    ctx.globalAlpha = progress;
+  } else if (animation === 'slideUp') {
+    const progress = Math.min(1, localTime / 0.8);
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
+    const offsetY = (1 - easeProgress) * 80;
+    drawY += offsetY;
+  } else if (animation === 'slideDown') {
+    const progress = Math.min(1, localTime / 0.8);
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
+    const offsetY = -(1 - easeProgress) * 80;
+    drawY += offsetY;
+  } else if (animation === 'scalePop') {
+    const progress = Math.min(1, localTime / 0.6);
+    let scaleVal = 1;
+    if (progress < 1) {
+      scaleVal = progress < 0.7 
+        ? (progress / 0.7) * 1.15
+        : 1.15 - ((progress - 0.7) / 0.3) * 0.15;
+    }
+    ctx.translate(drawX, drawY);
+    ctx.scale(scaleVal, scaleVal);
+    ctx.translate(-drawX, -drawY);
+  } else if (animation === 'bounce') {
+    const progress = Math.min(1, localTime / 1.2);
+    const bounceOffset = Math.abs(Math.sin(progress * Math.PI * 3.5)) * (1 - progress) * 60;
+    drawY -= bounceOffset;
+  } else if (animation === 'glitch') {
+    const glitchFrame = Math.floor(localTime * 15) % 8 === 0;
+    if (glitchFrame) {
+      const shiftX = (Math.random() - 0.5) * 12;
+      const shiftY = (Math.random() - 0.5) * 4;
+      drawX += shiftX;
+      drawY += shiftY;
+      
+      // Flickering chromatic aberration background drawing
+      ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+      const glitchLines = animatedText.split('\n');
+      const gLineHeight = fontSize * 1.2;
+      const gStartY = glitchLines.length === 1 ? drawY : drawY - ((glitchLines.length - 1) * gLineHeight) / 2;
+      glitchLines.forEach((line, idx) => {
+        ctx.fillText(line, drawX - 4, gStartY + idx * gLineHeight, maxWidth);
+      });
+      ctx.fillStyle = 'rgba(0, 0, 255, 0.7)';
+      glitchLines.forEach((line, idx) => {
+        ctx.fillText(line, drawX + 4, gStartY + idx * gLineHeight, maxWidth);
+      });
+    }
+  } else if (animation === 'wave') {
+    const waveOffset = Math.sin(localTime * 3.5) * 12;
+    drawY += waveOffset;
+  }
+
+  // Draw background
   if (backgroundColor) {
-    const metrics = ctx.measureText(text);
     const padding = 8;
-    const bgX = align === 'center' ? x - metrics.width / 2 - padding : align === 'left' ? x - padding : x - metrics.width - padding;
-    const bgY = baseline === 'middle' ? y - fontSize / 2 - padding / 2 : y - padding;
+    const bgX = drawAlign === 'center' ? drawX - maxLineWidth / 2 - padding : drawAlign === 'left' ? drawX - padding : drawX - maxLineWidth - padding;
+    const bgY = baseline === 'middle' ? drawY - fontSize / 2 - padding / 2 : drawY - padding;
     ctx.fillStyle = backgroundColor;
-    ctx.globalAlpha = backgroundOpacity;
-    ctx.fillRect(bgX, bgY, metrics.width + padding * 2, fontSize + padding);
-    ctx.globalAlpha = 1;
+    const originalAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = originalAlpha * backgroundOpacity;
+    ctx.fillRect(bgX, bgY, maxLineWidth + padding * 2, fontSize + padding);
+    ctx.globalAlpha = originalAlpha;
   }
 
   ctx.fillStyle = color;
@@ -141,12 +235,12 @@ export function renderTextOverlay(
     ctx.lineWidth = outlineWidth;
     ctx.lineJoin = 'round';
   }
-  const lines = text.split('\n');
+
   const lineHeight = fontSize * 1.2;
-  const startY = lines.length === 1 ? y : y - ((lines.length - 1) * lineHeight) / 2;
+  const startY = lines.length === 1 ? drawY : drawY - ((lines.length - 1) * lineHeight) / 2;
   lines.forEach((line, idx) => {
-    if (outlineColor && outlineWidth > 0) ctx.strokeText(line, x, startY + idx * lineHeight, maxWidth);
-    ctx.fillText(line, x, startY + idx * lineHeight, maxWidth);
+    if (outlineColor && outlineWidth > 0) ctx.strokeText(line, drawX, startY + idx * lineHeight, maxWidth);
+    ctx.fillText(line, drawX, startY + idx * lineHeight, maxWidth);
   });
   ctx.restore();
 }

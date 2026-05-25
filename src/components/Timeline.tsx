@@ -362,6 +362,18 @@ const TimelineTracks = memo(function TimelineTracks({
             const width = Math.max(6, clip.duration * pxPerSec);
             const sel = selectedClipIds.includes(clip.id);
             const mf = media.find(m => m.id === clip.mediaId);
+
+            // Slice waveform to display only the playing portion matching trims
+            let displayWaveform = mf?.waveform || [];
+            if (mf?.waveform?.length && mf.duration) {
+              const startPct = clip.sourceStart / mf.duration;
+              const endPct = (clip.sourceStart + clip.duration * (clip.speed || 1)) / mf.duration;
+              const startIdx = Math.max(0, Math.floor(startPct * mf.waveform.length));
+              const endIdx = Math.min(mf.waveform.length, Math.ceil(endPct * mf.waveform.length));
+              displayWaveform = mf.waveform.slice(startIdx, endIdx);
+              if (!displayWaveform.length) displayWaveform = mf.waveform;
+            }
+
             return (
               <div key={clip.id} id={`clip-${clip.id}`}
                 className={`timeline-clip clip-${clip.trackType} ${sel ? 'selected' : ''} ${!track.visible ? 'hidden-clip' : ''}`}
@@ -371,7 +383,7 @@ const TimelineTracks = memo(function TimelineTracks({
                 onMouseEnter={() => setHoverClip({ id: clip.id, mf, clip })}
                 onMouseLeave={() => setHoverClip(null)}>
                 {clip.trackType === 'video' && mf?.thumbnails?.length ? <Filmstrip thumbnails={mf.thumbnails} clipWidth={width} height={h} /> : null}
-                {(clip.trackType === 'audio' || (clip.trackType === 'video' && mf?.waveform?.length)) && mf?.waveform?.length ? <WaveformBars waveform={mf.waveform} height={h} width={width} /> : null}
+                {(clip.trackType === 'audio' || (clip.trackType === 'video' && displayWaveform.length)) && displayWaveform.length ? <WaveformBars waveform={displayWaveform} height={h} width={width} /> : null}
                 {clip.textOverlay && <div className="clip-text-label">{clip.textOverlay.text}</div>}
                 {clip.sticker && <div className="clip-sticker-label">{clip.sticker}</div>}
                 {clip.vfxOverlay && <div className="clip-label" style={{ fontSize: 9 }}>✦ {clip.vfxOverlay.type}</div>}

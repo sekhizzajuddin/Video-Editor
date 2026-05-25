@@ -151,7 +151,9 @@ function MediaPanel() {
 }
 
 function TextPanel() {
-  const { addClip, updateClip } = useEditorStore();
+  const { addClip, updateClip, activeClipId, project } = useEditorStore();
+  const activeClip = activeClipId ? project.tracks.flatMap(t => t.clips).find(c => c.id === activeClipId) : null;
+
   const handleAddText = (p: typeof TEXT_PRESETS[number]) => {
     const clip = addClip('text');
     if (clip) updateClip(clip.id, {
@@ -172,12 +174,18 @@ function TextPanel() {
   ];
 
   const handleAddAnimatedText = (anim: typeof TEXT_ANIMATION_PRESETS[number]) => {
-    const clip = addClip('text');
-    if (clip) updateClip(clip.id, {
-      textOverlay: { text: anim.label, fontFamily: 'Inter, sans-serif', fontSize: 48, color: '#ffffff', fontWeight: 600, textAlign: 'center' as const },
-      duration: 4,
-      textAnimation: anim.animation,
-    });
+    if (activeClip && activeClip.trackType === 'text') {
+      updateClip(activeClip.id, {
+        textAnimation: anim.animation,
+      });
+    } else {
+      const clip = addClip('text');
+      if (clip) updateClip(clip.id, {
+        textOverlay: { text: anim.label, fontFamily: 'Inter, sans-serif', fontSize: 48, color: '#ffffff', fontWeight: 600, textAlign: 'center' as const },
+        duration: 4,
+        textAnimation: anim.animation,
+      });
+    }
   };
 
   return (
