@@ -60,6 +60,17 @@ export default React.memo(function PreviewCanvas() {
     activeClipId, updateClip, pushHistory, showCrop, cropRect, setShowCrop, setCropRect,
   } = useEditorStore();
 
+  // Use actual content end time for seekbar — avoids incorrect 10s default duration
+  const effectiveDuration = useMemo(() => {
+    let max = 0;
+    for (const t of tracks) {
+      for (const c of t.clips) {
+        max = Math.max(max, c.startAt + c.duration);
+      }
+    }
+    return max > 0 ? max : projectDuration;
+  }, [tracks, projectDuration]);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<RenderEngine | null>(null);
   const perfRef = useRef<PerformanceMonitor>(new PerformanceMonitor());
@@ -337,7 +348,7 @@ export default React.memo(function PreviewCanvas() {
   }, [renderTick, currentTime, isPlaying, drawFrame]);
 
   const skipBackward = () => engine.seek(Math.max(0, currentTime - 5));
-  const skipForward = () => engine.seek(Math.min(projectDuration, currentTime + 5));
+  const skipForward = () => engine.seek(Math.min(effectiveDuration, currentTime + 5));
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) { containerRef.current?.requestFullscreen?.(); setIsFullscreen(true); }
@@ -357,10 +368,10 @@ export default React.memo(function PreviewCanvas() {
     if (!seekBarRef.current) return;
     const rect = seekBarRef.current.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const time = pct * projectDuration;
+    const time = pct * effectiveDuration;
     engine.seek(time);
     drawFrame(time);
-  }, [engine, drawFrame, projectDuration]);
+  }, [engine, drawFrame, effectiveDuration]);
 
   const handleSeekMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -381,7 +392,7 @@ export default React.memo(function PreviewCanvas() {
 
   const effectiveVolume = muted ? 0 : (volume ?? 1);
   const hasContent = tracks.some(t => t.visible && t.clips.length > 0);
-  const seekPct = (currentTime / Math.max(projectDuration, 0.01)) * 100;
+  const seekPct = (currentTime / Math.max(effectiveDuration, 0.01)) * 100;
 
   return (
     <div className="preview-area">
@@ -435,7 +446,7 @@ export default React.memo(function PreviewCanvas() {
           <span className="preview-timecode">
             <span className="preview-time-current">{formatTime(currentTime)}</span>
             <span className="preview-time-sep">/</span>
-            <span className="preview-time-total">{formatTime(projectDuration)}</span>
+            <span className="preview-time-total">{formatTime(effectiveDuration)}</span>
           </span>
         </div>
         <div className="preview-control-center">

@@ -2,7 +2,7 @@ import { useRef, useState, useMemo, useEffect, useCallback, memo } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { calculateSnap, collectSnapCandidates } from '../engine/useSnapping';
 import { useTimelineMath } from '../engine/useTimelineMath';
-import { useDraggableClip, detectDragZone } from '../engine/useDraggableClip';
+import { useDraggableClip } from '../engine/useDraggableClip';
 import { formatTime } from '../utils/fileUtils';
 import type { Clip, TransitionType, Marker, SpeedRampPoint, Track } from '../types';
 
@@ -716,7 +716,6 @@ export default function Timeline() {
 
   const onClipMouseDown = useCallback((e: React.MouseEvent, clip: Clip) => {
     if (e.button !== 0) return; e.stopPropagation();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     
     // Shift+Click: Range select from last clicked to current
     if (e.shiftKey && lastClickedClipRef.current) {
@@ -756,7 +755,7 @@ export default function Timeline() {
     // Normal click: Select single clip and start drag
     if (!selectedClipIds.includes(clip.id)) { setSelectedClipIds([clip.id]); setActiveClipId(clip.id); }
     lastClickedClipRef.current = clip.id;
-    const zone = detectDragZone(e.clientX, rect);
+    const zone = 'move';
     activeDragRef.current = zone; onDragStart(clip, zone, e.clientX, e.clientY);
   }, [selectedClipIds, setSelectedClipIds, setActiveClipId, onDragStart, tracks]);
 

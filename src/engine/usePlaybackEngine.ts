@@ -78,8 +78,9 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
 
         const clipEnd = clip.startAt + clip.duration;
         if (fromTime >= clipEnd + 0.05) continue;
+        // Allow clips starting up to 10 seconds in the future (handled with setTimeout delay)
         if (fromTime < clip.startAt - 0.05) {
-          if (clip.startAt > fromTime + 0.5) continue;
+          if (clip.startAt > fromTime + 10) continue;
         }
 
         const url = getMediaUrl(clip.mediaId);
@@ -103,7 +104,31 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
         try {
           const sourceNode = ctx.createMediaElementSource(el);
           const gainNode = ctx.createGain();
-          gainNode.gain.setValueAtTime(Math.max(0, Math.min(2, clip.volume ?? 1)), ctx.currentTime);
+          const baseVolume = Math.max(0, Math.min(2, clip.volume ?? 1));
+          gainNode.gain.setValueAtTime(baseVolume, ctx.currentTime);
+
+          // Apply audio fade-in if configured
+          const fadeIn = clip.audioFadeIn || 0;
+          const fadeOut = clip.audioFadeOut || 0;
+          if (fadeIn > 0) {
+            // Start at 0, ramp to full volume over fadeIn seconds
+            const localStart = Math.max(0, fromTime - clip.startAt);
+            if (localStart < fadeIn) {
+              const remaining = fadeIn - localStart;
+              const startVol = baseVolume * (localStart / fadeIn);
+              gainNode.gain.setValueAtTime(startVol, ctx.currentTime);
+              gainNode.gain.linearRampToValueAtTime(baseVolume, ctx.currentTime + remaining);
+            }
+          }
+          if (fadeOut > 0 && clip.duration > 0) {
+            // Ramp down to 0 at the end of the clip's fade-out duration
+            const clipEndCtxTime = ctx.currentTime + Math.max(0, (clip.startAt + clip.duration) - fromTime);
+            const fadeOutStartCtxTime = clipEndCtxTime - fadeOut;
+            if (fadeOutStartCtxTime > ctx.currentTime) {
+              gainNode.gain.setValueAtTime(baseVolume, fadeOutStartCtxTime);
+            }
+            gainNode.gain.linearRampToValueAtTime(0.0001, clipEndCtxTime);
+          }
           
           // Apply voice stabilizer if enabled
           if (clip.voiceStabilizer) {
@@ -292,9 +317,17 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
   }, [play, pause]);
 
   const seek = useCallback((t: number) => {
-    const clamped = Math.max(0, Math.min(t, store.getState().project.duration));
+    const state = store.getState();
+    let maxContentEnd = 0;
+    for (const track of state.project.tracks) {
+      for (const clip of track.clips) {
+        maxContentEnd = Math.max(maxContentEnd, clip.startAt + clip.duration);
+      }
+    }
+    const maxDur = maxContentEnd > 0 ? maxContentEnd : state.project.duration;
+    const clamped = Math.max(0, Math.min(t, maxDur));
     currentTimeRef.current = clamped;
-    store.getState().setCurrentTime(clamped);
+    state.setCurrentTime(clamped);
     if (isPlayingRef.current) {
       startWallRef.current = performance.now();
       startTimeRef.current = clamped;

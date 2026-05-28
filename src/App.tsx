@@ -30,7 +30,7 @@ export default function App() {
   const newProject = useEditorStore(s => s.newProject);
   const saveToast = useEditorStore(s => s.saveToast);
   const [activeTool, setActiveTool] = useState('media');
-  const [dismissMobileWarning, setDismissMobileWarning] = useState(false);
+  const [dismissMobileWarning, setDismissMobileWarning] = useState(() => window.innerWidth >= 1024);
 
   // Auto-load most recent project on startup
   useEffect(() => {

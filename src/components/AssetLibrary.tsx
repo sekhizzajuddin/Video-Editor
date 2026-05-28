@@ -82,7 +82,7 @@ function MediaPanel() {
       try {
         if (type !== 'image') mf.duration = await getMediaDuration(file);
         mf.thumbnail = await generateThumbnail(mf, 320, 180).catch(() => undefined);
-        if (type === 'audio' || type === 'video') mf.waveform = await generateWaveformData(mf, 80).catch(() => []);
+        if (type === 'audio' || type === 'video') mf.waveform = await generateWaveformData(mf, 200).catch(() => []);
         if (type === 'video') mf.thumbnails = await generateFilmstrip(mf, 8).catch(() => []);
         registerMediaUrl(id, file);
       } catch {}
@@ -163,6 +163,7 @@ function TextPanel() {
   };
 
   const TEXT_ANIMATION_PRESETS = [
+    { label: 'None', animation: 'none' as const, icon: '✕' },
     { label: 'Fade In', animation: 'fadeIn' as const, icon: '✦' },
     { label: 'Typewriter', animation: 'typewriter' as const, icon: '⌨️' },
     { label: 'Slide Up', animation: 'slideUp' as const, icon: '⬆️' },
