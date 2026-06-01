@@ -1,4 +1,4 @@
-export type TrackType = 'video' | 'audio' | 'text' | 'sticker' | 'vfx';
+export type TrackType = 'video' | 'audio' | 'text' | 'sticker' | 'vfx' | 'drawing' | 'element' | 'tts' | 'record';
 
 export interface MediaFile {
   id: string;
@@ -25,6 +25,41 @@ export interface VFXOverlay {
   scale: number;
   rotation: number;
   opacity: number;
+}
+
+export interface DrawingOverlay {
+  paths: DrawingPath[];
+  strokeWidth: number;
+  strokeColor: string;
+  tool: 'pen' | 'highlighter' | 'eraser';
+}
+
+export interface DrawingPath {
+  points: { x: number; y: number }[];
+  color: string;
+  width: number;
+  tool: 'pen' | 'highlighter' | 'eraser';
+}
+
+export interface ElementOverlay {
+  svgContent: string;
+  label: string;
+  category: string;
+}
+
+export interface TTSOverlay {
+  text: string;
+  voice: string;
+  rate: number;
+  pitch: number;
+  volume: number;
+  audioBlob?: Blob;
+}
+
+export interface RecordOverlay {
+  streamId: string;
+  deviceLabel: string;
+  audioEnabled: boolean;
 }
 
 export interface TextOverlay {
@@ -109,6 +144,10 @@ export interface Clip {
   textOverlay?: TextOverlay;
   sticker?: string;
   vfxOverlay?: VFXOverlay;
+  drawingOverlay?: DrawingOverlay;
+  elementOverlay?: ElementOverlay;
+  ttsOverlay?: TTSOverlay;
+  recordOverlay?: RecordOverlay;
   thumbnailFrame?: string;
   filters?: ClipFilters;
   transition?: ClipTransition;

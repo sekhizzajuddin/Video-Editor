@@ -604,7 +604,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       get().pushHistory();
       const existing = get().project.tracks.filter((t) => t.type === type);
       const num = existing.length + 1;
-      const nameMap: Record<string, string> = { video: 'Video', audio: 'Audio', text: 'Text', sticker: 'Sticker', vfx: 'VFX' };
+      const nameMap: Record<string, string> = { video: 'Video', audio: 'Audio', text: 'Text', sticker: 'Sticker', vfx: 'VFX', drawing: 'Drawing', element: 'Element', tts: 'TTS', record: 'Record' };
       const newTrack: Track = { id: `track_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, type, name: `${nameMap[type] || type} ${num}`, locked: false, visible: true, clips: [] };
       set((st) => ({ project: { ...st.project, tracks: [...st.project.tracks, newTrack] }, isDirty: true }));
     },

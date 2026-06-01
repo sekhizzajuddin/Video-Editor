@@ -357,6 +357,209 @@ function AudioPanel() {
   );
 }
 
+function DrawingPanel() {
+  const { addClip, updateClip, currentTime } = useEditorStore();
+  const [color, setColor] = useState('#ffffff');
+  const [strokeWidth, setStrokeWidth] = useState(4);
+  const [tool, setTool] = useState<'pen' | 'highlighter' | 'eraser'>('pen');
+
+  const handleAddDrawing = () => {
+    const clip = addClip('drawing');
+    if (clip) {
+      updateClip(clip.id, {
+        startAt: currentTime,
+        duration: 5,
+        drawingOverlay: {
+          paths: [],
+          strokeWidth,
+          strokeColor: color,
+          tool,
+        },
+      });
+    }
+  };
+
+  const colors = ['#ffffff', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'];
+
+  return (
+    <div className="panel-content drawing-panel">
+      <div className="drawing-tools">
+        <button className={`drawing-tool-btn ${tool === 'pen' ? 'active' : ''}`} onClick={() => setTool('pen')}>Pen</button>
+        <button className={`drawing-tool-btn ${tool === 'highlighter' ? 'active' : ''}`} onClick={() => setTool('highlighter')}>Highlight</button>
+        <button className={`drawing-tool-btn ${tool === 'eraser' ? 'active' : ''}`} onClick={() => setTool('eraser')}>Eraser</button>
+      </div>
+      <div className="drawing-colors">
+        {colors.map(c => (
+          <button key={c} className={`drawing-color-btn ${color === c ? 'active' : ''}`} style={{ background: c }} onClick={() => setColor(c)} />
+        ))}
+        <input type="color" value={color} onChange={e => setColor(e.target.value)} className="drawing-color-picker" />
+      </div>
+      <div className="drawing-size">
+        <label>Size: {strokeWidth}px</label>
+        <input type="range" min="1" max="20" value={strokeWidth} onChange={e => setStrokeWidth(Number(e.target.value))} />
+      </div>
+      <button className="drawing-add-btn" onClick={handleAddDrawing}>+ Add Drawing Layer</button>
+      <p className="panel-hint">Click to add a drawing layer, then draw on the canvas</p>
+    </div>
+  );
+}
+
+function ElementsPanel() {
+  const { addClip, updateClip, currentTime } = useEditorStore();
+
+  const ELEMENTS = [
+    { label: 'Circle', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="white" stroke-width="4"/></svg>' },
+    { label: 'Square', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><rect x="5" y="5" width="90" height="90" fill="none" stroke="white" stroke-width="4"/></svg>' },
+    { label: 'Triangle', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><polygon points="50,5 95,95 5,95" fill="none" stroke="white" stroke-width="4"/></svg>' },
+    { label: 'Star', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><polygon points="50,5 61,40 98,40 68,62 79,95 50,73 21,95 32,62 2,40 39,40" fill="none" stroke="white" stroke-width="3"/></svg>' },
+    { label: 'Heart', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><path d="M50 88 C25 65 5 50 5 30 C5 15 20 5 35 5 C42 5 48 10 50 15 C52 10 58 5 65 5 C80 5 95 15 95 30 C95 50 75 65 50 88Z" fill="none" stroke="white" stroke-width="3"/></svg>' },
+    { label: 'Arrow Right', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><path d="M10 50 H80 M60 30 L80 50 L60 70" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    { label: 'Checkmark', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><polyline points="15,55 40,80 85,20" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    { label: 'Cross', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><line x1="20" y1="20" x2="80" y2="80" stroke="white" stroke-width="6" stroke-linecap="round"/><line x1="80" y1="20" x2="20" y2="80" stroke="white" stroke-width="6" stroke-linecap="round"/></svg>' },
+    { label: 'Play', category: 'Media', svg: '<svg viewBox="0 0 100 100"><polygon points="30,10 85,50 30,90" fill="white"/></svg>' },
+    { label: 'Pause', category: 'Media', svg: '<svg viewBox="0 0 100 100"><rect x="20" y="10" width="20" height="80" fill="white"/><rect x="60" y="10" width="20" height="80" fill="white"/></svg>' },
+    { label: 'Speaker', category: 'Media', svg: '<svg viewBox="0 0 100 100"><polygon points="10,40 30,40 55,15 55,85 30,60 10,60" fill="white"/><path d="M65 35 Q80 50 65 65" fill="none" stroke="white" stroke-width="3"/><path d="M72 25 Q95 50 72 75" fill="none" stroke="white" stroke-width="3"/></svg>' },
+  ];
+
+  const categories = [...new Set(ELEMENTS.map(e => e.category))];
+
+  const handleAddElement = (el: typeof ELEMENTS[number]) => {
+    const clip = addClip('element');
+    if (clip) {
+      updateClip(clip.id, {
+        startAt: currentTime,
+        duration: 5,
+        elementOverlay: { svgContent: el.svg, label: el.label, category: el.category },
+      });
+    }
+  };
+
+  return (
+    <div className="panel-content elements-panel">
+      {categories.map(cat => (
+        <div key={cat} className="elements-category">
+          <div className="elements-category-label">{cat}</div>
+          <div className="elements-grid">
+            {ELEMENTS.filter(e => e.category === cat).map((el, i) => (
+              <div key={i} className="element-card" onClick={() => handleAddElement(el)}>
+                <div className="element-preview" dangerouslySetInnerHTML={{ __html: el.svg }} />
+                <span className="element-label">{el.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TTSPanel() {
+  const { addClip, updateClip, currentTime } = useEditorStore();
+  const [text, setText] = useState('');
+  const [voice, setVoice] = useState('');
+  const [rate, setRate] = useState(1);
+  const [pitch, setPitch] = useState(1);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useState(() => {
+    const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  });
+
+  const handleAddTTS = () => {
+    if (!text.trim()) return;
+    const clip = addClip('tts');
+    if (clip) {
+      updateClip(clip.id, {
+        startAt: currentTime,
+        duration: Math.max(2, text.length * 0.08),
+        ttsOverlay: { text, voice, rate, pitch, volume: 1 },
+      });
+    }
+  };
+
+  const handlePreview = () => {
+    if (!text.trim()) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    const v = voices.find(v => v.name === voice);
+    if (v) utter.voice = v;
+    utter.rate = rate;
+    utter.pitch = pitch;
+    window.speechSynthesis.speak(utter);
+  };
+
+  const enVoices = voices.filter(v => v.lang.startsWith('en'));
+
+  return (
+    <div className="panel-content tts-panel">
+      <textarea className="tts-input" placeholder="Enter text to speak..." value={text} onChange={e => setText(e.target.value)} rows={4} />
+      <select className="tts-voice-select" value={voice} onChange={e => setVoice(e.target.value)}>
+        <option value="">Default Voice</option>
+        {enVoices.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+      </select>
+      <div className="tts-slider">
+        <label>Speed: {rate.toFixed(1)}x</label>
+        <input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={e => setRate(Number(e.target.value))} />
+      </div>
+      <div className="tts-slider">
+        <label>Pitch: {pitch.toFixed(1)}</label>
+        <input type="range" min="0.5" max="2" step="0.1" value={pitch} onChange={e => setPitch(Number(e.target.value))} />
+      </div>
+      <div className="tts-buttons">
+        <button className="tts-preview-btn" onClick={handlePreview} disabled={!text.trim()}>Preview</button>
+        <button className="tts-add-btn" onClick={handleAddTTS} disabled={!text.trim()}>+ Add to Timeline</button>
+      </div>
+    </div>
+  );
+}
+
+function RecordPanel() {
+  const { addClip, updateClip, currentTime } = useEditorStore();
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState('');
+  const [audioEnabled, setAudioEnabled] = useState(true);
+
+  useState(() => {
+    navigator.mediaDevices.enumerateDevices().then(d => {
+      const videos = d.filter(i => i.kind === 'videoinput');
+      setDevices(videos);
+      if (videos.length) setSelectedDevice(videos[0].deviceId);
+    });
+  });
+
+  const handleAddRecord = () => {
+    if (!selectedDevice) return;
+    const device = devices.find(d => d.deviceId === selectedDevice);
+    const clip = addClip('record');
+    if (clip) {
+      updateClip(clip.id, {
+        startAt: currentTime,
+        duration: 10,
+        recordOverlay: { streamId: selectedDevice, deviceLabel: device?.label || 'Camera', audioEnabled },
+      });
+    }
+  };
+
+  return (
+    <div className="panel-content record-panel">
+      <div className="record-camera-select">
+        <label>Camera</label>
+        <select value={selectedDevice} onChange={e => setSelectedDevice(e.target.value)}>
+          {devices.length === 0 && <option value="">No cameras found</option>}
+          {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 4)}`}</option>)}
+        </select>
+      </div>
+      <label className="record-audio-toggle">
+        <input type="checkbox" checked={audioEnabled} onChange={e => setAudioEnabled(e.target.checked)} />
+        Enable Microphone
+      </label>
+      <button className="record-add-btn" onClick={handleAddRecord} disabled={!selectedDevice}>+ Add Recording Layer</button>
+      <p className="panel-hint">Adds a camera capture layer to the timeline</p>
+    </div>
+  );
+}
+
 const PANEL_MAP: Record<string, () => JSX.Element> = {
   media: MediaPanel,
   text: TextPanel,
@@ -364,6 +567,10 @@ const PANEL_MAP: Record<string, () => JSX.Element> = {
   effects: EffectsPanel,
   vfx: VFXPanel,
   audio: AudioPanel,
+  drawing: DrawingPanel,
+  elements: ElementsPanel,
+  tts: TTSPanel,
+  record: RecordPanel,
   ai: AudioTools,
 };
 
@@ -374,6 +581,10 @@ const TITLE_MAP: Record<string, string> = {
   effects: 'Effects',
   vfx: 'VFX',
   audio: 'Audio',
+  drawing: 'Drawing',
+  elements: 'Elements',
+  tts: 'Text to Speech',
+  record: 'Record',
   ai: 'AI Tools',
 };
 

@@ -1,4 +1,4 @@
-import { Clip, Track, TransitionType } from '../types';
+import { Clip, Track, TransitionType, DrawingOverlay, ElementOverlay } from '../types';
 import { renderVideoFrame, renderImageFrame, renderTextOverlay, applyFilter, applyChromaKey, applyVignette } from '../utils/codec';
 import { interpolateKeyframes } from '../utils/keyframeUtils';
 import WebGLFilterPipeline from './GPUFilterPipeline';
@@ -298,6 +298,14 @@ export class RenderEngine {
 
     if (clip.trackType === 'vfx' && clip.vfxOverlay) {
       this.renderVFXOverlay(layerCtx as CanvasRenderingContext2D, w, h, clip.vfxOverlay, localTime);
+    }
+
+    if (clip.trackType === 'drawing' && clip.drawingOverlay) {
+      this.renderDrawingOverlay(layerCtx as CanvasRenderingContext2D, w, h, clip.drawingOverlay);
+    }
+
+    if (clip.trackType === 'element' && clip.elementOverlay) {
+      this.renderElementOverlay(layerCtx as CanvasRenderingContext2D, w, h, clip.elementOverlay);
     }
 
     if (clip.trackType === 'audio' && !mediaUrl) return;
@@ -753,6 +761,48 @@ export class RenderEngine {
     }
 
     ctx.restore();
+  }
+
+  private renderDrawingOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, overlay: DrawingOverlay) {
+    if (!overlay.paths || overlay.paths.length === 0) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const scale = w / 1920;
+    for (const path of overlay.paths) {
+      if (path.points.length < 2) continue;
+      ctx.beginPath();
+      ctx.strokeStyle = path.tool === 'eraser' ? 'rgba(0,0,0,1)' : path.color;
+      ctx.lineWidth = path.width * scale;
+      ctx.globalAlpha = path.tool === 'highlighter' ? 0.4 : 1;
+      ctx.globalCompositeOperation = path.tool === 'eraser' ? 'destination-out' : 'source-over';
+      ctx.moveTo(path.points[0].x * w, path.points[0].y * h);
+      for (let i = 1; i < path.points.length; i++) {
+        ctx.lineTo(path.points[i].x * w, path.points[i].y * h);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private renderElementOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, overlay: ElementOverlay) {
+    if (!overlay.svgContent) return;
+    const svgBlob = new Blob([overlay.svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.src = url;
+    const size = Math.min(w, h) * 0.3;
+    const x = (w - size) / 2;
+    const y = (h - size) / 2;
+    if (img.complete) {
+      ctx.drawImage(img, x, y, size, size);
+      URL.revokeObjectURL(url);
+    } else {
+      img.onload = () => {
+        ctx.drawImage(img, x, y, size, size);
+        URL.revokeObjectURL(url);
+      };
+    }
   }
 
   destroy() {
