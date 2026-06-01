@@ -878,6 +878,10 @@ export default function Timeline() {
           <button className="tl-btn" onClick={() => addTrack('audio')} title="Add Audio track">{Ico.plus} A</button>
           <button className="tl-btn" onClick={() => addTrack('text')} title="Add Text track">{Ico.plus} T</button>
           <button className="tl-btn" onClick={() => addTrack('vfx')} title="Add VFX track">{Ico.plus} VFX</button>
+          <button className="tl-btn" onClick={() => addTrack('drawing')} title="Add Drawing track">{Ico.plus} D</button>
+          <button className="tl-btn" onClick={() => addTrack('element')} title="Add Element track">{Ico.plus} El</button>
+          <button className="tl-btn" onClick={() => addTrack('tts')} title="Add TTS track">{Ico.plus} TTS</button>
+          <button className="tl-btn" onClick={() => addTrack('record')} title="Add Recording track">{Ico.plus} Rec</button>
         </div>
         <div className="timeline-toolbar-center">
           <span className="tl-hint">SPACE play · S split · DEL remove · M marker · Ctrl+Scroll zoom · Shift+Scroll pan</span>

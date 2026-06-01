@@ -87,16 +87,16 @@ export default React.memo(function PreviewCanvas() {
       if (containerRef.current) {
         const rect = containerRef.current.parentElement?.getBoundingClientRect();
         if (rect) {
-          const maxW = rect.width - 32;
-          const maxH = rect.height - 80;
-          const canvasW = Math.min(640, maxW);
+          const padding = 32;
+          const controlBarH = 80;
+          const maxW = rect.width - padding;
+          const maxH = rect.height - controlBarH;
+          let canvasW = Math.round(Math.min(maxW, (maxH * aspectRatio.w) / aspectRatio.h));
           const canvasH = Math.round((canvasW * aspectRatio.h) / aspectRatio.w);
           if (canvasH > maxH) {
-            const adjustedW = Math.round((maxH * aspectRatio.w) / aspectRatio.h);
-            setContainerWidth(adjustedW);
-          } else {
-            setContainerWidth(canvasW);
+            canvasW = Math.round((maxH * aspectRatio.w) / aspectRatio.h);
           }
+          setContainerWidth(canvasW);
         }
       }
     };
