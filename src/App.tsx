@@ -193,19 +193,6 @@ export default function App() {
     
     // Ctrl+Shift+N: New project
     if (e.key === 'n' && meta && e.shiftKey) { e.preventDefault(); newProject(); return; }
-    
-    // Ctrl+D: Duplicate selected
-    if (meta && e.key === 'd') {
-      e.preventDefault();
-      store.selectedClipIds.forEach(id => {
-        const clip = store.getClip(id);
-        if (clip) {
-          const nc = store.addClip(clip.trackType, clip.mediaId, clip.sticker);
-          if (nc) store.updateClip(nc.id, { ...clip, id: nc.id, startAt: clip.startAt + clip.duration });
-        }
-      });
-      return;
-    }
   }, [cropToMarkers, newProject, togglePlayback]);
 
   useEffect(() => { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); }, [handleKeyDown]);

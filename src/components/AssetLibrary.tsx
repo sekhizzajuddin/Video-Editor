@@ -597,7 +597,7 @@ function RecordPanel() {
     setRecording(true);
     try {
       let mediaId = '';
-      let duration = 10;
+      let recordDuration = 0;
       let label = '';
 
       if (mode === 'audio') {
@@ -608,32 +608,35 @@ function RecordPanel() {
         source.connect(dest);
         const recorder = new MediaRecorder(dest.stream);
         const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         recorder.start();
         await new Promise(r => setTimeout(r, 3000));
-        recorder.stop();
+        await new Promise<void>(r => { recorder.onstop = () => r(); recorder.stop(); });
+        audioCtx.close();
         const blob = new Blob(chunks, { type: 'audio/webm' });
         mediaId = uuid();
-        const mf: MediaFile = { id: mediaId, name: 'Audio Recording', type: 'audio', mimeType: 'audio/webm', blob, duration: 3 };
+        recordDuration = 3;
+        const mf: MediaFile = { id: mediaId, name: 'Audio Recording', type: 'audio', mimeType: 'audio/webm', blob, duration: recordDuration };
         addMedia(mf);
         label = 'Audio Recording';
         stream.getTracks().forEach(t => t.stop());
       } else if (mode === 'screen') {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: audioEnabled });
         const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
         const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         recorder.start();
         await new Promise(r => setTimeout(r, 3000));
-        recorder.stop();
+        await new Promise<void>(r => { recorder.onstop = () => r(); recorder.stop(); });
         const blob = new Blob(chunks, { type: 'video/webm' });
         mediaId = uuid();
-        const mf: MediaFile = { id: mediaId, name: 'Screen Recording', type: 'video', mimeType: 'video/webm', blob, duration: 3 };
+        recordDuration = 3;
+        const mf: MediaFile = { id: mediaId, name: 'Screen Recording', type: 'video', mimeType: 'video/webm', blob, duration: recordDuration };
         addMedia(mf);
         label = 'Screen Recording';
         stream.getTracks().forEach(t => t.stop());
       } else if (mode === 'screen-camera') {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: audioEnabled });
         const cameraStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: selectedDevice ? { exact: selectedDevice } : undefined } });
         const combinedStream = new MediaStream([
           ...screenStream.getVideoTracks(),
@@ -642,13 +645,14 @@ function RecordPanel() {
         ]);
         const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
         const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         recorder.start();
         await new Promise(r => setTimeout(r, 4000));
-        recorder.stop();
+        await new Promise<void>(r => { recorder.onstop = () => r(); recorder.stop(); });
         const blob = new Blob(chunks, { type: 'video/webm' });
         mediaId = uuid();
-        const mf: MediaFile = { id: mediaId, name: 'Screen + Camera', type: 'video', mimeType: 'video/webm', blob, duration: 4 };
+        recordDuration = 4;
+        const mf: MediaFile = { id: mediaId, name: 'Screen + Camera', type: 'video', mimeType: 'video/webm', blob, duration: recordDuration };
         addMedia(mf);
         label = 'Screen + Camera';
         screenStream.getTracks().forEach(t => t.stop());
@@ -661,13 +665,14 @@ function RecordPanel() {
         });
         const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
         const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         recorder.start();
         await new Promise(r => setTimeout(r, 3000));
-        recorder.stop();
+        await new Promise<void>(r => { recorder.onstop = () => r(); recorder.stop(); });
         const blob = new Blob(chunks, { type: 'video/webm' });
         mediaId = uuid();
-        const mf: MediaFile = { id: mediaId, name: device?.label || 'Camera Recording', type: 'video', mimeType: 'video/webm', blob, duration: 3 };
+        recordDuration = 3;
+        const mf: MediaFile = { id: mediaId, name: device?.label || 'Camera Recording', type: 'video', mimeType: 'video/webm', blob, duration: recordDuration };
         addMedia(mf);
         label = device?.label || 'Camera Recording';
         stream.getTracks().forEach(t => t.stop());
@@ -677,7 +682,7 @@ function RecordPanel() {
       if (clip) {
         updateClip(clip.id, {
           startAt: currentTime,
-          duration,
+          duration: recordDuration,
           recordOverlay: { streamId: mediaId, deviceLabel: label, audioEnabled },
         });
       }

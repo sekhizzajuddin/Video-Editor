@@ -79,12 +79,12 @@ function CollapsibleSection({ title, defaultOpen = true, children }: { title: st
   );
 }
 
-function AudioInspector({ clip, update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+function AudioInspector({ clip, update, getClipName }: { clip: Clip; update: (p: Partial<Clip>) => void; getClipName: (c: Clip) => string }) {
   return (
     <div className="inspector-scroll">
       <div className="inspector-clip-header">
         <div className="inspector-clip-type">Selected · Audio</div>
-        <div className="inspector-clip-name">{clip.mediaId?.split('_')[0] || 'Audio Clip'}</div>
+        <div className="inspector-clip-name">{getClipName(clip)}</div>
       </div>
 
       <CollapsibleSection title="Timing">
@@ -172,9 +172,10 @@ interface VideoInspectorProps {
   currentTime: number;
   addKeyframe: (clipId: string, property: string, time: number, value: number) => void;
   removeKeyframe: (clipId: string, kfId: string) => void;
+  getClipName: (c: Clip) => string;
 }
 
-function VideoInspector({ clip, update, currentTime, addKeyframe, removeKeyframe }: VideoInspectorProps) {
+function VideoInspector({ clip, update, currentTime, addKeyframe, removeKeyframe, getClipName }: VideoInspectorProps) {
   const tr = clip.transform;
   const localTime = currentTime - clip.startAt;
 
@@ -220,7 +221,7 @@ function VideoInspector({ clip, update, currentTime, addKeyframe, removeKeyframe
     <div className="inspector-scroll">
       <div className="inspector-clip-header">
         <div className="inspector-clip-type">Selected · Video</div>
-        <div className="inspector-clip-name">{clip.mediaId?.split('_')[0] || 'Video Clip'}</div>
+        <div className="inspector-clip-name">{getClipName(clip)}</div>
       </div>
 
       <CollapsibleSection title="Timing">
@@ -741,10 +742,112 @@ function StickerInspector({ clip, update, currentTime, addKeyframe, removeKeyfra
   );
 }
 
+function DrawingInspector({ clip, update: _update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+  return (
+    <div className="inspector-scroll">
+      <div className="inspector-clip-header">
+        <div className="inspector-clip-type">Selected · Drawing</div>
+      </div>
+      <CollapsibleSection title="Timing">
+        <div className="inspector-timing-grid">
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Start</span>
+            <span className="inspector-timing-value">{clip.startAt.toFixed(2)}s</span>
+          </div>
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Duration</span>
+            <span className="inspector-timing-value">{clip.duration.toFixed(2)}s</span>
+          </div>
+        </div>
+      </CollapsibleSection>
+      <p className="panel-hint" style={{ padding: '0 12px 12px' }}>Drawing clip — adjust position and opacity in the canvas</p>
+    </div>
+  );
+}
+
+function ElementInspector({ clip, update: _update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+  return (
+    <div className="inspector-scroll">
+      <div className="inspector-clip-header">
+        <div className="inspector-clip-type">Selected · Element</div>
+        {clip.elementOverlay && <div className="inspector-clip-name">{clip.elementOverlay.label}</div>}
+      </div>
+      <CollapsibleSection title="Timing">
+        <div className="inspector-timing-grid">
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Start</span>
+            <span className="inspector-timing-value">{clip.startAt.toFixed(2)}s</span>
+          </div>
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Duration</span>
+            <span className="inspector-timing-value">{clip.duration.toFixed(2)}s</span>
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function TextToSpeechInspector({ clip, update: _update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+  return (
+    <div className="inspector-scroll">
+      <div className="inspector-clip-header">
+        <div className="inspector-clip-type">Selected · TTS</div>
+        {clip.ttsOverlay && (
+          <div className="inspector-clip-name">{clip.ttsOverlay.text.slice(0, 40)}</div>
+        )}
+      </div>
+      <CollapsibleSection title="Timing">
+        <div className="inspector-timing-grid">
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Start</span>
+            <span className="inspector-timing-value">{clip.startAt.toFixed(2)}s</span>
+          </div>
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Duration</span>
+            <span className="inspector-timing-value">{clip.duration.toFixed(2)}s</span>
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function RecordInspector({ clip, update: _update }: { clip: Clip; update: (p: Partial<Clip>) => void }) {
+  return (
+    <div className="inspector-scroll">
+      <div className="inspector-clip-header">
+        <div className="inspector-clip-type">Selected · Recording</div>
+        {clip.recordOverlay && <div className="inspector-clip-name">{clip.recordOverlay.deviceLabel}</div>}
+      </div>
+      <CollapsibleSection title="Timing">
+        <div className="inspector-timing-grid">
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Start</span>
+            <span className="inspector-timing-value">{clip.startAt.toFixed(2)}s</span>
+          </div>
+          <div className="inspector-timing-item">
+            <span className="inspector-timing-label">Duration</span>
+            <span className="inspector-timing-value">{clip.duration.toFixed(2)}s</span>
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
 export default React.memo(function InspectorPanel() {
-  const { activeClipId, getClip, updateClip, pushHistory, addKeyframe, removeKeyframe, currentTime } = useEditorStore();
+  const { activeClipId, getClip, updateClip, pushHistory, addKeyframe, removeKeyframe, currentTime, project } = useEditorStore();
   const clip = activeClipId ? getClip(activeClipId) : null;
   const update = (patch: Partial<Clip>) => { if (clip) { pushHistory(); updateClip(clip.id, patch); } };
+
+  const getClipName = (c: Clip): string => {
+    if (c.mediaId) {
+      const mf = project.media.find(m => m.id === c.mediaId);
+      if (mf) return mf.name.replace(/\.[^.]+$/, '');
+    }
+    return c.trackType.charAt(0).toUpperCase() + c.trackType.slice(1);
+  };
 
   if (!clip) {
     return (
@@ -774,11 +877,15 @@ export default React.memo(function InspectorPanel() {
 
   return (
     <aside className="inspector-panel">
-      {clip.trackType === 'audio' && <AudioInspector clip={clip} update={update} />}
-      {clip.trackType === 'video' && <VideoInspector clip={clip} update={update} currentTime={currentTime} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />}
+      {clip.trackType === 'audio' && <AudioInspector clip={clip} update={update} getClipName={getClipName} />}
+      {clip.trackType === 'video' && <VideoInspector clip={clip} update={update} currentTime={currentTime} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} getClipName={getClipName} />}
       {clip.trackType === 'text' && <TextInspector clip={clip} update={update} currentTime={currentTime} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />}
       {clip.trackType === 'sticker' && <StickerInspector clip={clip} update={update} currentTime={currentTime} addKeyframe={addKeyframe} removeKeyframe={removeKeyframe} />}
       {clip.trackType === 'vfx' && <VFXInspector clip={clip} />}
+      {clip.trackType === 'drawing' && <DrawingInspector clip={clip} update={update} />}
+      {clip.trackType === 'element' && <ElementInspector clip={clip} update={update} />}
+      {clip.trackType === 'tts' && <TextToSpeechInspector clip={clip} update={update} />}
+      {clip.trackType === 'record' && <RecordInspector clip={clip} update={update} />}
     </aside>
   );
 }

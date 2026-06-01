@@ -674,12 +674,13 @@ export const useEditorStore = create<EditorState>((set, get) => {
     sendToBack: (id) => {
       get().pushHistory();
       set((st) => {
+        const minZ = Math.min(...st.project.tracks.flatMap(t => t.clips).map(c => c.zIndex ?? 0), 0);
         return {
           project: {
             ...st.project,
             tracks: st.project.tracks.map(t => ({
               ...t,
-              clips: t.clips.map(c => c.id === id ? { ...c, zIndex: 0 } : c),
+              clips: t.clips.map(c => c.id === id ? { ...c, zIndex: minZ - 1 } : c),
             })),
           },
           isDirty: true,
