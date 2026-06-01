@@ -93,13 +93,17 @@ export default function App() {
     // Ctrl+A: Select all clips
     if (meta && e.key === 'a') { 
       e.preventDefault();
-      const allClipIds: string[] = [];
-      store.project.tracks.forEach(t => t.clips.forEach(c => allClipIds.push(c.id)));
-      store.setSelectedClipIds(allClipIds);
-      if (allClipIds.length > 0) store.setActiveClipId(allClipIds[0]);
+      store.selectAllClips();
       return; 
     }
     
+    // Ctrl+D: Duplicate selected clips
+    if (meta && e.key === 'd') {
+      e.preventDefault();
+      const ids = store.selectedClipIds.length > 0 ? store.selectedClipIds : (store.activeClipId ? [store.activeClipId] : []);
+      if (ids.length > 0) store.duplicateClips(ids);
+      return;
+    }
 
     // Ctrl+Z/Y: Undo/Redo
     if (meta && e.key === 'z') { e.preventDefault(); e.shiftKey ? store.redo() : store.undo(); return; }

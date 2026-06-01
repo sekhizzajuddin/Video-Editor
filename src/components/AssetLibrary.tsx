@@ -3,6 +3,8 @@ import { useEditorStore } from '../store/editorStore';
 import { getMediaDuration } from '../utils/fileUtils';
 import { generateWaveformData, generateThumbnail, generateFilmstrip, registerMediaUrl } from '../engine/useMediaManager';
 import AudioTools from './AudioTools';
+import CanvasPanel from './CanvasPanel';
+import { generateTTSAudio } from '../utils/tts';
 import type { MediaFile } from '../types';
 import { v4 as uuid } from 'uuid';
 
@@ -411,17 +413,35 @@ function ElementsPanel() {
     { label: 'Circle', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="white" stroke-width="4"/></svg>' },
     { label: 'Square', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><rect x="5" y="5" width="90" height="90" fill="none" stroke="white" stroke-width="4"/></svg>' },
     { label: 'Triangle', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><polygon points="50,5 95,95 5,95" fill="none" stroke="white" stroke-width="4"/></svg>' },
+    { label: 'Diamond', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><polygon points="50,5 95,50 50,95 5,50" fill="none" stroke="white" stroke-width="4"/></svg>' },
+    { label: 'Pentagon', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><polygon points="50,5 95,35 80,90 20,90 5,35" fill="none" stroke="white" stroke-width="3"/></svg>' },
+    { label: 'Hexagon', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><polygon points="50,5 90,25 90,75 50,95 10,75 10,25" fill="none" stroke="white" stroke-width="3"/></svg>' },
     { label: 'Star', category: 'Shapes', svg: '<svg viewBox="0 0 100 100"><polygon points="50,5 61,40 98,40 68,62 79,95 50,73 21,95 32,62 2,40 39,40" fill="none" stroke="white" stroke-width="3"/></svg>' },
     { label: 'Heart', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><path d="M50 88 C25 65 5 50 5 30 C5 15 20 5 35 5 C42 5 48 10 50 15 C52 10 58 5 65 5 C80 5 95 15 95 30 C95 50 75 65 50 88Z" fill="none" stroke="white" stroke-width="3"/></svg>' },
     { label: 'Arrow Right', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><path d="M10 50 H80 M60 30 L80 50 L60 70" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    { label: 'Arrow Left', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><path d="M90 50 H20 M40 30 L20 50 L40 70" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    { label: 'Arrow Up', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><path d="M50 90 V10 M30 30 L50 10 L70 30" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    { label: 'Arrow Down', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><path d="M50 10 V90 M30 70 L50 90 L70 70" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
     { label: 'Checkmark', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><polyline points="15,55 40,80 85,20" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
     { label: 'Cross', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><line x1="20" y1="20" x2="80" y2="80" stroke="white" stroke-width="6" stroke-linecap="round"/><line x1="80" y1="20" x2="20" y2="80" stroke="white" stroke-width="6" stroke-linecap="round"/></svg>' },
+    { label: 'Plus', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><line x1="20" y1="50" x2="80" y2="50" stroke="white" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="20" x2="50" y2="80" stroke="white" stroke-width="6" stroke-linecap="round"/></svg>' },
+    { label: 'Minus', category: 'Symbols', svg: '<svg viewBox="0 0 100 100"><line x1="20" y1="50" x2="80" y2="50" stroke="white" stroke-width="6" stroke-linecap="round"/></svg>' },
     { label: 'Play', category: 'Media', svg: '<svg viewBox="0 0 100 100"><polygon points="30,10 85,50 30,90" fill="white"/></svg>' },
     { label: 'Pause', category: 'Media', svg: '<svg viewBox="0 0 100 100"><rect x="20" y="10" width="20" height="80" fill="white"/><rect x="60" y="10" width="20" height="80" fill="white"/></svg>' },
     { label: 'Speaker', category: 'Media', svg: '<svg viewBox="0 0 100 100"><polygon points="10,40 30,40 55,15 55,85 30,60 10,60" fill="white"/><path d="M65 35 Q80 50 65 65" fill="none" stroke="white" stroke-width="3"/><path d="M72 25 Q95 50 72 75" fill="none" stroke="white" stroke-width="3"/></svg>' },
+    { label: 'Mic', category: 'Media', svg: '<svg viewBox="0 0 100 100"><path d="M50 10a10 10 0 0 0-10 10v20a10 10 0 0 0 20 0V20a10 10 0 0 0-10-10z" fill="white"/><path d="M25 45s0 25 25 25 25-25 25-25" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/><line x1="50" y1="70" x2="50" y2="90" stroke="white" stroke-width="4" stroke-linecap="round"/></svg>' },
+    { label: 'Camera', category: 'Media', svg: '<svg viewBox="0 0 100 100"><path d="M5 25h25l10-15h20l10 15h25v55H5z" fill="none" stroke="white" stroke-width="4"/><circle cx="50" cy="47" r="18" fill="none" stroke="white" stroke-width="4"/><circle cx="50" cy="47" r="8" fill="white"/></svg>' },
+  ];
+
+  const EMOJI_STICKERS = [
+    { label: 'Fire', emoji: '🔥' }, { label: 'Heart Eyes', emoji: '😍' }, { label: 'Star Eyes', emoji: '🤩' },
+    { label: 'Clap', emoji: '👏' }, { label: '100', emoji: '💯' }, { label: 'Party', emoji: '🎉' },
+    { label: 'Rocket', emoji: '🚀' }, { label: 'Lightning', emoji: '⚡' }, { label: 'Crown', emoji: '👑' },
+    { label: 'Skull', emoji: '💀' }, { label: 'Eyes', emoji: '👀' }, { label: 'Ghost', emoji: '👻' },
   ];
 
   const categories = [...new Set(ELEMENTS.map(e => e.category))];
+  const EMOJI_CATEGORY = 'Stickers';
 
   const handleAddElement = (el: typeof ELEMENTS[number]) => {
     const clip = addClip('element');
@@ -430,6 +450,18 @@ function ElementsPanel() {
         startAt: currentTime,
         duration: 5,
         elementOverlay: { svgContent: el.svg, label: el.label, category: el.category },
+      });
+    }
+  };
+
+  const handleAddEmoji = (emoji: string, label: string) => {
+    const clip = addClip('element');
+    if (clip) {
+      updateClip(clip.id, {
+        startAt: currentTime,
+        duration: 5,
+        elementOverlay: { svgContent: '', label, category: EMOJI_CATEGORY },
+        sticker: emoji,
       });
     }
   };
@@ -449,17 +481,29 @@ function ElementsPanel() {
           </div>
         </div>
       ))}
+      <div className="elements-category">
+        <div className="elements-category-label">{EMOJI_CATEGORY}</div>
+        <div className="elements-grid elements-emoji-grid">
+          {EMOJI_STICKERS.map((s, i) => (
+            <div key={i} className="element-card emoji-card" onClick={() => handleAddEmoji(s.emoji, s.label)}>
+              <div className="element-emoji-preview">{s.emoji}</div>
+              <span className="element-label">{s.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
 function TTSPanel() {
-  const { addClip, updateClip, currentTime } = useEditorStore();
+  const { addClip, updateClip, currentTime, addMedia } = useEditorStore();
   const [text, setText] = useState('');
   const [voice, setVoice] = useState('');
   const [rate, setRate] = useState(1);
   const [pitch, setPitch] = useState(1);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [generating, setGenerating] = useState(false);
 
   useState(() => {
     const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
@@ -467,16 +511,27 @@ function TTSPanel() {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   });
 
-  const handleAddTTS = () => {
+  const handleAddTTS = async () => {
     if (!text.trim()) return;
-    const clip = addClip('tts');
-    if (clip) {
-      updateClip(clip.id, {
-        startAt: currentTime,
-        duration: Math.max(2, text.length * 0.08),
-        ttsOverlay: { text, voice, rate, pitch, volume: 1 },
-      });
-    }
+    setGenerating(true);
+    try {
+      const blob = await generateTTSAudio(text, voice, rate, pitch);
+      const mediaId = uuid();
+      const mf: MediaFile = {
+        id: mediaId, name: 'TTS_' + text.slice(0, 20), type: 'audio',
+        mimeType: 'audio/wav', blob, duration: text.length * 0.08,
+      };
+      addMedia(mf);
+      const clip = addClip('tts', mediaId);
+      if (clip) {
+        updateClip(clip.id, {
+          startAt: currentTime,
+          duration: mf.duration || Math.max(2, text.length * 0.08),
+          ttsOverlay: { text, voice, rate, pitch, volume: 1, audioBlob: blob },
+        });
+      }
+    } catch {}
+    setGenerating(false);
   };
 
   const handlePreview = () => {
@@ -496,7 +551,7 @@ function TTSPanel() {
       <textarea className="tts-input" placeholder="Enter text to speak..." value={text} onChange={e => setText(e.target.value)} rows={4} />
       <select className="tts-voice-select" value={voice} onChange={e => setVoice(e.target.value)}>
         <option value="">Default Voice</option>
-        {enVoices.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+        {enVoices.map(v => <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>)}
       </select>
       <div className="tts-slider">
         <label>Speed: {rate.toFixed(1)}x</label>
@@ -508,60 +563,173 @@ function TTSPanel() {
       </div>
       <div className="tts-buttons">
         <button className="tts-preview-btn" onClick={handlePreview} disabled={!text.trim()}>Preview</button>
-        <button className="tts-add-btn" onClick={handleAddTTS} disabled={!text.trim()}>+ Add to Timeline</button>
+        <button className="tts-add-btn" onClick={handleAddTTS} disabled={!text.trim() || generating}>
+          {generating ? 'Generating...' : '+ Add to Timeline'}
+        </button>
       </div>
     </div>
   );
 }
 
 function RecordPanel() {
-  const { addClip, updateClip, currentTime } = useEditorStore();
+  const { addClip, updateClip, currentTime, addMedia } = useEditorStore();
+  const [mode, setMode] = useState<'audio' | 'camera' | 'screen' | 'screen-camera'>('camera');
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState('');
+  const [selectedAudio, setSelectedAudio] = useState('');
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [recording, setRecording] = useState(false);
 
   useState(() => {
     navigator.mediaDevices.enumerateDevices().then(d => {
       const videos = d.filter(i => i.kind === 'videoinput');
+      const audios = d.filter(i => i.kind === 'audioinput');
       setDevices(videos);
+      setAudioDevices(audios);
       if (videos.length) setSelectedDevice(videos[0].deviceId);
+      if (audios.length) setSelectedAudio(audios[0].deviceId);
     });
   });
 
-  const handleAddRecord = () => {
-    if (!selectedDevice) return;
-    const device = devices.find(d => d.deviceId === selectedDevice);
-    const clip = addClip('record');
-    if (clip) {
-      updateClip(clip.id, {
-        startAt: currentTime,
-        duration: 10,
-        recordOverlay: { streamId: selectedDevice, deviceLabel: device?.label || 'Camera', audioEnabled },
-      });
-    }
+  const handleAddRecord = async () => {
+    if (mode === 'camera' && !selectedDevice) return;
+    setRecording(true);
+    try {
+      let mediaId = '';
+      let duration = 10;
+      let label = '';
+
+      if (mode === 'audio') {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: selectedAudio ? { exact: selectedAudio } : undefined } });
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const dest = audioCtx.createMediaStreamDestination();
+        source.connect(dest);
+        const recorder = new MediaRecorder(dest.stream);
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.start();
+        await new Promise(r => setTimeout(r, 3000));
+        recorder.stop();
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        mediaId = uuid();
+        const mf: MediaFile = { id: mediaId, name: 'Audio Recording', type: 'audio', mimeType: 'audio/webm', blob, duration: 3 };
+        addMedia(mf);
+        label = 'Audio Recording';
+        stream.getTracks().forEach(t => t.stop());
+      } else if (mode === 'screen') {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.start();
+        await new Promise(r => setTimeout(r, 3000));
+        recorder.stop();
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        mediaId = uuid();
+        const mf: MediaFile = { id: mediaId, name: 'Screen Recording', type: 'video', mimeType: 'video/webm', blob, duration: 3 };
+        addMedia(mf);
+        label = 'Screen Recording';
+        stream.getTracks().forEach(t => t.stop());
+      } else if (mode === 'screen-camera') {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const cameraStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: selectedDevice ? { exact: selectedDevice } : undefined } });
+        const combinedStream = new MediaStream([
+          ...screenStream.getVideoTracks(),
+          ...(audioEnabled ? screenStream.getAudioTracks() : []),
+          ...cameraStream.getVideoTracks().map(t => t.clone()),
+        ]);
+        const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.start();
+        await new Promise(r => setTimeout(r, 4000));
+        recorder.stop();
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        mediaId = uuid();
+        const mf: MediaFile = { id: mediaId, name: 'Screen + Camera', type: 'video', mimeType: 'video/webm', blob, duration: 4 };
+        addMedia(mf);
+        label = 'Screen + Camera';
+        screenStream.getTracks().forEach(t => t.stop());
+        cameraStream.getTracks().forEach(t => t.stop());
+      } else {
+        const device = devices.find(d => d.deviceId === selectedDevice);
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: selectedDevice } },
+          audio: audioEnabled,
+        });
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.start();
+        await new Promise(r => setTimeout(r, 3000));
+        recorder.stop();
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        mediaId = uuid();
+        const mf: MediaFile = { id: mediaId, name: device?.label || 'Camera Recording', type: 'video', mimeType: 'video/webm', blob, duration: 3 };
+        addMedia(mf);
+        label = device?.label || 'Camera Recording';
+        stream.getTracks().forEach(t => t.stop());
+      }
+
+      const clip = addClip('record', mediaId);
+      if (clip) {
+        updateClip(clip.id, {
+          startAt: currentTime,
+          duration,
+          recordOverlay: { streamId: mediaId, deviceLabel: label, audioEnabled },
+        });
+      }
+    } catch {}
+    setRecording(false);
   };
 
   return (
     <div className="panel-content record-panel">
-      <div className="record-camera-select">
-        <label>Camera</label>
-        <select value={selectedDevice} onChange={e => setSelectedDevice(e.target.value)}>
-          {devices.length === 0 && <option value="">No cameras found</option>}
-          {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 4)}`}</option>)}
-        </select>
+      <div className="record-mode-tabs">
+        {(['audio', 'camera', 'screen', 'screen-camera'] as const).map(m => (
+          <button key={m} className={`record-mode-btn ${mode === m ? 'active' : ''}`} onClick={() => setMode(m)}>
+            {m === 'audio' ? '🎤' : m === 'camera' ? '📷' : m === 'screen' ? '🖥️' : '📹'}
+            <span>{m === 'screen-camera' ? 'Screen+Cam' : m.charAt(0).toUpperCase() + m.slice(1)}</span>
+          </button>
+        ))}
       </div>
-      <label className="record-audio-toggle">
-        <input type="checkbox" checked={audioEnabled} onChange={e => setAudioEnabled(e.target.checked)} />
-        Enable Microphone
-      </label>
-      <button className="record-add-btn" onClick={handleAddRecord} disabled={!selectedDevice}>+ Add Recording Layer</button>
-      <p className="panel-hint">Adds a camera capture layer to the timeline</p>
+      {mode !== 'audio' && mode !== 'screen' && (
+        <div className="record-camera-select">
+          <label>Camera</label>
+          <select value={selectedDevice} onChange={e => setSelectedDevice(e.target.value)}>
+            {devices.length === 0 && <option value="">No cameras found</option>}
+            {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 4)}`}</option>)}
+          </select>
+        </div>
+      )}
+      {mode === 'audio' && (
+        <div className="record-camera-select">
+          <label>Microphone</label>
+          <select value={selectedAudio} onChange={e => setSelectedAudio(e.target.value)}>
+            {audioDevices.length === 0 && <option value="">No microphones found</option>}
+            {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Mic ${d.deviceId.slice(0, 4)}`}</option>)}
+          </select>
+        </div>
+      )}
+      {mode !== 'screen' && (
+        <label className="record-audio-toggle">
+          <input type="checkbox" checked={audioEnabled} onChange={e => setAudioEnabled(e.target.checked)} />
+          {mode === 'audio' ? 'Include System Audio' : 'Enable Microphone'}
+        </label>
+      )}
+      <button className="record-add-btn" onClick={handleAddRecord} disabled={recording}>
+        {recording ? 'Recording... (3s)' : `+ Add ${mode === 'screen-camera' ? 'Screen & Camera' : mode.charAt(0).toUpperCase() + mode.slice(1)} Layer`}
+      </button>
+      <p className="panel-hint">Records 3 seconds of {mode} and adds it to the timeline</p>
     </div>
   );
 }
 
 const PANEL_MAP: Record<string, () => JSX.Element> = {
   media: MediaPanel,
+  canvas: CanvasPanel,
   text: TextPanel,
   stickers: StickersPanel,
   effects: EffectsPanel,
@@ -576,6 +744,7 @@ const PANEL_MAP: Record<string, () => JSX.Element> = {
 
 const TITLE_MAP: Record<string, string> = {
   media: 'Media',
+  canvas: 'Canvas',
   text: 'Text',
   stickers: 'Stickers',
   effects: 'Effects',

@@ -1898,3 +1898,48 @@ body {
 }
 .record-add-btn:hover:not(:disabled) { background: var(--accent-hover); }
 .record-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.record-mode-tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.record-mode-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; background: var(--bg-tertiary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 10px;
+  color: var(--text-secondary); transition: all var(--transition-fast);
+}
+.record-mode-btn:hover { border-color: var(--accent-dim); }
+.record-mode-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.1); }
+
+/* ======================== */
+/* Canvas Panel             */
+/* ======================== */
+.canvas-panel { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.canvas-aspect-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.canvas-aspect-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 6px; background: var(--bg-tertiary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 10px;
+  color: var(--text-secondary); transition: all var(--transition-fast);
+}
+.canvas-aspect-btn:hover { border-color: var(--accent-dim); }
+.canvas-aspect-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.1); }
+.canvas-aspect-preview {
+  width: 32px; height: 24px; border-radius: 3px;
+  border: 1px solid var(--border); background: var(--bg-secondary);
+}
+.canvas-bg-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.canvas-bg-btn {
+  width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm);
+  border: 2px solid transparent; cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.canvas-bg-btn:hover { transform: scale(1.15); }
+.canvas-bg-btn.active { border-color: var(--accent); transform: scale(1.1); }
+.canvas-bg-picker-wrap { display: flex; align-items: center; justify-content: center; }
+.canvas-bg-picker {
+  width: 100%; height: 100%; padding: 0; border: none;
+  cursor: pointer; background: none;
+}
+
+.elements-emoji-grid { grid-template-columns: repeat(4, 1fr) !important; }
+.emoji-card .element-preview { font-size: 24px; display: flex; align-items: center; justify-content: center; }
+.emoji-card .element-emoji-preview { font-size: 24px; line-height: 1; }

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import {
   Clip, Track, Project, ExportSettings, MediaFile, Marker,
-  TrackType, Transform,
+  TrackType, Transform, CanvasOptions,
   SNAP_THRESHOLD, MIN_CLIP_DURATION, CLIP_GRID,
   DEFAULT_FPS, DEFAULT_RESOLUTION,
 } from '../types';
@@ -63,6 +63,7 @@ export interface EditorState {
   showOpenProject: boolean;
   saveToast: boolean;
   isDirty: boolean;
+  canvasOptions: CanvasOptions;
 
   // top-level actions (consumed directly by components)
   setProjectId: (id: string) => void;
@@ -95,6 +96,10 @@ export interface EditorState {
   setActiveClipId: (id: string | null) => void;
   setSelectedClipIds: (ids: string[]) => void;
   setDirty: (d: boolean) => void;
+  setCanvasOptions: (opts: CanvasOptions) => void;
+  toggleClipSelection: (id: string) => void;
+  selectAllClips: () => void;
+  duplicateClips: (ids: string[]) => void;
 
   /** Push a snapshot for undo — called only on drag-end / split / delete, not on every pixel */
   pushHistory: () => void;
@@ -112,6 +117,8 @@ export interface EditorState {
   moveClipDrag: (id: string, toTrackId: string, toStartAt: number) => boolean;
   splitClip: (id: string, splitAt: number) => void;
   removeSelectedClips: () => void;
+  bringToFront: (id: string) => void;
+  sendToBack: (id: string) => void;
 
   addTrack: (type: TrackType) => void;
   removeTrack: (id: string) => void;
@@ -177,6 +184,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
     saveToast: false,
     isDirty: false,
 
+    canvasOptions: { background: { type: 'solid', color: '#000000' } },
+
     // --- top-level actions ---
     setProjectId: (id) => set((s) => ({ project: { ...s.project, id }, isDirty: true })),
     setProjectName: (n) => set((s) => ({ project: { ...s.project, name: n }, isDirty: true })),
@@ -228,6 +237,50 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setActiveClipId: (id) => set({ activeClipId: id }),
     setSelectedClipIds: (ids) => set({ selectedClipIds: ids }),
     setDirty: (d) => set({ isDirty: d }),
+    setCanvasOptions: (opts) => set({ canvasOptions: opts, isDirty: true }),
+
+    toggleClipSelection: (id) => set((s) => {
+      const ids = s.selectedClipIds.includes(id)
+        ? s.selectedClipIds.filter(i => i !== id)
+        : [...s.selectedClipIds, id];
+      return { selectedClipIds: ids, activeClipId: id };
+    }),
+
+    selectAllClips: () => set((s) => {
+      const allIds = s.project.tracks.flatMap(t => t.clips.map(c => c.id));
+      return { selectedClipIds: allIds, activeClipId: allIds.length > 0 ? allIds[0] : null };
+    }),
+
+    duplicateClips: (ids) => {
+      const state = get();
+      if (ids.length === 0) return;
+      state.pushHistory();
+      const newClips: Clip[] = [];
+      for (const id of ids) {
+        const clip = state.getClip(id);
+        if (!clip) continue;
+        const newClip = clone(clip);
+        newClip.id = genId();
+        newClip.startAt = clip.startAt + clip.duration + CLIP_GRID;
+        newClips.push(newClip);
+      }
+      set((st) => ({
+        project: {
+          ...st.project,
+          tracks: st.project.tracks.map(t => ({
+            ...t,
+            clips: [
+              ...t.clips,
+              ...newClips.filter(c => c.trackId === t.id),
+            ],
+          })),
+        },
+        isDirty: true,
+        selectedClipIds: newClips.map(c => c.id),
+        activeClipId: newClips.length > 0 ? newClips[0].id : null,
+      }));
+      get().recalcDuration();
+    },
 
     commitDrag: (clipId) => {
       get().pushHistory();
@@ -337,6 +390,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         startAt: 0, duration: 2, sourceStart: 0, sourceEnd: 0,
         volume: 1, speed: 1, muted: false, preservePitch: false, voiceStabilizer: false, opacity: 100, blendMode: 'normal',
         transform: { ...defaultTransform },
+        zIndex: track.clips.length,
         sticker,
         textOverlay: trackType === 'text' ? {
           text: 'Text', fontFamily: 'Arial', fontSize: 48, color: '#ffffff', fontWeight: 400, textAlign: 'center' as const,
@@ -600,6 +654,39 @@ export const useEditorStore = create<EditorState>((set, get) => {
       get().recalcDuration();
     },
 
+    bringToFront: (id) => {
+      get().pushHistory();
+      set((st) => {
+        const maxZ = st.project.tracks.flatMap(t => t.clips).reduce((max, c) => Math.max(max, c.zIndex ?? 0), 0);
+        return {
+          project: {
+            ...st.project,
+            tracks: st.project.tracks.map(t => ({
+              ...t,
+              clips: t.clips.map(c => c.id === id ? { ...c, zIndex: maxZ + 1 } : c),
+            })),
+          },
+          isDirty: true,
+        };
+      });
+    },
+
+    sendToBack: (id) => {
+      get().pushHistory();
+      set((st) => {
+        return {
+          project: {
+            ...st.project,
+            tracks: st.project.tracks.map(t => ({
+              ...t,
+              clips: t.clips.map(c => c.id === id ? { ...c, zIndex: 0 } : c),
+            })),
+          },
+          isDirty: true,
+        };
+      });
+    },
+
     addTrack: (type) => {
       get().pushHistory();
       const existing = get().project.tracks.filter((t) => t.type === type);
@@ -672,6 +759,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         currentTime: 0, isPlaying: false,
         selectedClipIds: [], activeClipId: null,
         undoStack: [], redoStack: [], isDirty: false,
+        canvasOptions: { background: { type: 'solid', color: '#000000' } },
       });
     },
 
@@ -684,6 +772,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         currentTime: 0, isPlaying: false,
         selectedClipIds: [], activeClipId: null,
         undoStack: [], redoStack: [], isDirty: false, showOpenProject: false,
+        canvasOptions: { background: { type: 'solid', color: '#000000' } },
       });
     },
 

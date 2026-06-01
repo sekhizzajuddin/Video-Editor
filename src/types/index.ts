@@ -157,6 +157,7 @@ export interface Clip {
   audioFadeOut?: number;
   crop?: { x: number; y: number; width: number; height: number };
   textAnimation?: 'none' | 'fadeIn' | 'typewriter' | 'slideUp' | 'slideDown' | 'scalePop' | 'bounce' | 'glitch' | 'wave';
+  zIndex?: number;
 }
 
 export interface Track {
@@ -196,6 +197,26 @@ export interface ExportSettings {
   format: ExportFormat;
   resolution: ExportResolution;
   quality: 'low' | 'medium' | 'high';
+}
+
+export type BackgroundFill = { type: 'solid'; color: string } | { type: 'gradient'; colors: string[]; angle: number };
+
+export interface SnapGuide {
+  orientation: 'horizontal' | 'vertical';
+  position: number;
+  sourceId: string;
+}
+
+export interface ElementDefinition {
+  id: string;
+  label: string;
+  category: 'shape' | 'sticker' | 'emoji';
+  svgContent?: string;
+  emoji?: string;
+}
+
+export interface CanvasOptions {
+  background: BackgroundFill;
 }
 
 export const SNAP_THRESHOLD = 0.3;

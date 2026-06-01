@@ -222,7 +222,10 @@ export class RenderEngine {
         }
       }
     }
-    layers.sort((a, b) => a.trackIndex - b.trackIndex);
+    layers.sort((a, b) => {
+      if (a.trackIndex !== b.trackIndex) return a.trackIndex - b.trackIndex;
+      return (a.clip.zIndex ?? 0) - (b.clip.zIndex ?? 0);
+    });
     return layers;
   }
 
