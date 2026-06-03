@@ -40,6 +40,9 @@ export class RenderEngine {
   private transCanvasA: HTMLCanvasElement | null = null;
   private transCanvasB: HTMLCanvasElement | null = null;
 
+  // Cache for SVGs in elements to prevent GC thrashing and performance stutter
+  private svgImageCache = new Map<string, HTMLImageElement>();
+
   constructor(outputCanvas: HTMLCanvasElement) {
     this.output = outputCanvas;
     // GPU-accelerated context: desynchronized for lower latency, alpha false for performance
@@ -790,21 +793,29 @@ export class RenderEngine {
 
   private renderElementOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, overlay: ElementOverlay) {
     if (!overlay.svgContent) return;
-    const svgBlob = new Blob([overlay.svgContent], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(svgBlob);
-    const img = new Image();
-    img.src = url;
+    const cacheKey = overlay.svgContent;
+    let img = this.svgImageCache.get(cacheKey);
+    if (!img) {
+      const svgBlob = new Blob([overlay.svgContent], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(svgBlob);
+      img = new Image();
+      img.src = url;
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+      };
+      this.svgImageCache.set(cacheKey, img);
+    }
+
     const size = Math.min(w, h) * 0.3;
     const x = (w - size) / 2;
     const y = (h - size) / 2;
+
     if (img.complete) {
       ctx.drawImage(img, x, y, size, size);
-      URL.revokeObjectURL(url);
     } else {
-      img.onload = () => {
-        ctx.drawImage(img, x, y, size, size);
-        URL.revokeObjectURL(url);
-      };
+      img.addEventListener('load', () => {
+        ctx.drawImage(img!, x, y, size, size);
+      }, { once: true });
     }
   }
 
@@ -820,6 +831,7 @@ export class RenderEngine {
       }
     }
     this.mediaCache.clear();
+    this.svgImageCache.clear();
     this.layerCanvases.clear();
     this.transCanvasA = null;
     this.transCanvasB = null;

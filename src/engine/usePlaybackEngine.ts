@@ -72,8 +72,8 @@ export function usePlaybackEngine(onFrame?: (time: number, delta: number) => voi
     for (const track of tracks) {
       for (const clip of track.clips) {
         if (!clip.mediaId || clip.muted) continue;
-        const isAudio = track.type === 'audio';
-        const isVideo = track.type === 'video';
+        const isAudio = track.type === 'audio' || track.type === 'tts';
+        const isVideo = track.type === 'video' || track.type === 'record';
         if (!isAudio && !isVideo) continue;
 
         const clipEnd = clip.startAt + clip.duration;

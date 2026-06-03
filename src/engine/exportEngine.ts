@@ -12,7 +12,7 @@ export async function startExport(
   project: {
     id: string; fps: number; resolution: { w: number; h: number };
     duration: number; tracks: any[];
-    media: { id: string; blob: Blob; mimeType: string; type: string; duration?: number }[];
+    media: { id: string; blob: Blob; mimeType: string; type: string; duration?: number; waveform?: number[] }[];
   },
   settings: { format: string; quality: string },
   onProgress: (p: ExportProgress) => void,
@@ -110,12 +110,13 @@ async function exportWithFFmpeg(
   if (signal?.aborted) { ffmpeg.terminate(); return { type: 'cancelled' }; }
 
   // Render and write all frames sequentially directly to FFmpeg virtual FS
+  const svgCache = new Map<string, HTMLImageElement>();
   for (let fi = 0; fi < totalFrames; fi++) {
-    if (signal?.aborted) { ffmpeg.terminate(); return { type: 'cancelled' }; }
+    if (signal?.aborted) { svgCache.clear(); ffmpeg.terminate(); return { type: 'cancelled' }; }
     const time = fi * frameInterval;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
-    await renderProjectFrame(ctx, canvas, tracks, mediaElMap, time);
+    await renderProjectFrame(ctx, canvas, tracks, mediaElMap, time, svgCache);
     
     const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), 'image/png'));
     const buf = new Uint8Array(await blob.arrayBuffer());
@@ -135,7 +136,7 @@ async function exportWithFFmpeg(
     }
   }
 
-  if (signal?.aborted) { ffmpeg.terminate(); return { type: 'cancelled' }; }
+  if (signal?.aborted) { svgCache.clear(); ffmpeg.terminate(); return { type: 'cancelled' }; }
 
   // Build FFmpeg command
   onProgress({ stage: 'Encoding video...', percent: 80 });
@@ -145,58 +146,100 @@ async function exportWithFFmpeg(
   const ffmpegArgs: string[] = [];
   ffmpegArgs.push('-framerate', String(fps), '-i', 'frame%06d.png');
 
-  // Add audio inputs — only for media that has active, non-muted clips on the timeline
-  let audioInputCount = 0;
-  const audioInputs: string[] = [];
-  const audioDelays: number[] = []; // delay in ms for each audio input
-  for (const m of media) {
-    if (m.type !== 'audio' && m.type !== 'video') continue;
-    // Find first non-muted clip using this media
-    let hasActiveClip = false;
-    let clipDelay = 0;
-    for (const t of tracks) {
-      for (const c of t.clips) {
-        if (c.mediaId === m.id && !c.muted) {
-          hasActiveClip = true;
-          clipDelay = Math.max(0, c.startAt * 1000); // delay in ms
-          break;
+  // Find all active, non-muted clips on the timeline that have audio
+  const audioClips: { clip: any; mediaFile: any }[] = [];
+  for (const t of tracks) {
+    if (!t.visible) continue;
+    const isAudioTrack = t.type === 'audio' || t.type === 'video' || t.type === 'tts' || t.type === 'record';
+    if (!isAudioTrack) continue;
+
+    for (const c of t.clips) {
+      if (c.muted) continue;
+      const m = media.find(item => item.id === c.mediaId);
+      if (!m) continue;
+
+      let hasAudio = false;
+      if (m.type === 'audio') {
+        hasAudio = true;
+      } else if (m.type === 'video') {
+        if (c.trackType === 'record') {
+          hasAudio = !!c.recordOverlay?.audioEnabled;
+        } else {
+          hasAudio = !!(m.waveform && m.waveform.length > 0);
         }
       }
-      if (hasActiveClip) break;
+
+      if (hasAudio) {
+        audioClips.push({ clip: c, mediaFile: m });
+      }
     }
-    if (!hasActiveClip) continue;
-    const ext = m.mimeType.split('/')[1]?.split(';')[0] || 'mp4';
-    const fname = `input_${m.id}.${ext}`;
-    ffmpegArgs.push('-i', fname);
-    audioInputs.push(`[${audioInputCount + 1}:a]`);
-    audioDelays.push(clipDelay);
-    audioInputCount++;
   }
-  const hasAudio = audioInputCount > 0;
+
+  // Push all audio input files to FFmpeg args
+  for (const item of audioClips) {
+    const { mediaFile } = item;
+    const ext = mediaFile.mimeType.split('/')[1]?.split(';')[0] || 'mp4';
+    const fname = `input_${mediaFile.id}.${ext}`;
+    ffmpegArgs.push('-i', fname);
+  }
+
+  const hasAudio = audioClips.length > 0;
+
+  // Build the filter_complex for audio alignment, speed, volume
+  let filterComplex = '';
+  const mixedLabels: string[] = [];
+  for (let idx = 0; idx < audioClips.length; idx++) {
+    const { clip } = audioClips[idx];
+    const inputIdx = idx + 1; // Input 0 is frames
+    const sourceDur = clip.duration * (clip.speed || 1);
+    const speedFilters = getSpeedFilters(clip.speed || 1);
+    const vol = (clip.volume ?? 100) / 100;
+    const delayMs = Math.round(clip.startAt * 1000);
+
+    let filterStr = `[${inputIdx}:a]atrim=start=${clip.sourceStart}:duration=${sourceDur},asetpts=PTS-STARTPTS`;
+    if (speedFilters) {
+      filterStr += `,${speedFilters}`;
+    }
+    filterStr += `,volume=${vol}`;
+    if (delayMs > 0) {
+      filterStr += `,adelay=${delayMs}|${delayMs}`;
+    }
+
+    if (audioClips.length === 1) {
+      filterComplex += `${filterStr}[aout]`;
+    } else {
+      const outLabel = `[a${inputIdx}]`;
+      filterComplex += `${filterStr}${outLabel};`;
+      mixedLabels.push(outLabel);
+    }
+  }
+
+  if (audioClips.length > 1) {
+    filterComplex += `${mixedLabels.join('')}amix=inputs=${audioClips.length}:duration=longest[aout]`;
+  }
 
   if (settings.format === 'mp4') {
     ffmpegArgs.push('-c:v', 'libx264', '-crf', crf, '-preset', 'fast', '-pix_fmt', 'yuv420p');
+    ffmpegArgs.push('-map', '0:v');
     if (hasAudio) {
-      if (audioInputCount > 1) {
-        const amixFilter = audioInputs.join('') + `amix=inputs=${audioInputCount}:duration=longest[aout]`;
-        ffmpegArgs.push('-filter_complex', amixFilter, '-map', '[aout]', '-c:a', 'aac', '-b:a', '128k');
-      } else {
-        ffmpegArgs.push('-c:a', 'aac', '-b:a', '128k');
-      }
+      ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[aout]', '-c:a', 'aac', '-b:a', '128k');
     }
   } else if (settings.format === 'webm') {
     ffmpegArgs.push('-c:v', 'libvpx-vp9', '-crf', crf, '-b:v', '0');
+    ffmpegArgs.push('-map', '0:v');
     if (hasAudio) {
-      if (audioInputCount > 1) {
-        const amixFilter = audioInputs.join('') + `amix=inputs=${audioInputCount}:duration=longest[aout]`;
-        ffmpegArgs.push('-filter_complex', amixFilter, '-map', '[aout]', '-c:a', 'libopus');
-      } else {
-        ffmpegArgs.push('-c:a', 'libopus');
-      }
+      ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[aout]', '-c:a', 'libopus');
     }
-  } else if (settings.format === 'mp3' || settings.format === 'wav') {
-    ffmpegArgs.splice(0, ffmpegArgs.length, '-i', `input_${media.find(m => m.type === 'audio')?.id}.mp3`);
+  } else if (settings.format === 'mp3') {
+    if (hasAudio) {
+      ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[aout]', '-c:a', 'libmp3lame', '-b:a', '192k');
+    }
+  } else if (settings.format === 'wav') {
+    if (hasAudio) {
+      ffmpegArgs.push('-filter_complex', filterComplex, '-map', '[aout]', '-c:a', 'pcm_s16le');
+    }
   }
+  
   ffmpegArgs.push('-t', String(duration), outputFile);
 
   await ffmpeg.exec(ffmpegArgs);
@@ -206,6 +249,7 @@ async function exportWithFFmpeg(
   const mimeMap: Record<string, string> = { mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav' };
   const blob = new Blob([outData], { type: mimeMap[settings.format] || 'video/mp4' });
 
+  svgCache.clear();
   ffmpeg.terminate();
   // Cleanup object URLs
   for (const [, el] of mediaElMap) {
@@ -224,6 +268,7 @@ async function renderProjectFrame(
   tracks: any[],
   mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>,
   time: number,
+  svgCache: Map<string, HTMLImageElement>,
 ) {
   const w = canvas.width; const h = canvas.height;
   const layers: { clip: any; ti: number; transition?: any }[] = [];
@@ -255,9 +300,9 @@ async function renderProjectFrame(
 
   for (const layer of layers) {
     if (layer.transition) {
-      await renderTransitionLayer(ctx, canvas, layer.clip, layer.transition.nextClip, layer.transition.type, layer.transition.progress, mediaElMap, time, w, h);
+      await renderTransitionLayer(ctx, canvas, layer.clip, layer.transition.nextClip, layer.transition.type, layer.transition.progress, mediaElMap, time, w, h, svgCache);
     } else {
-      await renderClipLayer(ctx, canvas, layer.clip, mediaElMap, time, w, h);
+      await renderClipLayer(ctx, canvas, layer.clip, mediaElMap, time, w, h, svgCache);
     }
   }
 }
@@ -265,6 +310,7 @@ async function renderProjectFrame(
 async function renderClipLayer(
   ctx: CanvasRenderingContext2D, _canvas: HTMLCanvasElement, clip: any,
   mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number, w: number, h: number,
+  svgCache: Map<string, HTMLImageElement>,
 ): Promise<void> {
   const tr = clip.transform || { x: 0, y: 0, scale: 1, rotation: 0 };
   const alpha = Math.max(0, Math.min(1, (clip.opacity ?? 100) / 100));
@@ -333,6 +379,18 @@ async function renderClipLayer(
     lCtx.restore();
   }
 
+  if (clip.trackType === 'vfx' && clip.vfxOverlay) {
+    renderVFXOverlay(lCtx, w, h, clip.vfxOverlay, localTime);
+  }
+
+  if (clip.trackType === 'drawing' && clip.drawingOverlay) {
+    renderDrawingOverlay(lCtx, w, h, clip.drawingOverlay);
+  }
+
+  if (clip.trackType === 'element' && clip.elementOverlay) {
+    await renderElementOverlay(lCtx, w, h, clip.elementOverlay, svgCache);
+  }
+
   if (clip.trackType === 'audio') return;
 
   // Apply filters
@@ -368,17 +426,18 @@ async function renderTransitionLayer(
   clipA: any, clipB: any, type: string, progress: number,
   mediaElMap: Map<string, HTMLVideoElement | HTMLImageElement>, time: number,
   w: number, h: number,
+  svgCache: Map<string, HTMLImageElement>,
 ) {
   const canvasA = document.createElement('canvas');
   canvasA.width = w; canvasA.height = h;
   const ctxA = canvasA.getContext('2d')!;
-  await renderClipLayer(ctxA, canvasA, clipA, mediaElMap, time, w, h);
+  await renderClipLayer(ctxA, canvasA, clipA, mediaElMap, time, w, h, svgCache);
 
   const canvasB = document.createElement('canvas');
   canvasB.width = w; canvasB.height = h;
   const ctxB = canvasB.getContext('2d')!;
   const transOffset = progress * (clipA.transition?.duration || 0.3);
-  await renderClipLayer(ctxB, canvasB, clipB, mediaElMap, clipB.startAt + transOffset, w, h);
+  await renderClipLayer(ctxB, canvasB, clipB, mediaElMap, clipB.startAt + transOffset, w, h, svgCache);
 
   ctx.save();
   switch (type) {
@@ -541,15 +600,17 @@ async function exportWithMediaRecorder(
   recorder.start(100);
   const totalFrames = Math.ceil(duration * fps);
 
+  const svgCache = new Map<string, HTMLImageElement>();
   for (let fi = 0; fi < totalFrames; fi++) {
-    if (signal?.aborted) { recorder.stop(); return { type: 'cancelled' }; }
+    if (signal?.aborted) { svgCache.clear(); recorder.stop(); return { type: 'cancelled' }; }
     const time = fi / fps;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
-    renderProjectFrame(ctx, canvas, tracks, mediaElMap, time);
+    await renderProjectFrame(ctx, canvas, tracks, mediaElMap, time, svgCache);
     onProgress({ stage: `Rendering frame ${fi + 1}/${totalFrames}`, percent: Math.round(5 + (fi / totalFrames) * 90) });
     // Throttle: yield to allow MediaRecorder to process
     if (fi % 5 === 0) await new Promise(r => setTimeout(r, 0));
   }
+  svgCache.clear();
 
   await new Promise<void>(res => {
     recorder.onstop = () => res();
@@ -564,4 +625,245 @@ async function exportWithMediaRecorder(
   const blob = new Blob(chunks, { type: mimeType });
   onProgress({ stage: 'Done', percent: 100 });
   return { type: 'complete', blob };
+}
+
+// ─── Helper functions for clip layer overlays and audio speed filters ───────────────────────────
+
+function getSpeedFilters(speed: number): string {
+  if (Math.abs(speed - 1.0) < 0.01) return '';
+  const filters: string[] = [];
+  let remaining = speed;
+  if (remaining <= 0.01) remaining = 1.0;
+  while (remaining > 2.0) {
+    filters.push('atempo=2.0');
+    remaining /= 2.0;
+  }
+  while (remaining < 0.5) {
+    filters.push('atempo=0.5');
+    remaining /= 0.5;
+  }
+  if (Math.abs(remaining - 1.0) > 0.01) {
+    filters.push(`atempo=${remaining.toFixed(3)}`);
+  }
+  return filters.join(',');
+}
+
+function renderDrawingOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, overlay: any) {
+  ctx.save();
+  for (const path of overlay.paths) {
+    if (path.points.length < 2) continue;
+    ctx.beginPath();
+    ctx.strokeStyle = path.color;
+    ctx.lineWidth = path.width * Math.min(w, h);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = path.tool === 'highlighter' ? 0.4 : 1;
+    ctx.globalCompositeOperation = path.tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.moveTo(path.points[0].x * w, path.points[0].y * h);
+    for (let i = 1; i < path.points.length; i++) {
+      ctx.lineTo(path.points[i].x * w, path.points[i].y * h);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+async function renderElementOverlay(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  overlay: any,
+  svgCache: Map<string, HTMLImageElement>,
+): Promise<void> {
+  if (!overlay.svgContent) return;
+  const cacheKey = overlay.svgContent;
+  let img = svgCache.get(cacheKey);
+  if (!img) {
+    const svgBlob = new Blob([overlay.svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(svgBlob);
+    img = new Image();
+    img.src = url;
+    await new Promise<void>((resolve, reject) => {
+      img!.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+      img!.onerror = (err) => {
+        URL.revokeObjectURL(url);
+        reject(err);
+      };
+    });
+    svgCache.set(cacheKey, img);
+  }
+
+  const size = Math.min(w, h) * 0.3;
+  const x = (w - size) / 2;
+  const y = (h - size) / 2;
+  ctx.drawImage(img, x, y, size, size);
+}
+
+function renderVFXOverlay(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  vfx: { type: string; intensity: number; position: { x: number; y: number }; scale: number; rotation: number; opacity: number },
+  time: number
+): void {
+  ctx.save();
+  ctx.globalAlpha = vfx.opacity;
+
+  const cx = w / 2 + vfx.position.x * w / 2;
+  const cy = h / 2 + vfx.position.y * h / 2;
+  ctx.translate(cx, cy);
+  ctx.rotate((vfx.rotation * Math.PI) / 180);
+  ctx.scale(vfx.scale, vfx.scale);
+
+  const intensity = vfx.intensity;
+
+  switch (vfx.type) {
+    case 'lens-flare': {
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.min(w, h) * 0.4);
+      grad.addColorStop(0, `rgba(255, 240, 200, ${intensity})`);
+      grad.addColorStop(0.3, `rgba(255, 200, 100, ${intensity * 0.5})`);
+      grad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI) / 3 + time * 0.2;
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = `rgba(255, 230, 180, ${intensity * 0.3})`;
+        ctx.fillRect(0, -2, Math.min(w, h) * 0.5, 4);
+        ctx.restore();
+      }
+      break;
+    }
+    case 'film-grain': {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 50 * intensity;
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+      }
+      ctx.putImageData(imageData, 0, 0);
+      ctx.restore();
+      break;
+    }
+    case 'light-leak': {
+      const grad = ctx.createRadialGradient(w * 0.3, -h * 0.2, 0, w * 0.3, -h * 0.2, Math.min(w, h) * 0.6);
+      grad.addColorStop(0, `rgba(255, 100, 50, ${intensity * 0.6})`);
+      grad.addColorStop(0.5, `rgba(255, 150, 80, ${intensity * 0.3})`);
+      grad.addColorStop(1, 'rgba(255, 100, 50, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      break;
+    }
+    case 'particles': {
+      for (let i = 0; i < 30 * intensity; i++) {
+        const x = (Math.sin(time * 2 + i * 1.7) * 0.5 + 0.5) * w - w / 2;
+        const y = (Math.cos(time * 1.5 + i * 2.3) * 0.5 + 0.5) * h - h / 2;
+        const size = 1 + Math.random() * 3 * intensity;
+        const alpha = 0.3 + Math.random() * 0.7 * intensity;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(200, 180, 255, ${alpha})`;
+        ctx.fill();
+      }
+      break;
+    }
+    case 'glitch': {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const slices = Math.floor(10 * intensity);
+      for (let i = 0; i < slices; i++) {
+        const y = Math.floor(Math.random() * h);
+        const sliceH = Math.max(1, Math.floor(2 + Math.random() * 8));
+        const offset = Math.floor((Math.random() - 0.5) * 40 * intensity);
+        if (y + sliceH <= h) {
+          const slice = ctx.getImageData(0, y, w, sliceH);
+          ctx.putImageData(slice, offset, y);
+        }
+        ctx.fillStyle = `rgba(${Math.random() > 0.5 ? '255,0,0' : '0,0,255'}, ${intensity * 0.3})`;
+        ctx.fillRect(offset, y, w, sliceH);
+      }
+      ctx.restore();
+      break;
+    }
+    case 'vhs': {
+      for (let y = -h / 2; y < h / 2; y += 3) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.15 * intensity})`;
+        ctx.fillRect(-w / 2, y, w, 1);
+      }
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const vhsImageData = ctx.getImageData(0, 0, w, h);
+      const vhsData = vhsImageData.data;
+      const shift = Math.floor(3 * intensity);
+      for (let i = 0; i < vhsData.length - shift * 4; i += 4) {
+        vhsData[i] = vhsData[i + shift * 4];
+      }
+      ctx.putImageData(vhsImageData, 0, 0);
+      ctx.restore();
+      break;
+    }
+    case 'chromatic': {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const chrOffset = Math.floor(4 * intensity);
+      const chrImageData = ctx.getImageData(0, 0, w, h);
+      const chrData = chrImageData.data;
+      const chrCopy = new Uint8ClampedArray(chrData);
+      for (let i = 0; i < chrData.length - chrOffset * 4; i += 4) {
+        chrData[i] = chrCopy[i + chrOffset * 4];
+        chrData[i + 2] = chrCopy[Math.max(0, i - chrOffset * 4) + 2];
+      }
+      ctx.putImageData(chrImageData, 0, 0);
+      ctx.restore();
+      break;
+    }
+    case 'bloom': {
+      ctx.shadowColor = `rgba(255, 220, 150, ${intensity})`;
+      ctx.shadowBlur = 20 * intensity;
+      ctx.fillStyle = `rgba(255, 230, 180, ${intensity * 0.3})`;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      break;
+    }
+    case 'sparkle': {
+      for (let i = 0; i < 15 * intensity; i++) {
+        const x = (Math.sin(time * 3 + i * 2.1) * 0.5 + 0.5) * w - w / 2;
+        const y = (Math.cos(time * 2.5 + i * 1.9) * 0.5 + 0.5) * h - h / 2;
+        const size = 2 + Math.sin(time * 5 + i) * 2;
+        const alpha = 0.5 + Math.sin(time * 4 + i * 1.3) * 0.5;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(time + i);
+        ctx.fillStyle = `rgba(255, 240, 150, ${alpha * intensity})`;
+        ctx.fillRect(-size, -0.5, size * 2, 1);
+        ctx.fillRect(-0.5, -size, 1, size * 2);
+        ctx.restore();
+      }
+      break;
+    }
+    case 'smoke': {
+      for (let i = 0; i < 8 * intensity; i++) {
+        const x = Math.sin(time * 0.5 + i * 1.3) * w * 0.3;
+        const y = Math.cos(time * 0.3 + i * 0.9) * h * 0.3 - h * 0.2;
+        const size = 30 + i * 10;
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, size);
+        grad.addColorStop(0, `rgba(150, 150, 160, ${0.15 * intensity})`);
+        grad.addColorStop(1, 'rgba(150, 150, 160, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+
+  ctx.restore();
 }

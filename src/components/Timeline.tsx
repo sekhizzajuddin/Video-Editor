@@ -104,8 +104,8 @@ const WaveformBars = memo(function WaveformBars({ waveform, height, width }: { w
     const vocalActive = new Array(barCount).fill(false);
     for (let i = 0; i < barCount; i++) {
       const idx = Math.floor((i / barCount) * waveform.length);
-      const val = Math.abs(waveform[idx] || 0);
-      if (val > 0.12 && val < 0.85) {
+      const val = waveform[idx] || 0;
+      if (val < 0) {
         vocalActive[i] = true;
       }
     }

@@ -81,6 +81,64 @@ export default React.memo(function PreviewCanvas() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(480);
+  const [isDrawingStroke, setIsDrawingStroke] = useState(false);
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!activeClip || activeClip.trackType !== 'drawing' || !activeClip.drawingOverlay || isPlaying) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width;
+    const relY = (e.clientY - rect.top) / rect.height;
+    
+    const newPath = {
+      points: [{ x: relX, y: relY }],
+      color: activeClip.drawingOverlay.strokeColor || '#ffffff',
+      width: activeClip.drawingOverlay.strokeWidth || 4,
+      tool: activeClip.drawingOverlay.tool || 'pen',
+    };
+    
+    const paths = [...(activeClip.drawingOverlay.paths || []), newPath];
+    updateClip(activeClip.id, {
+      drawingOverlay: {
+        ...activeClip.drawingOverlay,
+        paths,
+      }
+    });
+    setIsDrawingStroke(true);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawingStroke || !activeClip || !activeClip.drawingOverlay) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width;
+    const relY = (e.clientY - rect.top) / rect.height;
+    
+    const paths = [...(activeClip.drawingOverlay.paths || [])];
+    if (paths.length > 0) {
+      const lastPath = { ...paths[paths.length - 1] };
+      lastPath.points = [...lastPath.points, { x: relX, y: relY }];
+      paths[paths.length - 1] = lastPath;
+      updateClip(activeClip.id, {
+        drawingOverlay: {
+          ...activeClip.drawingOverlay,
+          paths,
+        }
+      });
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    if (isDrawingStroke) {
+      setIsDrawingStroke(false);
+      pushHistory();
+    }
+  };
+
+  const handleCanvasMouseLeave = () => {
+    if (isDrawingStroke) {
+      setIsDrawingStroke(false);
+      pushHistory();
+    }
+  };
 
   useEffect(() => {
     const updateSize = () => {
@@ -397,8 +455,18 @@ export default React.memo(function PreviewCanvas() {
   return (
     <div className="preview-area">
       <div className="preview-canvas-wrap" ref={containerRef} style={{ width: canvasWidth, height: canvasHeight }}>
-        <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="preview-canvas" />
-        {isVisible && !isPlaying && (
+        <canvas 
+          ref={canvasRef} 
+          width={canvasWidth} 
+          height={canvasHeight} 
+          className="preview-canvas"
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onMouseLeave={handleCanvasMouseLeave}
+          style={{ cursor: activeClip?.trackType === 'drawing' ? 'crosshair' : 'default' }}
+        />
+        {isVisible && !isPlaying && activeClip?.trackType !== 'drawing' && (
           <div className="transform-box" style={{ left: boxLeft, top: boxTop, width: boxWidth, height: boxHeight, transform: `rotate(${tr.rotation}deg)` }} onMouseDown={handleBoxMouseDown}>
             <div className="transform-handle top-left" onMouseDown={handleHandleMouseDown} />
             <div className="transform-handle top-right" onMouseDown={handleHandleMouseDown} />
