@@ -15,6 +15,11 @@ import {
   TRANSITION_DRAG_MIME,
 } from "../panels/EffectsTransitionsPanel";
 
+// Selector to subscribe reactively to a specific media item (avoids stale closures)
+// Defined outside component so it's a stable reference (not recreated on each render).
+const selectMediaItem = (mediaId: string) => (state: ReturnType<typeof useProjectStore.getState>) =>
+  state.project.mediaLibrary.items.find((item) => item.id === mediaId);
+
 interface ClipComponentProps {
   clip: Clip;
   track: Track;
@@ -54,7 +59,9 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   onSnapIndicator,
   onTrimClip,
 }) => {
-  const { getMediaItem } = useProjectStore();
+  // Subscribe reactively to the specific media item so the component re-renders
+  // whenever waveformData or other media metadata changes (e.g. after async import).
+  const mediaItem = useProjectStore(useMemo(() => selectMediaItem(clip.mediaId), [clip.mediaId]));
   const { snapSettings } = useUIStore();
   const effectApplicationClipId = useUIStore(
     (state) => state.effectApplicationClipId,
@@ -63,19 +70,17 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     (state) => state.effectApplicationLabel,
   );
   const { playheadPosition } = useTimelineStore();
-  const mediaItem = getMediaItem(clip.mediaId);
   const hasAudio = mediaHasAudio(mediaItem);
-  // Generate 200 bars worth of waveform data. The SVG viewBox stretches it to
-  // fill whatever pixel width the clip occupies — stable dep on mediaId only.
-  const waveformData = useMemo(() => {
-    if (!mediaItem) return null;
-    if (mediaItem.waveformData) return mediaItem.waveformData;
-    return getOrGenerateMockWaveformData(clip.mediaId);
+  // Always generate a waveform path — for audio track clips we always show one
+  // even if the media item hasn't loaded yet (use clip.mediaId as the seed).
+  // For video clips, we show embedded audio waveform at bottom when hasAudio.
+  const waveformPath = useMemo(() => {
+    // Use real waveform data if available, otherwise generate deterministic mock
+    const data = mediaItem?.waveformData
+      ? mediaItem.waveformData
+      : getOrGenerateMockWaveformData(clip.mediaId);
+    return generateWaveformPath(data, 200);
   }, [clip.mediaId, mediaItem?.waveformData]); // eslint-disable-line react-hooks/exhaustive-deps
-  const waveformPath = useMemo(
-    () => (waveformData ? generateWaveformPath(waveformData, 200) : ""),
-    [waveformData],
-  );
   const [isDragging, setIsDragging] = useState(false);
   const [isPendingDrag, setIsPendingDrag] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -774,23 +779,26 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
       {(isAudio || (isVideo && hasAudio)) && waveformPath && (
         <div
-          className={`absolute inset-x-0 pointer-events-none ${
-            isAudio
-              ? "inset-y-0 opacity-70"
-              : "bottom-0 h-[38%] opacity-40"
-          }`}
+          className="absolute inset-x-0 pointer-events-none"
+          style={{
+            top: isAudio ? 0 : undefined,
+            bottom: 0,
+            height: isAudio ? "100%" : "40%",
+            opacity: isAudio ? 0.85 : 0.5,
+          }}
         >
           <svg
-            className="w-full h-full"
+            width="100%"
+            height="100%"
             preserveAspectRatio="none"
             viewBox="0 0 200 40"
+            xmlns="http://www.w3.org/2000/svg"
           >
             <path
               d={waveformPath}
-              stroke="currentColor"
-              className={isAudio ? "text-emerald-300" : "text-sky-300"}
               fill="none"
-              strokeWidth="0.8"
+              stroke={isAudio ? "#6ee7b7" : "#7dd3fc"}
+              strokeWidth="1.2"
               vectorEffect="non-scaling-stroke"
               strokeLinecap="round"
             />
