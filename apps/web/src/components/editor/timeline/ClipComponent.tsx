@@ -4,7 +4,7 @@ import type { Clip, Track, TransitionType } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
-import { calculateSnap, generateWaveformPath, getClipStyle, getOrGenerateMockWaveformData, mediaHasAudio } from "./utils";
+import { calculateSnap, generateWaveformPath, getClipStyle, getOrGenerateMockWaveformData } from "./utils";
 import { ClipContextMenu } from "./ClipContextMenu";
 import { ContextMenu, ContextMenuTrigger } from "@openreel/ui";
 import { toast } from "../../../stores/notification-store";
@@ -70,7 +70,6 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     (state) => state.effectApplicationLabel,
   );
   const { playheadPosition } = useTimelineStore();
-  const hasAudio = mediaHasAudio(mediaItem);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isPendingDrag, setIsPendingDrag] = useState(false);
