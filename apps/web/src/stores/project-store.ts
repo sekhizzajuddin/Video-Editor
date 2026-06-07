@@ -2619,6 +2619,8 @@ export const useProjectStore = create<ProjectState>()(
         const { executeAction } = get();
         executeAction({
           type: "audio/setVolume",
+          id: uuidv4(),
+          timestamp: Date.now(),
           params: { clipId, volume },
         });
       },
@@ -2627,11 +2629,13 @@ export const useProjectStore = create<ProjectState>()(
         const { executeAction } = get();
         executeAction({
           type: "audio/addAutomation",
+          id: uuidv4(),
+          timestamp: Date.now(),
           params: { clipId, points },
         });
       },
 
-      getAudioPeaks: async (clipId: string) => {
+      getAudioPeaks: async (_clipId: string) => {
         return null;
       },
 

@@ -53,13 +53,13 @@ const AudioEnvelopeOverlay: React.FC<{ clip: Clip; width: number; duration: numb
   
   const automationPoints = clip.automation?.volume || [];
   
-  // Create an envelope array. If no points, render a flat line at 1.0 volume.
   // Add synthetic nodes at start and end for rendering if they don't exist.
   const displayPoints = useMemo(() => {
-    if (automationPoints.length === 0) return [{ time: 0, value: 1 }, { time: duration, value: 1 }];
+    type DisplayPoint = { time: number; value: number; isVirtual?: boolean };
+    if (automationPoints.length === 0) return [{ time: 0, value: 1 }, { time: duration, value: 1 }] as DisplayPoint[];
     
     const sorted = [...automationPoints].sort((a, b) => a.time - b.time);
-    const result = [];
+    const result: DisplayPoint[] = [];
     if (sorted[0].time > 0) result.push({ time: 0, value: sorted[0].value, isVirtual: true });
     result.push(...sorted);
     if (sorted[sorted.length - 1].time < duration) result.push({ time: duration, value: sorted[sorted.length - 1].value, isVirtual: true });
