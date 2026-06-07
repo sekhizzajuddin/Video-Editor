@@ -630,15 +630,11 @@ export const Toolbar: React.FC = () => {
     <header className="h-topbar grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 px-3 bg-bg border-b border-border shrink-0 z-30 relative">
       {/* ─── Left: window dots + autosave ─────────────────────── */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => navigate("welcome")}
-          className="flex items-center gap-1.5 pr-1.5"
-          title="Back to home"
-        >
+        <div className="flex items-center gap-1.5 pr-1.5">
           <span className="w-[11px] h-[11px] rounded-full bg-[oklch(0.7_0.18_25)]" />
           <span className="w-[11px] h-[11px] rounded-full bg-[oklch(0.78_0.14_80)]" />
           <span className="w-[11px] h-[11px] rounded-full bg-[oklch(0.7_0.15_145)]" />
-        </button>
+        </div>
 
         <span className="text-[11px] text-fg-3 flex items-center gap-1.5">
           <span className="w-[5px] h-[5px] rounded-full bg-accent" />
