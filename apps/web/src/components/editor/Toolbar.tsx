@@ -31,7 +31,6 @@ import {
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useThemeStore } from "../../stores/theme-store";
-import { useRouter } from "../../hooks/use-router";
 import {
   getExportEngine,
   getDeviceProfile,
@@ -95,7 +94,6 @@ export const Toolbar: React.FC = () => {
     togglePanel,
   } = useUIStore();
   const { mode: themeMode, toggleTheme } = useThemeStore();
-  const { navigate } = useRouter();
   const { openSettings } = useSettingsStore();
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
