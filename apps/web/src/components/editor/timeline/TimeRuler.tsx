@@ -209,21 +209,31 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
       onMouseDown={handleMouseDown}
       style={{ cursor: isDragging ? "grabbing" : "pointer" }}
     >
-      {ticks.map((tick) => (
-        <div
-          key={`tick-${tick.time}`}
-          className={`absolute top-0 bottom-0 border-l pointer-events-none ${
-            tick.isMajor ? "border-border-strong" : "border-border"
-          }`}
-          style={{ left: `${tick.time * safePixelsPerSecond}px` }}
-        >
-          {tick.showLabel && tick.time >= 0 && (
-            <span className="text-[10px] font-mono text-fg-3 pl-1 whitespace-nowrap absolute top-[7px]">
-              {formatTimecode(Math.max(0, tick.time)).slice(3)}
-            </span>
-          )}
-        </div>
-      ))}
+      {ticks.map((tick) => {
+        const leftPos = tick.time * safePixelsPerSecond;
+        return (
+          <React.Fragment key={`tick-${tick.time}`}>
+            <div
+              className={`absolute bottom-0 w-px pointer-events-none ${
+                tick.isMajor ? "h-2.5 bg-fg-muted/40" : "h-1.5 bg-fg-muted/20"
+              }`}
+              style={{ left: `${leftPos}px` }}
+            />
+            {tick.showLabel && tick.time >= 0 && (
+              <span
+                className="text-[9px] font-mono text-fg-muted/80 whitespace-nowrap absolute select-none pointer-events-none"
+                style={{
+                  left: `${leftPos}px`,
+                  transform: "translateX(-50%)",
+                  top: "2px",
+                }}
+              >
+                {formatTimecode(Math.max(0, tick.time)).slice(3)}
+              </span>
+            )}
+          </React.Fragment>
+        );
+      })}
 
       {visibleBeatMarkers.map((marker) => (
         <div

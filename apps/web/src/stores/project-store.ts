@@ -2374,32 +2374,39 @@ export const useProjectStore = create<ProjectState>()(
             ? startTime
             : calculateTimelineDuration(project);
 
-        const trackResult = await addTrack(trackType);
-        if (!trackResult.success) {
-          return trackResult;
+        let targetTrack = project.timeline.tracks.find((t) => t.type === trackType);
+        let updatedProject = project;
+
+        if (!targetTrack) {
+          const trackResult = await addTrack(trackType);
+          if (!trackResult.success) {
+            return trackResult;
+          }
+
+          const latestState = get();
+          updatedProject = latestState.project;
+          targetTrack = updatedProject.timeline.tracks.find(
+            (t) => t.clips.length === 0 && t.type === trackType,
+          );
         }
 
-        const { project: updatedProject, actionExecutor: exec } = get();
-        const newTrack = updatedProject.timeline.tracks.find(
-          (t) => t.clips.length === 0 && t.type === trackType,
-        );
-
-        if (!newTrack) {
+        if (!targetTrack) {
           return {
             success: false,
             error: {
               code: "TRACK_NOT_FOUND" as const,
-              message: "Could not find newly created track",
+              message: "Could not find or create a suitable track",
             },
           };
         }
 
+        const { actionExecutor: exec } = get();
         const projectCopy = structuredClone(updatedProject);
         const action: Action = {
           type: "clip/add",
           id: uuidv4(),
           timestamp: Date.now(),
-          params: { trackId: newTrack.id, mediaId, startTime: clipStartTime },
+          params: { trackId: targetTrack.id, mediaId, startTime: clipStartTime },
         };
 
         const result = await exec.execute(action, projectCopy);

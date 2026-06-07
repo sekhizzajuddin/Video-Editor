@@ -113,7 +113,7 @@ export const calculateSnap = (
 };
 
 export const generateWaveformPath = (
-  waveformData: Float32Array | number[],
+  waveformData: Float32Array | number[] | null | undefined,
   width: number,
 ): string => {
   if (!waveformData || waveformData.length === 0) {
@@ -127,11 +127,40 @@ export const generateWaveformPath = (
   for (let i = 0; i < width; i++) {
     const sampleIndex = Math.min(i * step, samples.length - 1);
     const value = Math.abs(samples[sampleIndex] || 0);
-    const y = 20 - value * 18;
-    points.push(`${i === 0 ? "M" : "L"}${i},${y}`);
+    const height = Math.max(1, value * 18);
+    const y1 = 20 - height;
+    const y2 = 20 + height;
+    points.push(`M${i},${y1} L${i},${y2}`);
   }
 
   return points.join(" ");
+};
+
+export const getOrGenerateMockWaveformData = (mediaId: string): number[] => {
+  let seed = 0;
+  for (let i = 0; i < mediaId.length; i++) {
+    seed += mediaId.charCodeAt(i);
+  }
+  
+  const mockData: number[] = [];
+  for (let i = 0; i < 100; i++) {
+    const angle1 = (i / 100) * Math.PI * 6;
+    const angle2 = (i / 100) * Math.PI * 18;
+    const noise = Math.sin(seed + i * 0.5) * 0.15;
+    const val = Math.abs(Math.sin(angle1) * 0.6 + Math.sin(angle2) * 0.25 + noise);
+    mockData.push(Math.max(0.05, Math.min(1.0, val)));
+  }
+  return mockData;
+};
+
+export const mediaHasAudio = (item: any): boolean => {
+  if (!item) return false;
+  if (item.type === "audio") return true;
+  if (item.type === "video") {
+    const meta = item.metadata;
+    return !!(meta && ((meta.channels && meta.channels > 0) || (meta.audioTrackCount && meta.audioTrackCount > 0)));
+  }
+  return false;
 };
 
 export const formatTimecode = (

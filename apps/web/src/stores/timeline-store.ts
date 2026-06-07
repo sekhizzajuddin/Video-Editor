@@ -189,26 +189,27 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     zoomIn: () => {
-      const { pixelsPerSecond } = get();
-      // Scale zoom by 1.5x but never exceed max to prevent performance issues at extreme zoom
+      const { pixelsPerSecond, playheadPosition, scrollX } = get();
       const newZoom = Math.min(pixelsPerSecond * 1.5, ZOOM_PRESETS.MAX);
-      set({ pixelsPerSecond: newZoom });
+      const newScrollX = Math.max(0, scrollX + playheadPosition * (newZoom - pixelsPerSecond));
+      set({ pixelsPerSecond: newZoom, scrollX: newScrollX });
     },
 
     zoomOut: () => {
-      const { pixelsPerSecond } = get();
-      // Scale zoom down by 1.5x but never go below min to prevent blur at extreme zoom out
+      const { pixelsPerSecond, playheadPosition, scrollX } = get();
       const newZoom = Math.max(pixelsPerSecond / 1.5, ZOOM_PRESETS.MIN);
-      set({ pixelsPerSecond: newZoom });
+      const newScrollX = Math.max(0, scrollX + playheadPosition * (newZoom - pixelsPerSecond));
+      set({ pixelsPerSecond: newZoom, scrollX: newScrollX });
     },
 
     setZoom: (pixelsPerSecond: number) => {
-      // Clamp zoom to valid range to ensure consistent rendering and prevent sub-pixel issues
+      const { pixelsPerSecond: oldZoom, playheadPosition, scrollX } = get();
       const clampedZoom = Math.max(
         ZOOM_PRESETS.MIN,
         Math.min(ZOOM_PRESETS.MAX, pixelsPerSecond),
       );
-      set({ pixelsPerSecond: clampedZoom });
+      const newScrollX = Math.max(0, scrollX + playheadPosition * (clampedZoom - oldZoom));
+      set({ pixelsPerSecond: clampedZoom, scrollX: newScrollX });
     },
 
     zoomToFit: (duration: number) => {
