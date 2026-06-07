@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TtsProvider } from "../../../../stores/settings-store";
 import { useProjectStore } from "../../../../stores/project-store";
+import { useTimelineStore } from "../../../../stores/timeline-store";
 import { useTtsAudioStore } from "../../../../stores/tts-store";
 import { PIPER_VOICES } from "../tts-constants";
 import type { ElevenLabsVoice } from "../tts-types";
@@ -256,7 +257,8 @@ export function useTtsActions(options: UseTtsActionsOptions): UseTtsActionsRetur
       if (!mediaId) return;
 
       const { addClipToNewTrack } = useProjectStore.getState();
-      await addClipToNewTrack(mediaId);
+      const playheadPosition = useTimelineStore.getState().playheadPosition;
+      await addClipToNewTrack(mediaId, playheadPosition);
       storeClearAudio();
       setText("");
     } catch (err) {

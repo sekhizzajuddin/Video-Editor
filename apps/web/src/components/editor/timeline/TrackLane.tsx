@@ -10,6 +10,7 @@ import { ClipComponent } from "./ClipComponent";
 import { TextClipComponent } from "./TextClipComponent";
 import { ShapeClipComponent } from "./ShapeClipComponent";
 import { KeyframeTrack } from "./KeyframeTrack";
+import { TransitionIndicator } from "./TransitionIndicator";
 import { calculateSnap } from "./utils";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
@@ -97,6 +98,29 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
   const clipsWithKeyframes = useMemo(() => {
     return track.clips.filter((clip) => clip.keyframes && clip.keyframes.length > 0);
   }, [track.clips]);
+
+  const adjacentPairs = useMemo(() => {
+    const pairs: { clipA: Clip; clipB: Clip; transition?: Transition }[] = [];
+    const sortedClips = [...track.clips]
+      .filter((clip) => !textClips.some((tc) => tc.id === clip.id))
+      .filter((clip) => !shapeClips.some((sc) => sc.id === clip.id))
+      .sort((a, b) => a.startTime - b.startTime);
+      
+    for (let i = 0; i < sortedClips.length - 1; i++) {
+      const clipA = sortedClips[i];
+      const clipB = sortedClips[i + 1];
+      const gap = Math.abs((clipA.startTime + clipA.duration) - clipB.startTime);
+      
+      // If gap is less than a small threshold, consider them adjacent
+      if (gap < 0.05) {
+        const transition = track.transitions.find(
+          (t) => t.clipAId === clipA.id && t.clipBId === clipB.id
+        );
+        pairs.push({ clipA, clipB, transition });
+      }
+    }
+    return pairs;
+  }, [track.clips, track.transitions, textClips, shapeClips]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -286,6 +310,16 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
             </span>
           </div>
         )}
+        
+        {adjacentPairs.map((pair) => (
+          <TransitionIndicator
+            key={`trans-${pair.clipA.id}-${pair.clipB.id}`}
+            clipA={pair.clipA}
+            clipB={pair.clipB}
+            transition={pair.transition}
+            pixelsPerSecond={pixelsPerSecond}
+          />
+        ))}
       </div>
       <div
         className={`absolute bottom-0 left-0 right-0 h-1 cursor-row-resize hover:bg-primary/50 transition-colors z-10 ${

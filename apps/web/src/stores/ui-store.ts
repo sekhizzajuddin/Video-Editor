@@ -71,6 +71,8 @@ export interface UIState {
   showKeyframes: boolean;
   autoScroll: boolean;
   timelineMaximized: boolean;
+  isDynamicSpeedEnabled: boolean;
+  isMagneticTimelineEnabled: boolean;
   activeModal: string | null;
   modalData: Record<string, unknown> | null;
   contextMenu: {
@@ -116,8 +118,13 @@ export interface UIState {
   setShowThumbnails: (show: boolean) => void;
   setShowKeyframes: (show: boolean) => void;
   setAutoScroll: (enabled: boolean) => void;
+  toggleAutoScroll: () => void;
   setTimelineMaximized: (maximized: boolean) => void;
   toggleTimelineMaximized: () => void;
+  setDynamicSpeedEnabled: (enabled: boolean) => void;
+  toggleDynamicSpeed: () => void;
+  setMagneticTimelineEnabled: (enabled: boolean) => void;
+  toggleMagneticTimeline: () => void;
   openModal: (modalId: string, data?: Record<string, unknown>) => void;
   closeModal: () => void;
   showContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
@@ -214,6 +221,8 @@ export const useUIStore = create<UIState>()(
         showKeyframes: true,
         autoScroll: true,
         timelineMaximized: false,
+        isDynamicSpeedEnabled: false,
+        isMagneticTimelineEnabled: false,
 
         activeModal: null,
         modalData: null,
@@ -479,12 +488,32 @@ export const useUIStore = create<UIState>()(
           set({ autoScroll: enabled });
         },
 
+        toggleAutoScroll: () => {
+          set((state) => ({ autoScroll: !state.autoScroll }));
+        },
+
         setTimelineMaximized: (maximized: boolean) => {
           set({ timelineMaximized: maximized });
         },
 
         toggleTimelineMaximized: () => {
           set((state) => ({ timelineMaximized: !state.timelineMaximized }));
+        },
+
+        setDynamicSpeedEnabled: (enabled: boolean) => {
+          set({ isDynamicSpeedEnabled: enabled });
+        },
+
+        toggleDynamicSpeed: () => {
+          set((state) => ({ isDynamicSpeedEnabled: !state.isDynamicSpeedEnabled }));
+        },
+
+        setMagneticTimelineEnabled: (enabled: boolean) => {
+          set({ isMagneticTimelineEnabled: enabled });
+        },
+
+        toggleMagneticTimeline: () => {
+          set((state) => ({ isMagneticTimelineEnabled: !state.isMagneticTimelineEnabled }));
         },
 
         openModal: (modalId: string, data?: Record<string, unknown>) => {

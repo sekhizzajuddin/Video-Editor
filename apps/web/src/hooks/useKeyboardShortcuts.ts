@@ -159,9 +159,16 @@ export function useKeyboardShortcuts() {
 
   const handleDelete = useCallback(() => {
     const selectedIds = getSelectedClipIds();
-    selectedIds.forEach((id) => removeClip(id));
+    const isMagnetic = useUIStore.getState().isMagneticTimelineEnabled;
+    selectedIds.forEach((id) => {
+      if (isMagnetic) {
+        rippleDeleteClip(id);
+      } else {
+        removeClip(id);
+      }
+    });
     clearSelection();
-  }, [getSelectedClipIds, removeClip, clearSelection]);
+  }, [getSelectedClipIds, removeClip, rippleDeleteClip, clearSelection]);
 
   const handleRippleDelete = useCallback(() => {
     const selectedIds = getSelectedClipIds();

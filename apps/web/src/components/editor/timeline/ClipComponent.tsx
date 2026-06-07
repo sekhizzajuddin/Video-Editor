@@ -46,6 +46,140 @@ const AUTO_SCROLL_THRESHOLD = 80;
 const AUTO_SCROLL_SPEED = 10;
 const DRAG_THRESHOLD = 5;
 
+// --- Audio Envelope Overlay ---
+const AudioEnvelopeOverlay: React.FC<{ clip: Clip; width: number; duration: number }> = ({ clip, width, duration }) => {
+  const updateAudioAutomation = useProjectStore((s) => s.updateAudioAutomation);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  
+  const automationPoints = clip.automation?.volume || [];
+  
+  // Create an envelope array. If no points, render a flat line at 1.0 volume.
+  // Add synthetic nodes at start and end for rendering if they don't exist.
+  const displayPoints = useMemo(() => {
+    if (automationPoints.length === 0) return [{ time: 0, value: 1 }, { time: duration, value: 1 }];
+    
+    const sorted = [...automationPoints].sort((a, b) => a.time - b.time);
+    const result = [];
+    if (sorted[0].time > 0) result.push({ time: 0, value: sorted[0].value, isVirtual: true });
+    result.push(...sorted);
+    if (sorted[sorted.length - 1].time < duration) result.push({ time: duration, value: sorted[sorted.length - 1].value, isVirtual: true });
+    return result;
+  }, [automationPoints, duration]);
+
+  const height = 40; // arbitrary relative height for rendering
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.altKey) {
+      // Add a new point
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relativeX = e.clientX - rect.left;
+      const relativeY = e.clientY - rect.top;
+      
+      const newTime = (relativeX / rect.width) * duration;
+      const newValue = 1 - (relativeY / rect.height);
+      
+      const newPoints = [...automationPoints, { time: newTime, value: Math.max(0, Math.min(1, newValue)) }];
+      updateAudioAutomation(clip.id, newPoints);
+    }
+  };
+
+  const handleNodePointerDown = (e: React.PointerEvent, index: number, isVirtual?: boolean) => {
+    e.stopPropagation();
+    if (isVirtual) return; // Cannot drag virtual end nodes yet
+    
+    // Convert display index back to real index
+    const sortedPoints = [...automationPoints].sort((a, b) => a.time - b.time);
+    const realIndex = sortedPoints.findIndex(p => p.time === displayPoints[index].time);
+    if (realIndex !== -1) {
+      setDragIndex(realIndex);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+  };
+
+  const handleNodePointerMove = (e: React.PointerEvent) => {
+    if (dragIndex === null) return;
+    e.stopPropagation();
+    
+    const parentRect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+    const relativeX = e.clientX - parentRect.left;
+    const relativeY = e.clientY - parentRect.top;
+    
+    const newTime = Math.max(0, Math.min(duration, (relativeX / parentRect.width) * duration));
+    const newValue = Math.max(0, Math.min(1, 1 - (relativeY / parentRect.height)));
+    
+    const sortedPoints = [...automationPoints].sort((a, b) => a.time - b.time);
+    sortedPoints[dragIndex] = { time: newTime, value: newValue };
+    
+    updateAudioAutomation(clip.id, sortedPoints);
+  };
+
+  const handleNodePointerUp = (e: React.PointerEvent) => {
+    if (dragIndex !== null) {
+      e.stopPropagation();
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      setDragIndex(null);
+    }
+  };
+
+  // Convert points to SVG polyline
+  const polylinePoints = displayPoints.map(p => {
+    const x = (p.time / duration) * width;
+    const y = (1 - p.value) * height;
+    return `${x},${y}`;
+  }).join(" ");
+
+  return (
+    <div 
+      className="absolute inset-x-0 bottom-0 pointer-events-auto cursor-crosshair z-20 group"
+      style={{ height: "38%" }}
+      onPointerDown={handlePointerDown}
+    >
+      <svg width="100%" height="100%" preserveAspectRatio="none" viewBox={`0 0 ${Math.max(200, width)} ${height}`}>
+        <polyline
+          points={polylinePoints}
+          fill="none"
+          stroke="white"
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+          className="drop-shadow-md opacity-70 group-hover:opacity-100 transition-opacity"
+        />
+        {displayPoints.map((p, i) => {
+          const x = (p.time / duration) * width;
+          const y = (1 - p.value) * height;
+          return (
+            <circle
+              key={i}
+              cx={x}
+              cy={y}
+              r={p.isVirtual ? 0 : 3}
+              fill="white"
+              stroke="#3b82f6"
+              strokeWidth="1.5"
+              vectorEffect="non-scaling-stroke"
+              className={`cursor-pointer ${p.isVirtual ? 'hidden' : 'opacity-0 group-hover:opacity-100'}`}
+              onPointerDown={(e) => handleNodePointerDown(e, i, p.isVirtual)}
+              onPointerMove={handleNodePointerMove}
+              onPointerUp={handleNodePointerUp}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (p.isVirtual) return;
+                const sortedPoints = [...automationPoints].sort((a, b) => a.time - b.time);
+                const realIndex = sortedPoints.findIndex(pt => pt.time === p.time);
+                if (realIndex !== -1) {
+                  sortedPoints.splice(realIndex, 1);
+                  updateAudioAutomation(clip.id, sortedPoints);
+                }
+              }}
+            />
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+// ------------------------------
+
 export const ClipComponent: React.FC<ClipComponentProps> = ({
   clip,
   track,
@@ -115,6 +249,9 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const [dragHover, setDragHover] = useState<
     "effect" | "transition-left" | "transition-right" | null
   >(null);
+
+  const isDynamicSpeedEnabled = useUIStore((s) => s.isDynamicSpeedEnabled);
+  const updateClipSpeed = useProjectStore((s) => s.updateClipSpeed);
 
   const left = clip.startTime * pixelsPerSecond;
   const width = clip.duration * pixelsPerSecond;
@@ -441,18 +578,32 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const timeline = timelineRef.current;
       const timelineRect = timeline.getBoundingClientRect();
       const mouseY = mousePositionRef.current.y;
+      const mouseX = mousePositionRef.current.x;
       const timelineTop = timelineRect.top;
       const timelineBottom = timelineRect.bottom;
+      const timelineLeft = timelineRect.left;
+      const timelineRight = timelineRect.right;
+      
       const canScrollUp = timeline.scrollTop > 0;
       const canScrollDown = timeline.scrollTop < timeline.scrollHeight - timeline.clientHeight;
+      const canScrollLeft = timeline.scrollLeft > 0;
+      const canScrollRight = timeline.scrollLeft < timeline.scrollWidth - timeline.clientWidth;
 
       const distanceFromTop = mouseY - timelineTop;
       const distanceFromBottom = timelineBottom - mouseY;
+      const distanceFromLeft = mouseX - timelineLeft;
+      const distanceFromRight = timelineRight - mouseX;
 
       if (distanceFromTop < AUTO_SCROLL_THRESHOLD && canScrollUp) {
         timeline.scrollTop -= AUTO_SCROLL_SPEED;
       } else if (distanceFromBottom < AUTO_SCROLL_THRESHOLD && canScrollDown) {
         timeline.scrollTop += AUTO_SCROLL_SPEED;
+      }
+
+      if (distanceFromLeft < AUTO_SCROLL_THRESHOLD && canScrollLeft) {
+        timeline.scrollLeft -= AUTO_SCROLL_SPEED;
+      } else if (distanceFromRight < AUTO_SCROLL_THRESHOLD && canScrollRight) {
+        timeline.scrollLeft += AUTO_SCROLL_SPEED;
       }
 
       animationFrameId = requestAnimationFrame(scrollLoop);
@@ -619,6 +770,44 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const deltaX = e.clientX - trimStartRef.current.mouseX;
       const deltaTime = deltaX / pixelsPerSecond;
 
+      if (isDynamicSpeedEnabled) {
+        if (trimEdge === "left") {
+          const newStartTime = Math.max(0, trimStartRef.current.startTime + deltaTime);
+          const maxStartTime = trimStartRef.current.startTime + trimStartRef.current.duration - 0.1;
+          const clampedStartTime = Math.min(newStartTime, maxStartTime);
+
+          const newDuration = (trimStartRef.current.startTime + trimStartRef.current.duration) - clampedStartTime;
+          
+          const originalSpeed = clip.speed ?? 1;
+          const originalVisualDuration = trimStartRef.current.duration;
+          const rawMediaDuration = originalVisualDuration * originalSpeed;
+
+          let newSpeed = rawMediaDuration / newDuration;
+          newSpeed = Math.max(0.1, Math.min(10, newSpeed));
+          const clampedDuration = rawMediaDuration / newSpeed;
+          const finalStartTime = (trimStartRef.current.startTime + trimStartRef.current.duration) - clampedDuration;
+          
+          updateClipSpeed(clip.id, newSpeed, clampedDuration, finalStartTime);
+        } else {
+          const newEndTime = trimStartRef.current.startTime + trimStartRef.current.duration + deltaTime;
+          const minEndTime = trimStartRef.current.startTime + 0.1;
+          const clampedEndTime = Math.max(newEndTime, minEndTime);
+
+          const newDuration = clampedEndTime - trimStartRef.current.startTime;
+
+          const originalSpeed = clip.speed ?? 1;
+          const originalVisualDuration = trimStartRef.current.duration;
+          const rawMediaDuration = originalVisualDuration * originalSpeed;
+
+          let newSpeed = rawMediaDuration / newDuration;
+          newSpeed = Math.max(0.1, Math.min(10, newSpeed));
+          const clampedDuration = rawMediaDuration / newSpeed;
+
+          updateClipSpeed(clip.id, newSpeed, clampedDuration);
+        }
+        return;
+      }
+
       if (trimEdge === "left") {
         const newStartTime = Math.max(
           0,
@@ -634,7 +823,17 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           trimStartRef.current.duration +
           deltaTime;
         const minEndTime = trimStartRef.current.startTime + 0.1;
-        const clampedEndTime = Math.max(newEndTime, minEndTime);
+        
+        // Ensure normal trim cannot exceed raw media duration
+        let clampedEndTime = Math.max(newEndTime, minEndTime);
+        const originalSpeed = clip.speed ?? 1;
+        if (mediaItem?.metadata?.duration) {
+          const rawMediaDuration = mediaItem.metadata.duration;
+          const maxAllowedDuration = (rawMediaDuration - clip.inPoint * originalSpeed) / originalSpeed;
+          const maxAllowedEndTime = trimStartRef.current.startTime + maxAllowedDuration;
+          clampedEndTime = Math.min(clampedEndTime, maxAllowedEndTime);
+        }
+
         onTrimClip(clip.id, "right", clampedEndTime);
       }
     };
@@ -818,6 +1017,9 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           </svg>
         </div>
       )}
+
+      {/* Render Audio Envelope Overlay if applicable */}
+      {waveformPath && <AudioEnvelopeOverlay clip={clip} width={Math.max(200, width)} duration={clip.duration} />}
 
       {clip.keyframes && clip.keyframes.length > 0 && (
         <div className="absolute bottom-0 left-0 right-0 h-3 flex items-center pointer-events-none">

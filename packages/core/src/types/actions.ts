@@ -111,7 +111,11 @@ export type ClipAction =
       params: { clipId: string; inPoint?: number; outPoint?: number };
     }
   | { type: "clip/split"; params: { clipId: string; time: number } }
-  | { type: "clip/rippleDelete"; params: { clipId: string } };
+  | { type: "clip/rippleDelete"; params: { clipId: string } }
+  | {
+      type: "clip/updateSpeed";
+      params: { clipId: string; speed: number; duration: number; startTime?: number };
+    };
 
 // Effect actions
 export type EffectAction =

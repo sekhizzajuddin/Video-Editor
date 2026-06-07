@@ -169,11 +169,8 @@ export interface ProjectState {
   endHistoryGroup: () => void;
   closeGapBeforeClip: (clipId: string) => Promise<ActionResult>;
   consolidateTrack: (trackId: string) => Promise<ActionResult>;
-  trimClip: (
-    clipId: string,
-    inPoint?: number,
-    outPoint?: number,
-  ) => Promise<ActionResult>;
+  trimClip: (clipId: string, inPoint?: number, outPoint?: number) => Promise<ActionResult>;
+  updateClipSpeed: (clipId: string, speed: number, duration: number, startTime?: number) => Promise<ActionResult>;
   splitClip: (clipId: string, time: number) => Promise<ActionResult>;
   rippleDeleteClip: (clipId: string) => Promise<ActionResult>;
   slipClip: (clipId: string, delta: number) => Promise<ActionResult>;
@@ -231,6 +228,10 @@ export interface ProjectState {
   duplicateClip: (clipId: string) => Promise<ActionResult>;
   copyEffects: (clipId: string) => void;
   pasteEffects: (clipId: string) => Promise<ActionResult>;
+  // Audio
+  setClipVolume: (clipId: string, volume: number) => void;
+  updateAudioAutomation: (clipId: string, points: { time: number; value: number }[]) => void;
+  getAudioPeaks: (clipId: string) => Promise<Float32Array | null>;
   copiedEffects: Effect[];
 
   getEditingTemplates: () => EditingTemplate[];
@@ -2614,6 +2615,26 @@ export const useProjectStore = create<ProjectState>()(
         return lastResult;
       },
 
+      setClipVolume: (clipId: string, volume: number) => {
+        const { executeAction } = get();
+        executeAction({
+          type: "audio/setVolume",
+          params: { clipId, volume },
+        });
+      },
+
+      updateAudioAutomation: (clipId: string, points: { time: number; value: number }[]) => {
+        const { executeAction } = get();
+        executeAction({
+          type: "audio/addAutomation",
+          params: { clipId, points },
+        });
+      },
+
+      getAudioPeaks: async (clipId: string) => {
+        return null;
+      },
+
       removeClip: async (clipId: string) => {
         const { project, actionExecutor } = get();
         const action: Action = {
@@ -2731,6 +2752,21 @@ export const useProjectStore = create<ProjectState>()(
           id: uuidv4(),
           timestamp: Date.now(),
           params: { clipId, inPoint, outPoint },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      updateClipSpeed: async (clipId: string, speed: number, duration: number, startTime?: number) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/updateSpeed",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId, speed, duration, startTime },
         };
         const result = await actionExecutor.execute(action, project);
         if (result.success) {

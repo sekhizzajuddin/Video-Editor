@@ -602,6 +602,29 @@ export class ActionExecutor {
         break;
       }
 
+      case "clip/updateSpeed": {
+        const params = action.params as {
+          clipId: string;
+          speed: number;
+          duration: number;
+          startTime?: number;
+        };
+        timeline.tracks = timeline.tracks.map((track: MutableTrack) => ({
+          ...track,
+          clips: track.clips.map((clip: MutableClip) => {
+            if (clip.id === params.clipId) {
+              const updates: Partial<MutableClip> = { speed: params.speed, duration: params.duration };
+              if (params.startTime !== undefined) {
+                updates.startTime = params.startTime;
+              }
+              return { ...clip, ...updates };
+            }
+            return clip;
+          }),
+        }));
+        break;
+      }
+
       case "clip/split": {
         const params = action.params as { clipId: string; time: number };
         const clip = this.findClip(timeline, params.clipId);

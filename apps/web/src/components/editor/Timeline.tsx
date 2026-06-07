@@ -23,6 +23,7 @@ import {
   Plus,
   ChevronDown as ChevronDownIcon,
   Magnet,
+  Gauge,
   Rows3,
   Rows2,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export const Timeline: React.FC = () => {
     canRedo,
     splitClip,
     removeClip,
+    rippleDeleteClip,
     addTrack,
     reorderTrack,
     deleteShapeClip,
@@ -108,9 +110,15 @@ export const Timeline: React.FC = () => {
     getSelectedClipIds,
     snapSettings,
     toggleSnap,
-    timelineMaximized,
-    toggleTimelineMaximized,
+    autoScroll,
   } = useUIStore();
+  const isDynamicSpeedEnabled = useUIStore((s) => s.isDynamicSpeedEnabled);
+  const isMagneticTimelineEnabled = useUIStore((s) => s.isMagneticTimelineEnabled);
+  const toggleMagneticTimeline = useUIStore((s) => s.toggleMagneticTimeline);
+  const toggleDynamicSpeed = useUIStore((s) => s.toggleDynamicSpeed);
+  const timelineMaximized = useUIStore((s) => s.timelineMaximized);
+  const toggleTimelineMaximized = useUIStore((s) => s.toggleTimelineMaximized);
+  
   const selectedClipIds = getSelectedClipIds();
 
   const { getTitleEngine, getGraphicsEngine } = useEngineStore();
@@ -231,6 +239,24 @@ export const Timeline: React.FC = () => {
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, [setViewportDimensions]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handleNativeWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.deltaY < 0) {
+          zoomIn();
+        } else if (e.deltaY > 0) {
+          zoomOut();
+        }
+      }
+    };
+    container.addEventListener("wheel", handleNativeWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleNativeWheel);
+  }, [zoomIn, zoomOut]);
 
   // ── Backfill waveforms for existing media items ───────────────────────
   // When a project loads, any audio/video media items that were imported
@@ -421,12 +447,17 @@ export const Timeline: React.FC = () => {
         continue;
       }
 
-      removeClip(id);
+      if (isMagneticTimelineEnabled) {
+        rippleDeleteClip(id);
+      } else {
+        removeClip(id);
+      }
     }
     clearSelection();
   }, [
     selectedClipIds,
     removeClip,
+    rippleDeleteClip,
     clearSelection,
     allTextClips,
     allShapeClips,
@@ -822,6 +853,24 @@ export const Timeline: React.FC = () => {
           title="Delete (Del)"
         >
           <Trash2 size={14} />
+        </TLTool>
+
+        <div className="w-px h-4 bg-border mx-1.5" />
+
+        <TLTool
+          onClick={toggleDynamicSpeed}
+          active={isDynamicSpeedEnabled}
+          title="Dynamic Speed: Drag edges to change speed instead of trimming"
+        >
+          <Gauge size={14} />
+        </TLTool>
+
+        <TLTool
+          onClick={toggleMagneticTimeline}
+          active={isMagneticTimelineEnabled}
+          title="Magnetic Timeline: Deleting clips automatically closes the gap"
+        >
+          <Magnet size={14} />
         </TLTool>
 
         <div className="w-px h-4 bg-border mx-1.5" />
