@@ -133,18 +133,19 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const waveformPath = useMemo(() => {
     const realPeaks = mediaItem?.waveformData;
     const hasPeaks = realPeaks && (realPeaks as any).length > 0;
+    const pathWidth = Math.max(200, width);
 
     if (isAudio) {
       const data = hasPeaks ? realPeaks : getOrGenerateMockWaveformData(clip.mediaId);
-      return generateWaveformPath(data, 200);
+      return generateWaveformPath(data, pathWidth);
     }
 
     if (isVideo && hasPeaks) {
-      return generateWaveformPath(realPeaks, 200);
+      return generateWaveformPath(realPeaks, pathWidth);
     }
 
     return "";
-  }, [isAudio, isVideo, clip.mediaId, mediaItem?.waveformData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAudio, isVideo, clip.mediaId, mediaItem?.waveformData, width]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClick = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -803,7 +804,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
             width="100%"
             height="100%"
             preserveAspectRatio="none"
-            viewBox="0 0 200 40"
+            viewBox={`0 0 ${Math.max(200, width)} 40`}
             xmlns="http://www.w3.org/2000/svg"
           >
             <path

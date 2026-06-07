@@ -250,7 +250,7 @@ export const Timeline: React.FC = () => {
         const blob = item.blob;
         if (!blob) continue;
         try {
-          const peaks = await extractWaveformPeaks(blob, 400);
+          const peaks = await extractWaveformPeaks(blob, 4000);
           if (cancelled) break;
           const state = useProjectStore.getState();
           const idx = state.project.mediaLibrary.items.findIndex((m) => m.id === item.id);

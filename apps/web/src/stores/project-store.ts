@@ -1796,7 +1796,7 @@ export const useProjectStore = create<ProjectState>()(
             setTimeout(async () => {
               try {
                 const blob = newMediaItem.blob ?? file;
-                const peaks = await extractWaveformPeaks(blob, 400);
+                const peaks = await extractWaveformPeaks(blob, 4000);
                 const currentProject = get().project;
                 const mediaIndex = currentProject.mediaLibrary.items.findIndex(
                   (m) => m.id === newMediaItem.id,

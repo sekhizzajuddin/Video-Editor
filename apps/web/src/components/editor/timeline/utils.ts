@@ -161,7 +161,7 @@ export const getOrGenerateMockWaveformData = (mediaId: string): number[] => {
     return (seed >>> 0) / 0xffffffff;
   };
 
-  const SAMPLES = 200;
+  const SAMPLES = 4000;
   const mockData: number[] = [];
 
   // Generate natural-looking audio waveform with varying energy segments
