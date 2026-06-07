@@ -71,16 +71,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   );
   const { playheadPosition } = useTimelineStore();
   const hasAudio = mediaHasAudio(mediaItem);
-  // Always generate a waveform path — for audio track clips we always show one
-  // even if the media item hasn't loaded yet (use clip.mediaId as the seed).
-  // For video clips, we show embedded audio waveform at bottom when hasAudio.
-  const waveformPath = useMemo(() => {
-    // Use real waveform data if available, otherwise generate deterministic mock
-    const data = mediaItem?.waveformData
-      ? mediaItem.waveformData
-      : getOrGenerateMockWaveformData(clip.mediaId);
-    return generateWaveformPath(data, 200);
-  }, [clip.mediaId, mediaItem?.waveformData]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [isDragging, setIsDragging] = useState(false);
   const [isPendingDrag, setIsPendingDrag] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -133,6 +124,28 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const isAudio = track.type === "audio";
   const isImage = track.type === "image";
   const clipStyle = getClipStyle(track.type);
+
+  // Compute the SVG waveform path.
+  // Audio track clips: always show a waveform. Real peaks are used when the
+  //   background Web Audio extraction has finished; until then a deterministic
+  //   mock (seeded by clip.mediaId) keeps the clip looking professional.
+  // Video track clips: only show if REAL peaks exist (channels > 0 after
+  //   extraction). Never render fake peaks on a video without audio.
+  const waveformPath = useMemo(() => {
+    const realPeaks = mediaItem?.waveformData;
+    const hasPeaks = realPeaks && (realPeaks as any).length > 0;
+
+    if (isAudio) {
+      const data = hasPeaks ? realPeaks : getOrGenerateMockWaveformData(clip.mediaId);
+      return generateWaveformPath(data, 200);
+    }
+
+    if (isVideo && hasPeaks) {
+      return generateWaveformPath(realPeaks, 200);
+    }
+
+    return "";
+  }, [isAudio, isVideo, clip.mediaId, mediaItem?.waveformData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClick = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -777,14 +790,14 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         </span>
       </div>
 
-      {(isAudio || (isVideo && hasAudio)) && waveformPath && (
+      {waveformPath && (
         <div
           className="absolute inset-x-0 pointer-events-none"
           style={{
             top: isAudio ? 0 : undefined,
             bottom: 0,
-            height: isAudio ? "100%" : "40%",
-            opacity: isAudio ? 0.85 : 0.5,
+            height: isAudio ? "100%" : "38%",
+            opacity: isAudio ? 0.9 : 0.55,
           }}
         >
           <svg

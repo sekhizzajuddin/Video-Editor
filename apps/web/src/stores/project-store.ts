@@ -72,6 +72,7 @@ import {
 } from "../services/media-storage";
 import { restoreMediaItem } from "../utils/media-recovery";
 import { projectManager } from "../services/project-manager";
+import { extractWaveformPeaks } from "../services/waveform-service";
 
 /**
  * ProjectState - Complete state interface for project management
@@ -1784,6 +1785,49 @@ export const useProjectStore = create<ProjectState>()(
             );
           } catch (err) {
             console.error("[ProjectStore] Failed to persist media blob:", err);
+          }
+
+          // ── Background waveform extraction ───────────────────────────────
+          // Always extract real peaks from the file blob using Web Audio API.
+          // This works for audio files AND video files with audio tracks.
+          // We do it in a setTimeout so the import returns immediately and the
+          // waveform appears shortly after (non-blocking).
+          if (mediaType === "audio" || mediaType === "video") {
+            setTimeout(async () => {
+              try {
+                const blob = newMediaItem.blob ?? file;
+                const peaks = await extractWaveformPeaks(blob, 400);
+                const currentProject = get().project;
+                const mediaIndex = currentProject.mediaLibrary.items.findIndex(
+                  (m) => m.id === newMediaItem.id,
+                );
+                if (mediaIndex !== -1) {
+                  const updatedItems = [...currentProject.mediaLibrary.items];
+                  updatedItems[mediaIndex] = {
+                    ...updatedItems[mediaIndex],
+                    // peaks === null means no audio track in this file
+                    waveformData: peaks ?? null,
+                    metadata: {
+                      ...updatedItems[mediaIndex].metadata,
+                      // Mark whether the file actually has an audio track
+                      channels: peaks !== null ? Math.max(1, updatedItems[mediaIndex].metadata.channels || 1) : 0,
+                    },
+                  };
+                  set({
+                    project: {
+                      ...currentProject,
+                      mediaLibrary: {
+                        ...currentProject.mediaLibrary,
+                        items: updatedItems,
+                      },
+                      modifiedAt: Date.now(),
+                    },
+                  });
+                }
+              } catch (err) {
+                console.warn("[ProjectStore] Background waveform extraction failed:", err);
+              }
+            }, 50);
           }
 
           if (mediaType === "video" && !thumbnailUrl) {

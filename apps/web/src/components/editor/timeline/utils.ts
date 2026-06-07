@@ -181,11 +181,18 @@ export const getOrGenerateMockWaveformData = (mediaId: string): number[] => {
 
 export const mediaHasAudio = (item: any): boolean => {
   if (!item) return false;
+  // Audio type files always have audio
   if (item.type === "audio") return true;
-  // All video files are assumed to have audio unless explicitly marked otherwise.
-  // Real waveform data will be populated asynchronously after import;
-  // until then we show mock waveform to indicate audio presence.
-  if (item.type === "video") return true;
+  // For video: check if the background waveform extraction set channels > 0.
+  // channels is set to 0 when extractWaveformPeaks returns null (no audio track).
+  // channels is set to >= 1 when peaks were successfully extracted.
+  // If channels is still 0 and waveformData is null → truly no audio.
+  // If waveformData exists (real peaks), always show waveform.
+  if (item.type === "video") {
+    if (item.waveformData && item.waveformData.length > 0) return true;
+    const ch = item.metadata?.channels ?? 0;
+    return ch > 0;
+  }
   return false;
 };
 

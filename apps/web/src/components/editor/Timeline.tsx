@@ -52,6 +52,7 @@ import {
   formatTimecode,
   getTrackInfo,
 } from "./timeline/index";
+import { extractWaveformPeaks } from "../../services/waveform-service";
 
 export const Timeline: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -230,6 +231,57 @@ export const Timeline: React.FC = () => {
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, [setViewportDimensions]);
+
+  // ── Backfill waveforms for existing media items ───────────────────────
+  // When a project loads, any audio/video media items that were imported
+  // before real waveform extraction was wired in will have waveformData=null.
+  // Run once on mount and process them sequentially.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const items = useProjectStore.getState().project.mediaLibrary.items;
+      const needsExtraction = items.filter(
+        (item) =>
+          (item.type === "audio" || item.type === "video") &&
+          (!item.waveformData || (item.waveformData as any).length === 0)
+      );
+      for (const item of needsExtraction) {
+        if (cancelled) break;
+        const blob = item.blob;
+        if (!blob) continue;
+        try {
+          const peaks = await extractWaveformPeaks(blob, 400);
+          if (cancelled) break;
+          const state = useProjectStore.getState();
+          const idx = state.project.mediaLibrary.items.findIndex((m) => m.id === item.id);
+          if (idx === -1) continue;
+          const updatedItems = [...state.project.mediaLibrary.items];
+          updatedItems[idx] = {
+            ...updatedItems[idx],
+            waveformData: peaks ?? null,
+            metadata: {
+              ...updatedItems[idx].metadata,
+              channels: peaks !== null
+                ? Math.max(1, updatedItems[idx].metadata.channels || 1)
+                : 0,
+            },
+          };
+          useProjectStore.setState({
+            project: {
+              ...state.project,
+              mediaLibrary: { ...state.project.mediaLibrary, items: updatedItems },
+              modifiedAt: Date.now(),
+            },
+          });
+        } catch {
+          // best-effort
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   useEffect(() => {
     if (playbackState !== "playing") return;
