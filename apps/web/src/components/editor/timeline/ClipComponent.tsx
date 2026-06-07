@@ -65,14 +65,17 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const { playheadPosition } = useTimelineStore();
   const mediaItem = getMediaItem(clip.mediaId);
   const hasAudio = mediaHasAudio(mediaItem);
-  const waveformPath = useMemo(() => {
-    if (!mediaItem) return "";
-    if (mediaItem.waveformData) {
-      return generateWaveformPath(mediaItem.waveformData, 100);
-    }
-    const mockData = getOrGenerateMockWaveformData(mediaItem.id || "default");
-    return generateWaveformPath(mockData, 100);
-  }, [mediaItem]);
+  // Generate 200 bars worth of waveform data. The SVG viewBox stretches it to
+  // fill whatever pixel width the clip occupies — stable dep on mediaId only.
+  const waveformData = useMemo(() => {
+    if (!mediaItem) return null;
+    if (mediaItem.waveformData) return mediaItem.waveformData;
+    return getOrGenerateMockWaveformData(clip.mediaId);
+  }, [clip.mediaId, mediaItem?.waveformData]); // eslint-disable-line react-hooks/exhaustive-deps
+  const waveformPath = useMemo(
+    () => (waveformData ? generateWaveformPath(waveformData, 200) : ""),
+    [waveformData],
+  );
   const [isDragging, setIsDragging] = useState(false);
   const [isPendingDrag, setIsPendingDrag] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -769,34 +772,30 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         </span>
       </div>
 
-      {(isAudio || (isVideo && hasAudio)) && (
-        <>
-          <div className={`absolute inset-x-0 px-1 pointer-events-none ${isAudio ? "inset-y-0 flex items-center opacity-50" : "bottom-0 h-1/3 flex items-end opacity-30"}`}>
-            <svg
-              className="w-full h-full"
-              preserveAspectRatio="none"
-              viewBox="0 0 100 40"
-            >
-              <path
-                d={waveformPath}
-                stroke="currentColor"
-                className={isAudio ? "text-blue-400" : "text-green-300"}
-                fill="none"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
-          </div>
-          {isAudio && (
-            <div className="absolute inset-x-0 top-1 flex justify-center opacity-0 group-hover:opacity-60 transition-opacity pointer-events-none">
-              <div className="flex gap-0.5">
-                <div className="w-1 h-1 rounded-full bg-blue-300" />
-                <div className="w-1 h-1 rounded-full bg-blue-300" />
-                <div className="w-1 h-1 rounded-full bg-blue-300" />
-              </div>
-            </div>
-          )}
-        </>
+      {(isAudio || (isVideo && hasAudio)) && waveformPath && (
+        <div
+          className={`absolute inset-x-0 pointer-events-none ${
+            isAudio
+              ? "inset-y-0 opacity-70"
+              : "bottom-0 h-[38%] opacity-40"
+          }`}
+        >
+          <svg
+            className="w-full h-full"
+            preserveAspectRatio="none"
+            viewBox="0 0 200 40"
+          >
+            <path
+              d={waveformPath}
+              stroke="currentColor"
+              className={isAudio ? "text-emerald-300" : "text-sky-300"}
+              fill="none"
+              strokeWidth="0.8"
+              vectorEffect="non-scaling-stroke"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
       )}
 
       {clip.keyframes && clip.keyframes.length > 0 && (

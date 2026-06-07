@@ -2369,26 +2369,30 @@ export const useProjectStore = create<ProjectState>()(
           trackType = "video";
         }
 
+        // Determine clip start position BEFORE any state changes
         const clipStartTime =
           startTime !== undefined
             ? startTime
             : calculateTimelineDuration(project);
 
-        let targetTrack = project.timeline.tracks.find((t) => t.type === trackType);
-        let updatedProject = project;
+        // Check if a primary track of the right type already exists
+        const existingTrack = project.timeline.tracks.find((t) => t.type === trackType);
 
-        if (!targetTrack) {
+        if (!existingTrack) {
+          // Create a new track — this updates Zustand state internally
           const trackResult = await addTrack(trackType);
           if (!trackResult.success) {
             return trackResult;
           }
-
-          const latestState = get();
-          updatedProject = latestState.project;
-          targetTrack = updatedProject.timeline.tracks.find(
-            (t) => t.clips.length === 0 && t.type === trackType,
-          );
         }
+
+        // Always re-fetch the full latest state so we work on the
+        // post-addTrack project and the correct actionExecutor instance.
+        const { project: currentProject, actionExecutor: currentExecutor } = get();
+
+        const targetTrack = currentProject.timeline.tracks.find(
+          (t) => t.type === trackType,
+        );
 
         if (!targetTrack) {
           return {
@@ -2400,8 +2404,8 @@ export const useProjectStore = create<ProjectState>()(
           };
         }
 
-        const { actionExecutor: exec } = get();
-        const projectCopy = structuredClone(updatedProject);
+        // Deep-clone current project for the action executor to mutate in place
+        const projectCopy = structuredClone(currentProject);
         const action: Action = {
           type: "clip/add",
           id: uuidv4(),
@@ -2409,7 +2413,7 @@ export const useProjectStore = create<ProjectState>()(
           params: { trackId: targetTrack.id, mediaId, startTime: clipStartTime },
         };
 
-        const result = await exec.execute(action, projectCopy);
+        const result = await currentExecutor.execute(action, projectCopy);
 
         if (result.success) {
           const finalProject: Project = {

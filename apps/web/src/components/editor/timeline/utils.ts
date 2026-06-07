@@ -117,38 +117,64 @@ export const generateWaveformPath = (
   width: number,
 ): string => {
   if (!waveformData || waveformData.length === 0) {
-    return "M0,20 L100,20";
+    return "";
   }
 
   const samples = Array.from(waveformData);
-  const step = Math.max(1, Math.floor(samples.length / width));
+  const barCount = Math.min(width, samples.length);
+  const step = samples.length / barCount;
+  const midY = 20;
+  const maxAmplitude = 17;
   const points: string[] = [];
 
-  for (let i = 0; i < width; i++) {
-    const sampleIndex = Math.min(i * step, samples.length - 1);
-    const value = Math.abs(samples[sampleIndex] || 0);
-    const height = Math.max(1, value * 18);
-    const y1 = 20 - height;
-    const y2 = 20 + height;
-    points.push(`M${i},${y1} L${i},${y2}`);
+  for (let i = 0; i < barCount; i++) {
+    // Average a window of samples for each bar to get RMS-like amplitude
+    const startIdx = Math.floor(i * step);
+    const endIdx = Math.min(Math.floor((i + 1) * step), samples.length);
+    let sum = 0;
+    let count = 0;
+    for (let j = startIdx; j < endIdx; j++) {
+      sum += Math.abs(samples[j] || 0);
+      count++;
+    }
+    const value = count > 0 ? sum / count : 0;
+    const halfHeight = Math.max(1.5, value * maxAmplitude);
+    const x = (i / barCount) * width;
+    const y1 = midY - halfHeight;
+    const y2 = midY + halfHeight;
+    points.push(`M${x.toFixed(1)},${y1.toFixed(1)} L${x.toFixed(1)},${y2.toFixed(1)}`);
   }
 
   return points.join(" ");
 };
 
 export const getOrGenerateMockWaveformData = (mediaId: string): number[] => {
+  // Deterministic per-media random waveform using a seeded PRNG
   let seed = 0;
   for (let i = 0; i < mediaId.length; i++) {
-    seed += mediaId.charCodeAt(i);
+    seed = (seed * 31 + mediaId.charCodeAt(i)) & 0xffffffff;
   }
-  
+
+  // Simple LCG pseudo-random
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+    return (seed >>> 0) / 0xffffffff;
+  };
+
+  const SAMPLES = 200;
   const mockData: number[] = [];
-  for (let i = 0; i < 100; i++) {
-    const angle1 = (i / 100) * Math.PI * 6;
-    const angle2 = (i / 100) * Math.PI * 18;
-    const noise = Math.sin(seed + i * 0.5) * 0.15;
-    const val = Math.abs(Math.sin(angle1) * 0.6 + Math.sin(angle2) * 0.25 + noise);
-    mockData.push(Math.max(0.05, Math.min(1.0, val)));
+
+  // Generate natural-looking audio waveform with varying energy segments
+  let envelope = 0.5;
+  for (let i = 0; i < SAMPLES; i++) {
+    // Slowly drift the envelope (simulates speech/music dynamics)
+    envelope = Math.max(0.1, Math.min(1.0, envelope + (rand() - 0.5) * 0.12));
+    // Add high-frequency noise on top of envelope
+    const noise = rand();
+    // Occasionally drop to near-silence (pauses in speech/music)
+    const isSilent = rand() < 0.06;
+    const val = isSilent ? rand() * 0.08 : envelope * (0.5 + noise * 0.5);
+    mockData.push(Math.max(0.04, Math.min(1.0, val)));
   }
   return mockData;
 };
@@ -156,10 +182,10 @@ export const getOrGenerateMockWaveformData = (mediaId: string): number[] => {
 export const mediaHasAudio = (item: any): boolean => {
   if (!item) return false;
   if (item.type === "audio") return true;
-  if (item.type === "video") {
-    const meta = item.metadata;
-    return !!(meta && ((meta.channels && meta.channels > 0) || (meta.audioTrackCount && meta.audioTrackCount > 0)));
-  }
+  // All video files are assumed to have audio unless explicitly marked otherwise.
+  // Real waveform data will be populated asynchronously after import;
+  // until then we show mock waveform to indicate audio presence.
+  if (item.type === "video") return true;
   return false;
 };
 
