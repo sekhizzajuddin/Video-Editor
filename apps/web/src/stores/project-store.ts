@@ -39,6 +39,7 @@ import {
   getBuiltInEditingTemplates,
   resolveEditingTemplate,
   textAnimationEngine,
+  getSpeedEngine,
 } from "@openreel/core";
 import { v4 as uuidv4 } from "uuid";
 import type {
@@ -2774,6 +2775,10 @@ export const useProjectStore = create<ProjectState>()(
         };
         const result = await actionExecutor.execute(action, project);
         if (result.success) {
+          // Sync with global speed engine
+          const rawMediaDuration = duration * speed;
+          getSpeedEngine().setClipSpeed(clipId, speed, rawMediaDuration);
+          
           set({ project: { ...project } });
         }
         return result;

@@ -646,6 +646,8 @@ export const Timeline: React.FC = () => {
         return kf;
       });
 
+      const durationDelta = newDuration - oldDuration;
+
       if (edge === "left") {
         titleEngine.updateTextClip(clipId, {
           startTime: newTime,
@@ -656,6 +658,13 @@ export const Timeline: React.FC = () => {
           duration: newDuration,
         });
       }
+
+      // Magnetic Ripple for text clips
+      allTextClips.forEach(tc => {
+        if (tc.id !== clipId && tc.startTime >= textClip.startTime + oldDuration - 0.05) {
+          titleEngine.updateTextClip(tc.id, { startTime: Math.max(0, tc.startTime + durationDelta) });
+        }
+      });
 
       useProjectStore
         .getState()
@@ -720,6 +729,8 @@ export const Timeline: React.FC = () => {
         return kf;
       });
 
+      const durationDelta = newDuration - oldDuration;
+
       if (graphicClip.type === "sticker" || graphicClip.type === "emoji") {
         graphicsEngine.updateStickerClip(clipId, updates);
       } else if (graphicClip.type === "svg") {
@@ -727,6 +738,20 @@ export const Timeline: React.FC = () => {
       } else {
         graphicsEngine.updateShapeClip(clipId, updates);
       }
+
+      // Magnetic Ripple for shape/graphic clips
+      allShapeClips.forEach(sc => {
+        if (sc.id !== clipId && sc.startTime >= graphicClip.startTime + oldDuration - 0.05) {
+          const shiftUpdates = { startTime: Math.max(0, sc.startTime + durationDelta) };
+          if (sc.type === "sticker" || sc.type === "emoji") {
+            graphicsEngine.updateStickerClip(sc.id, shiftUpdates);
+          } else if (sc.type === "svg") {
+            graphicsEngine.updateSVGClip(sc.id, shiftUpdates);
+          } else {
+            graphicsEngine.updateShapeClip(sc.id, shiftUpdates);
+          }
+        }
+      });
 
       useProjectStore.getState().updateClipKeyframes(clipId, adjustedKeyframes);
 
@@ -766,19 +791,30 @@ export const Timeline: React.FC = () => {
         return kf;
       });
 
+      const durationDelta = newDuration - oldDuration;
+
       useProjectStore.setState((state) => ({
         project: {
           ...state.project,
           timeline: {
             ...state.project.timeline,
-            tracks: state.project.timeline.tracks.map((track) => ({
-              ...track,
-              clips: track.clips.map((c) =>
-                c.id === clipId
-                  ? { ...c, ...updates, keyframes: adjustedKeyframes }
-                  : c,
-              ),
-            })),
+            tracks: state.project.timeline.tracks.map((track) => {
+              const isTargetTrack = track.clips.some(c => c.id === clipId);
+              if (!isTargetTrack) return track;
+              return {
+                ...track,
+                clips: track.clips.map((c) => {
+                  if (c.id === clipId) {
+                    return { ...c, ...updates, keyframes: adjustedKeyframes };
+                  }
+                  // Magnetic ripple: shift all connected/subsequent clips
+                  if (c.startTime >= clip.startTime + oldDuration - 0.05) {
+                    return { ...c, startTime: Math.max(0, c.startTime + durationDelta) };
+                  }
+                  return c;
+                }),
+              };
+            }),
           },
           modifiedAt: Date.now(),
         },

@@ -222,10 +222,12 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     mouseX: number;
     startTime: number;
     duration: number;
+    speed: number;
   }>({
     mouseX: 0,
     startTime: clip.startTime,
     duration: clip.duration,
+    speed: clip.speed ?? 1,
   });
   const dragStartRef = useRef<{ mouseY: number; clipY: number; scrollTop: number }>({
     mouseY: 0,
@@ -523,6 +525,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         mouseX: e.clientX,
         startTime: clip.startTime,
         duration: clip.duration,
+        speed: clip.speed ?? 1,
       };
       document.body.style.cursor = "ew-resize";
     };
@@ -778,7 +781,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
           const newDuration = (trimStartRef.current.startTime + trimStartRef.current.duration) - clampedStartTime;
           
-          const originalSpeed = clip.speed ?? 1;
+          const originalSpeed = trimStartRef.current.speed;
           const originalVisualDuration = trimStartRef.current.duration;
           const rawMediaDuration = originalVisualDuration * originalSpeed;
 
@@ -795,7 +798,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
           const newDuration = clampedEndTime - trimStartRef.current.startTime;
 
-          const originalSpeed = clip.speed ?? 1;
+          const originalSpeed = trimStartRef.current.speed;
           const originalVisualDuration = trimStartRef.current.duration;
           const rawMediaDuration = originalVisualDuration * originalSpeed;
 

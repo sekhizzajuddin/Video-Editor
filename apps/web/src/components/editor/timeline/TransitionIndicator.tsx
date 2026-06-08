@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Plus, X, Settings2 } from "lucide-react";
 import type { Transition, Clip } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
+import { useUIStore } from "../../../stores/ui-store";
 
 interface TransitionIndicatorProps {
   clipA: Clip;
@@ -69,8 +70,10 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({
 
   const handleSettings = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Open settings (to be implemented in UI or inspector)
-    console.log("Settings for transition:", transition);
+    const { toggleSelection, setInspectorActiveTab, setPanelVisible } = useUIStore.getState();
+    toggleSelection("clip", clipB.id, false);
+    setInspectorActiveTab("animate");
+    setPanelVisible("inspector", true);
   };
 
   // Render applied transition
