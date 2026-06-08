@@ -110,7 +110,6 @@ export const Timeline: React.FC = () => {
     getSelectedClipIds,
     snapSettings,
     toggleSnap,
-    autoScroll,
   } = useUIStore();
   const isDynamicSpeedEnabled = useUIStore((s) => s.isDynamicSpeedEnabled);
   const isMagneticTimelineEnabled = useUIStore((s) => s.isMagneticTimelineEnabled);
