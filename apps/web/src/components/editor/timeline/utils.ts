@@ -7,6 +7,7 @@ import type {
   ClipStyle,
   TrackInfo,
 } from "./types";
+import { downsamplePeaks, type WaveformPeakData } from "../../../services/waveform-service";
 
 export const calculateSnap = (
   rawTime: number,
@@ -113,38 +114,51 @@ export const calculateSnap = (
 };
 
 export const generateWaveformPath = (
-  waveformData: Float32Array | number[] | null | undefined,
+  waveformData: WaveformPeakData | Float32Array | number[] | null | undefined,
   width: number,
 ): string => {
-  if (!waveformData || waveformData.length === 0) {
-    return "";
-  }
+  if (!waveformData) return "";
 
-  const samples = Array.from(waveformData);
-  const barCount = Math.min(width, samples.length);
-  const step = samples.length / barCount;
+  const isHiRes =
+    typeof waveformData === "object" &&
+    "minPeaks" in waveformData &&
+    "maxPeaks" in waveformData;
+
+  const { min, max } = downsamplePeaks(
+    isHiRes ? (waveformData as WaveformPeakData).minPeaks : null,
+    isHiRes ? (waveformData as WaveformPeakData).maxPeaks : null,
+    isHiRes ? (waveformData as WaveformPeakData).peaks : (waveformData as Float32Array | number[]),
+    Math.max(1, width)
+  );
+
+  if (min.length === 0) return "";
+
+  const cols = min.length;
   const midY = 20;
   const maxAmplitude = 17;
-  const points: string[] = [];
 
-  for (let i = 0; i < barCount; i++) {
-    // Average a window of samples for each bar to get RMS-like amplitude
-    const startIdx = Math.floor(i * step);
-    const endIdx = Math.min(Math.floor((i + 1) * step), samples.length);
-    let sum = 0;
-    let count = 0;
-    for (let j = startIdx; j < endIdx; j++) {
-      sum += Math.abs(samples[j] || 0);
-      count++;
-    }
-    const value = count > 0 ? sum / count : 0;
-    const halfHeight = Math.max(1.5, value * maxAmplitude);
-    const x = (i / barCount) * width;
-    const y1 = midY - halfHeight;
-    const y2 = midY + halfHeight;
-    points.push(`M${x.toFixed(1)},${y1.toFixed(1)} L${x.toFixed(1)},${y2.toFixed(1)}`);
+  // Draw Audacity-style continuous polygon envelope:
+  // 1. Move left-to-right across max peaks (top curve)
+  // 2. Move right-to-left across min peaks (bottom curve)
+  // 3. Close the path
+  
+  const points: string[] = [];
+  
+  // Top edge (left to right)
+  for (let i = 0; i < cols; i++) {
+    const x = (i / Math.max(1, cols - 1)) * width;
+    const y = midY - Math.abs(max[i]) * maxAmplitude;
+    points.push(`${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`);
   }
 
+  // Bottom edge (right to left)
+  for (let i = cols - 1; i >= 0; i--) {
+    const x = (i / Math.max(1, cols - 1)) * width;
+    const y = midY - min[i] * maxAmplitude; // min[i] is already signed
+    points.push(`L${x.toFixed(2)},${y.toFixed(2)}`);
+  }
+  
+  points.push("Z");
   return points.join(" ");
 };
 

@@ -1008,11 +1008,8 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           >
             <path
               d={waveformPath}
-              fill="none"
-              stroke={isAudio ? "#6ee7b7" : "#7dd3fc"}
-              strokeWidth="1.2"
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
+              fill={isAudio ? "#6ee7b7" : "#7dd3fc"}
+              stroke="none"
             />
           </svg>
         </div>

@@ -72,7 +72,7 @@ import {
 } from "../services/media-storage";
 import { restoreMediaItem } from "../utils/media-recovery";
 import { projectManager } from "../services/project-manager";
-import { extractWaveformPeaks } from "../services/waveform-service";
+import { extractWaveformPeaksHiRes } from "../services/waveform-service";
 
 /**
  * ProjectState - Complete state interface for project management
@@ -1797,7 +1797,7 @@ export const useProjectStore = create<ProjectState>()(
             setTimeout(async () => {
               try {
                 const blob = newMediaItem.blob ?? file;
-                const peaks = await extractWaveformPeaks(blob, 4000);
+                const peaks = await extractWaveformPeaksHiRes(blob, 8000);
                 const currentProject = get().project;
                 const mediaIndex = currentProject.mediaLibrary.items.findIndex(
                   (m) => m.id === newMediaItem.id,
