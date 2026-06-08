@@ -36,7 +36,7 @@ export interface MediaItem {
   readonly blob: Blob | null;
   readonly metadata: MediaMetadata;
   readonly thumbnailUrl: string | null;
-  readonly waveformData: Float32Array | null;
+  readonly waveformData: any | null;
   readonly filmstripThumbnails?: FilmstripThumbnail[];
   readonly isPlaceholder?: boolean;
   readonly originalUrl?: string;
