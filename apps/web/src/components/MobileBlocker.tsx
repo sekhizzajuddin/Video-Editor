@@ -1,25 +1,20 @@
 import { useEffect, useState } from "react";
 import { Monitor } from "lucide-react";
+import { useBreakpoint } from "../hooks/useBreakpoint";
 
 export function MobileBlocker() {
-  const [isMobile, setIsMobile] = useState(false);
+  const bp = useBreakpoint();
+  const [showBlocker, setShowBlocker] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => {
-      const userAgent = navigator.userAgent.toLowerCase();
-      const mobileKeywords =
-        /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i;
-      const isMobileDevice = mobileKeywords.test(userAgent);
-      const isSmallScreen = window.innerWidth < 768;
-      setIsMobile(isMobileDevice || isSmallScreen);
-    };
+    // Block devices with extremely narrow screens (< 640px)
+    const shouldBlock = bp.isMobile;
+    setShowBlocker(shouldBlock);
+  }, [bp.isMobile]);
 
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
+  if (!showBlocker) return null;
 
-  if (!isMobile) return null;
+  const isTabletLandscape = bp.isTablet && bp.width >= 768;
 
   return (
     <div className="fixed inset-0 z-[9999] bg-background flex items-center justify-center p-6">
@@ -37,7 +32,7 @@ export function MobileBlocker() {
           <div className="flex items-center justify-center gap-2">
             <div className="h-px w-8 bg-primary/50" />
             <p className="text-lg text-text-secondary font-medium">
-              Desktop Only
+              {isTabletLandscape ? "Switch to Desktop" : "Desktop Only"}
             </p>
             <div className="h-px w-8 bg-primary/50" />
           </div>
@@ -45,12 +40,14 @@ export function MobileBlocker() {
 
         <div className="space-y-4 bg-background-secondary/50 backdrop-blur-sm rounded-xl p-6 border border-border">
           <p className="text-base text-text-primary leading-relaxed">
-            OpenReel is a professional video editor that requires a desktop or
-            laptop computer.
+            {isTabletLandscape
+              ? "For the best editing experience, please open this page on a laptop or desktop computer."
+              : "OpenReel is a professional video editor optimized for desktop and laptop computers."}
           </p>
           <p className="text-sm text-text-muted">
-            Please visit this page on your desktop or laptop to start creating
-            amazing videos.
+            {isTabletLandscape
+              ? "The responsive layout provides basic functionality\u2014for full editing capabilities, switch to a desktop browser."
+              : "Please visit this page on your desktop or laptop to start creating amazing videos."}
           </p>
         </div>
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useMemo } from "react";
+import React, { useCallback, useState, useEffect, useMemo, lazy, Suspense } from "react";
 import {
   ChevronDown,
   FileVideo,
@@ -41,7 +41,9 @@ import {
   type DeviceProfile,
   type TimeEstimate,
 } from "@openreel/core";
-import { ExportDialog } from "./ExportDialog";
+const ExportDialog = lazy(() =>
+  import("./ExportDialog").then((m) => ({ default: m.ExportDialog }))
+);
 import { ScreenRecorder } from "./ScreenRecorder";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { ProjectSwitcher } from "./ProjectSwitcher";
@@ -934,14 +936,16 @@ export const Toolbar: React.FC = () => {
       </div>
 
       {/* ─── Auxiliary popups & dialogs ───────────────────────── */}
-      <ExportDialog
-        isOpen={isExportDialogOpen}
-        onClose={() => setIsExportDialogOpen(false)}
-        onExport={handleCustomExport}
-        duration={project.timeline?.duration ?? 0}
-        projectWidth={project.settings?.width ?? 1920}
-        projectHeight={project.settings?.height ?? 1080}
-      />
+      <Suspense fallback={null}>
+        <ExportDialog
+          isOpen={isExportDialogOpen}
+          onClose={() => setIsExportDialogOpen(false)}
+          onExport={handleCustomExport}
+          duration={project.timeline?.duration ?? 0}
+          projectWidth={project.settings?.width ?? 1920}
+          projectHeight={project.settings?.height ?? 1080}
+        />
+      </Suspense>
 
       <ScreenRecorder
         isOpen={isRecorderOpen}

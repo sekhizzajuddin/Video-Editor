@@ -1,14 +1,18 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from "react";
 
 import { Toolbar } from "./Toolbar";
-import { AssetsPanel } from "./AssetsPanel";
 import { Preview } from "./Preview";
-import { InspectorPanel } from "./InspectorPanel";
 import { Timeline } from "./Timeline";
-import { KeyframeEditorPanel } from "./KeyframeEditorPanel";
-import { AudioMixer } from "../audio-mixer";
 import { KeyboardShortcutsOverlay } from "./KeyboardShortcutsOverlay";
 import { PanelErrorBoundary } from "../ErrorBoundary";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
+
+const AssetsPanel = lazy(() => import("./AssetsPanel"));
+const InspectorPanel = lazy(() => import("./InspectorPanel"));
+const KeyframeEditorPanel = lazy(() => import("./KeyframeEditorPanel"));
+const AudioMixer = lazy(() =>
+  import("../audio-mixer").then((m) => ({ default: m.AudioMixer }))
+);
 import { SpotlightTour, MoGraphTour } from "./tour";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
@@ -206,6 +210,9 @@ export const EditorInterface: React.FC = () => {
   const { showShortcutsOverlay, setShowShortcutsOverlay } =
     useKeyboardShortcuts();
   useAutoSave();
+
+  const bp = useBreakpoint();
+  const isCompact = bp.isBelow("tablet");
 
   const {
     keyframeEditorOpen,
@@ -408,7 +415,129 @@ export const EditorInterface: React.FC = () => {
   // sync via the effect above so other components can use them too.
   const effectiveTimelineVh = timelineMaximized
     ? COMPACT_TIMELINE_VH
-    : timelineVh;
+    : (isCompact ? Math.min(timelineVh, 35) : timelineVh);
+
+  if (isCompact) {
+    // Responsive layout: panels become slide-over drawers, stage takes full width
+    const showMedia = panels.mediaLibrary?.visible ?? true;
+    const showInspector = panels.inspector?.visible ?? true;
+    return (
+      <div
+        ref={rootRef}
+        className="w-full h-full bg-bg text-fg overflow-hidden font-sans select-none relative z-20 flex flex-col"
+      >
+        <Toolbar />
+
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 relative">
+            <PanelErrorBoundary name="Stage">
+              <Preview />
+            </PanelErrorBoundary>
+
+            {/* Media drawer */}
+            {showMedia && (
+              <div className="absolute inset-y-0 left-0 w-[min(85vw,420px)] z-30 bg-bg-1 border-r border-border shadow-2xl overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                  <span className="text-sm font-semibold">Media</span>
+                  <button
+                    onClick={() => setPanelVisible("mediaLibrary", false)}
+                    className="p-1 rounded hover:bg-bg-2 text-fg-2"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <PanelErrorBoundary name="Media">
+                    <Suspense fallback={<div className="w-full h-full bg-bg-1 animate-pulse" />}>
+                      <AssetsPanel />
+                    </Suspense>
+                  </PanelErrorBoundary>
+                </div>
+              </div>
+            )}
+
+            {/* Inspector drawer */}
+            {showInspector && (
+              <div className="absolute inset-y-0 right-0 w-[min(85vw,400px)] z-30 bg-bg-1 border-l border-border shadow-2xl overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                  <span className="text-sm font-semibold">Inspector</span>
+                  <button
+                    onClick={() => setPanelVisible("inspector", false)}
+                    className="p-1 rounded hover:bg-bg-2 text-fg-2"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <PanelErrorBoundary name="Inspector">
+                    <Suspense fallback={<div className="w-full h-full bg-bg-1 animate-pulse" />}>
+                      <InspectorPanel />
+                    </Suspense>
+                  </PanelErrorBoundary>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Timeline row */}
+          <div
+            className="bg-tl-bg min-h-0 overflow-hidden flex flex-col border-t border-border"
+            style={{ height: `${effectiveTimelineVh}vh` }}
+          >
+            {panels.audioMixer?.visible && (
+              <div className="shrink-0 border-b border-border">
+                <PanelErrorBoundary name="Audio Mixer">
+                  <Suspense fallback={<div className="h-32 bg-bg-1 animate-pulse" />}>
+                    <AudioMixer
+                      visible
+                      onClose={() => setPanelVisible("audioMixer", false)}
+                    />
+                  </Suspense>
+                </PanelErrorBoundary>
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0 flex">
+              <div className="flex-1 min-w-0 min-h-0">
+                <PanelErrorBoundary name="Timeline">
+                  <Timeline />
+                </PanelErrorBoundary>
+              </div>
+
+              {keyframeEditorOpen && (
+                <div className="shrink-0 border-l border-border w-[min(80vw,400px)]">
+                  <PanelErrorBoundary name="Keyframe Editor">
+                    <Suspense fallback={<div className="w-full h-full bg-bg-1 animate-pulse" />}>
+                      <KeyframeEditorPanel
+                        clip={selectedClip}
+                        onClose={() => setKeyframeEditorOpen(false)}
+                        onUpdateKeyframe={handleUpdateKeyframe}
+                        onDeleteKeyframe={handleDeleteKeyframe}
+                        onCopyKeyframes={handleCopyKeyframes}
+                        onPasteKeyframes={handlePasteKeyframes}
+                        selectedKeyframeIds={selectedKeyframeIds}
+                        onSelectKeyframe={handleSelectKeyframe}
+                        copiedKeyframes={copiedKeyframes}
+                      />
+                    </Suspense>
+                  </PanelErrorBoundary>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <KeyboardShortcutsOverlay
+          isOpen={showShortcutsOverlay}
+          onClose={() => setShowShortcutsOverlay(false)}
+        />
+        <SpotlightTour />
+        <MoGraphTour />
+      </div>
+    );
+  }
+
+  // ── Full desktop layout ─────────────────────────────────────────
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaWidth}px ${RESIZE_HANDLE}px 1fr ${RESIZE_HANDLE}px ${inspectorWidth}px`,
     gridTemplateRows: `1fr ${RESIZE_HANDLE}px ${effectiveTimelineVh}vh`,
@@ -432,7 +561,9 @@ export const EditorInterface: React.FC = () => {
           style={{ gridArea: "media" }}
         >
           <PanelErrorBoundary name="Media">
-            <AssetsPanel />
+            <Suspense fallback={<div className="w-full h-full bg-bg-1 animate-pulse" />}>
+              <AssetsPanel />
+            </Suspense>
           </PanelErrorBoundary>
         </div>
 
@@ -462,7 +593,9 @@ export const EditorInterface: React.FC = () => {
           style={{ gridArea: "inspector" }}
         >
           <PanelErrorBoundary name="Inspector">
-            <InspectorPanel />
+            <Suspense fallback={<div className="w-full h-full bg-bg-1 animate-pulse" />}>
+              <InspectorPanel />
+            </Suspense>
           </PanelErrorBoundary>
         </div>
 
@@ -479,10 +612,12 @@ export const EditorInterface: React.FC = () => {
           {panels.audioMixer?.visible && (
             <div className="shrink-0 border-b border-border">
               <PanelErrorBoundary name="Audio Mixer">
-                <AudioMixer
-                  visible
-                  onClose={() => setPanelVisible("audioMixer", false)}
-                />
+                <Suspense fallback={<div className="h-32 bg-bg-1 animate-pulse" />}>
+                  <AudioMixer
+                    visible
+                    onClose={() => setPanelVisible("audioMixer", false)}
+                  />
+                </Suspense>
               </PanelErrorBoundary>
             </div>
           )}
@@ -497,17 +632,19 @@ export const EditorInterface: React.FC = () => {
             {keyframeEditorOpen && (
               <div className="shrink-0 min-w-0 border-l border-border">
                 <PanelErrorBoundary name="Keyframe Editor">
-                  <KeyframeEditorPanel
-                    clip={selectedClip}
-                    onClose={() => setKeyframeEditorOpen(false)}
-                    onUpdateKeyframe={handleUpdateKeyframe}
-                    onDeleteKeyframe={handleDeleteKeyframe}
-                    onCopyKeyframes={handleCopyKeyframes}
-                    onPasteKeyframes={handlePasteKeyframes}
-                    selectedKeyframeIds={selectedKeyframeIds}
-                    onSelectKeyframe={handleSelectKeyframe}
-                    copiedKeyframes={copiedKeyframes}
-                  />
+                  <Suspense fallback={<div className="w-[400px] h-full bg-bg-1 animate-pulse" />}>
+                    <KeyframeEditorPanel
+                      clip={selectedClip}
+                      onClose={() => setKeyframeEditorOpen(false)}
+                      onUpdateKeyframe={handleUpdateKeyframe}
+                      onDeleteKeyframe={handleDeleteKeyframe}
+                      onCopyKeyframes={handleCopyKeyframes}
+                      onPasteKeyframes={handlePasteKeyframes}
+                      selectedKeyframeIds={selectedKeyframeIds}
+                      onSelectKeyframe={handleSelectKeyframe}
+                      copiedKeyframes={copiedKeyframes}
+                    />
+                  </Suspense>
                 </PanelErrorBoundary>
               </div>
             )}

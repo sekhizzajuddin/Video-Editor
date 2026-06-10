@@ -79,9 +79,20 @@ export const KeyframeEditorPanel: React.FC<KeyframeEditorPanelProps> = ({
 }) => {
   const [activeProperty, setActiveProperty] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const graphContainerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragKeyframeId, setDragKeyframeId] = useState<string | null>(null);
-  const graphWidth = 600;
+  const [graphWidth, setGraphWidth] = useState(600);
+
+  useEffect(() => {
+    if (!graphContainerRef.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      // Provide a minimum width to avoid canvas rendering errors
+      setGraphWidth(Math.max(200, entry.contentRect.width));
+    });
+    observer.observe(graphContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const propertyGroups = useMemo((): PropertyGroup[] => {
     if (!clip?.keyframes) return [];
@@ -442,13 +453,13 @@ export const KeyframeEditorPanel: React.FC<KeyframeEditorPanelProps> = ({
         </Button>
       </div>
 
-      <div className="flex-1 p-4 overflow-hidden">
+      <div className="flex-1 p-4 overflow-hidden" ref={graphContainerRef}>
         <canvas
           ref={canvasRef}
           width={graphWidth}
           height={GRAPH_HEIGHT}
-          className="rounded border border-border cursor-crosshair"
-          style={{ width: graphWidth, height: GRAPH_HEIGHT }}
+          className="rounded border border-border cursor-crosshair w-full"
+          style={{ height: GRAPH_HEIGHT }}
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}

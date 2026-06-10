@@ -70,8 +70,8 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({
 
   const handleSettings = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const { toggleSelection, setInspectorActiveTab, setPanelVisible } = useUIStore.getState();
-    toggleSelection("clip", clipB.id, false);
+    const { select, setInspectorActiveTab, setPanelVisible } = useUIStore.getState();
+    select({ type: "clip", id: clipB.id }, false);
     setInspectorActiveTab("animate");
     setPanelVisible("inspector", true);
   };
