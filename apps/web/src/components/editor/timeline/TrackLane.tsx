@@ -204,6 +204,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
             snapSettings,
             pixelsPerSecond,
           );
+          // Let the store handle non-overlapping placement
           onDropMedia(track.id, data.mediaId, snapResult.time);
         }
       } catch {

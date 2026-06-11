@@ -12,7 +12,6 @@ import {
 } from "../../services/background-generator";
 import type { ShapeType } from "@openreel/core";
 import { useProjectStore } from "../../stores/project-store";
-import { useTimelineStore } from "../../stores/timeline-store";
 import { useUIStore } from "../../stores/ui-store";
 import type { MediaItem } from "@openreel/core";
 import { AspectRatioMatchDialog } from "./dialogs/AspectRatioMatchDialog";
@@ -837,8 +836,8 @@ export const AssetsPanel: React.FC = () => {
 
   const addMediaToTimeline = useCallback(async (item: MediaItem) => {
     const { addClipToNewTrack } = useProjectStore.getState();
-    const playheadPosition = useTimelineStore.getState().playheadPosition;
-    await addClipToNewTrack(item.id, playheadPosition);
+    // Don't pass startTime — append to end of track by default
+    await addClipToNewTrack(item.id);
   }, []);
 
   const handleConfirmAspectRatioMatch = useCallback(async () => {
@@ -911,8 +910,8 @@ export const AssetsPanel: React.FC = () => {
         const result = await importMedia(file);
         if (result.success && result.actionId) {
           const { addClipToNewTrack } = useProjectStore.getState();
-          const playheadPosition = useTimelineStore.getState().playheadPosition;
-          await addClipToNewTrack(result.actionId, playheadPosition);
+          // Don't pass startTime — append to end of track by default
+          await addClipToNewTrack(result.actionId);
         }
       } catch (error) {
         console.error("Failed to generate background:", error);

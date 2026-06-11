@@ -1184,37 +1184,6 @@ export const Timeline: React.FC = () => {
             onDrop={async (e) => {
               e.preventDefault();
 
-              const rect = tracksRef.current?.getBoundingClientRect();
-              if (!rect) return;
-              const x = e.clientX - rect.left + (tracksRef.current?.scrollLeft ?? 0);
-              const rawTime = Math.max(0, x / pixelsPerSecond);
-
-              const allClips = project.timeline.tracks.flatMap(t => t.clips);
-              let snappedTime = rawTime;
-              if (snapSettings.enabled) {
-                const threshold = snapSettings.snapThreshold / pixelsPerSecond;
-                let bestDist = Infinity;
-                for (const clip of allClips) {
-                  const clipEnd = clip.startTime + clip.duration;
-                  const distToEnd = Math.abs(rawTime - clipEnd);
-                  const distToStart = Math.abs(rawTime - clip.startTime);
-                  if (distToEnd < threshold && distToEnd < bestDist) {
-                    bestDist = distToEnd;
-                    snappedTime = clipEnd;
-                  }
-                  if (distToStart < threshold && distToStart < bestDist) {
-                    bestDist = distToStart;
-                    snappedTime = clip.startTime;
-                  }
-                }
-                if (snapSettings.snapToPlayhead) {
-                  const distToPlayhead = Math.abs(rawTime - playheadPosition);
-                  if (distToPlayhead < threshold && distToPlayhead < bestDist) {
-                    snappedTime = playheadPosition;
-                  }
-                }
-              }
-
               // External OS file drop (e.g. from Windows Explorer)
               if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 const { importMedia, addClipToNewTrack } = useProjectStore.getState();
@@ -1229,7 +1198,7 @@ export const Timeline: React.FC = () => {
                         .getState()
                         .project.mediaLibrary.items.find(i => !beforeIds.has(i.id));
                       if (newItem) {
-                        await addClipToNewTrack(newItem.id, snappedTime);
+                        await addClipToNewTrack(newItem.id);
                         const track = useProjectStore
                           .getState()
                           .project.timeline.tracks.find(t =>
@@ -1253,7 +1222,7 @@ export const Timeline: React.FC = () => {
                 if (!rawData) return;
                 const data = JSON.parse(rawData);
                 if (!data?.mediaId) return;
-                handleDropMedia("", data.mediaId, snappedTime);
+                handleDropMedia("", data.mediaId, 0);
               } catch {
                 // ignore
               }

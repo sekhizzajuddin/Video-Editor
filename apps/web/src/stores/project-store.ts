@@ -61,9 +61,13 @@ import {
   calculateTimelineDuration,
   type AudioDuckingSettings,
   type EditingTemplateApplicationState,
-  type ClipHistoryEntry,
   type EditingTemplateHistoryEntry,
+  type ClipHistoryEntry,
 } from "./project/index";
+import {
+  findNonOverlappingStartTime,
+  getTrackEndTime,
+} from "../utils/timeline-placement";
 import {
   saveMediaBlob,
   deleteMediaBlob,
@@ -2370,6 +2374,25 @@ export const useProjectStore = create<ProjectState>()(
         // to ensure Zustand detects the state change
         const projectCopy = structuredClone(project);
 
+        // Find the track to determine the best non-overlapping start time
+        const track = projectCopy.timeline.tracks.find((t) => t.id === trackId);
+        const mediaItem = projectCopy.mediaLibrary.items.find(
+          (item) => item.id === mediaId,
+        );
+
+        if (track && mediaItem) {
+          const whatsappClipDuration =
+            mediaItem.metadata.duration && mediaItem.metadata.duration > 0
+              ? mediaItem.metadata.duration
+              : 5;
+          const safeStartTime = findNonOverlappingStartTime(
+            track,
+            startTime,
+            whatsappClipDuration,
+          );
+          startTime = safeStartTime;
+        }
+
         const action: Action = {
           type: "clip/add",
           id: uuidv4(),
@@ -2391,7 +2414,9 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       addClipToNewTrack: async (mediaId: string, startTime?: number) => {
-        const { project, addTrack, getMediaItem } = get();
+        // Always re-fetch state at each step to avoid stale references
+        const currentState = get();
+        const { addTrack: addTrackFn, getMediaItem } = currentState;
 
         const mediaItem = getMediaItem(mediaId);
         if (!mediaItem) {
@@ -2415,30 +2440,30 @@ export const useProjectStore = create<ProjectState>()(
           trackType = "video";
         }
 
-        // Determine clip start position BEFORE any state changes
-        const clipStartTime =
-          startTime !== undefined
-            ? startTime
-            : calculateTimelineDuration(project);
+        // Determine clip duration for overlap check
+        const clipDuration =
+          mediaItem.metadata.duration && mediaItem.metadata.duration > 0
+            ? mediaItem.metadata.duration
+            : 5;
 
-        // Check if a primary track of the right type already exists
-        const existingTrack = project.timeline.tracks.find((t) => t.type === trackType);
+        // Re-fetch state to get latest project after potential addTrack calls
+        let latestState = get();
+        let targetTrack = latestState.project.timeline.tracks.find(
+          (t) => t.type === trackType,
+        );
 
-        if (!existingTrack) {
-          // Create a new track — this updates Zustand state internally
-          const trackResult = await addTrack(trackType);
+        if (!targetTrack) {
+          // Create a new track
+          const trackResult = await addTrackFn(trackType);
           if (!trackResult.success) {
             return trackResult;
           }
+          // Re-fetch state after track creation
+          latestState = get();
+          targetTrack = latestState.project.timeline.tracks.find(
+            (t) => t.type === trackType,
+          );
         }
-
-        // Always re-fetch the full latest state so we work on the
-        // post-addTrack project and the correct actionExecutor instance.
-        const { project: currentProject, actionExecutor: currentExecutor } = get();
-
-        const targetTrack = currentProject.timeline.tracks.find(
-          (t) => t.type === trackType,
-        );
 
         if (!targetTrack) {
           return {
@@ -2450,23 +2475,47 @@ export const useProjectStore = create<ProjectState>()(
           };
         }
 
+        // Determine the best start time: if a specific start time was requested,
+        // use it; otherwise append to the end of the track
+        let clipStartTime: number;
+        if (startTime !== undefined) {
+          clipStartTime = startTime;
+        } else {
+          // Append to end of the track (end of similar media)
+          clipStartTime = getTrackEndTime(targetTrack);
+        }
+
+        // Ensure non-overlapping placement on the track
+        clipStartTime = findNonOverlappingStartTime(
+          targetTrack,
+          clipStartTime,
+          clipDuration,
+        );
+
+        // Re-fetch state and executor after any mutations
+        const { project: finalProject, actionExecutor: finalExecutor } = get();
+
         // Deep-clone current project for the action executor to mutate in place
-        const projectCopy = structuredClone(currentProject);
+        const projectCopy = structuredClone(finalProject);
         const action: Action = {
           type: "clip/add",
           id: uuidv4(),
           timestamp: Date.now(),
-          params: { trackId: targetTrack.id, mediaId, startTime: clipStartTime },
+          params: {
+            trackId: targetTrack.id,
+            mediaId,
+            startTime: clipStartTime,
+          },
         };
 
-        const result = await currentExecutor.execute(action, projectCopy);
+        const result = await finalExecutor.execute(action, projectCopy);
 
         if (result.success) {
-          const finalProject: Project = {
+          const finalProjectState: Project = {
             ...projectCopy,
             modifiedAt: Date.now(),
           };
-          set({ project: finalProject });
+          set({ project: finalProjectState });
         }
         return result;
       },

@@ -12,7 +12,6 @@ import {
 import { Input } from "@openreel/ui";
 import { useEngineStore } from "../../../stores/engine-store";
 import { useProjectStore } from "../../../stores/project-store";
-import { useTimelineStore } from "../../../stores/timeline-store";
 import {
   MUSIC_GENRES,
   SFX_CATEGORIES,
@@ -223,8 +222,8 @@ export const MusicLibraryPanel: React.FC = () => {
 
       const mediaId = importResult.actionId;
       const { addClipToNewTrack } = useProjectStore.getState();
-      const playheadPosition = useTimelineStore.getState().playheadPosition;
-      await addClipToNewTrack(mediaId, playheadPosition);
+      // Don't pass startTime — append to end of track by default
+      await addClipToNewTrack(mediaId);
     },
     [project, getSoundLibraryEngine, importMedia],
   );

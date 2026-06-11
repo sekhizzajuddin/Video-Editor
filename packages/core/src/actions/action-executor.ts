@@ -492,11 +492,26 @@ export class ActionExecutor {
             opacity: 1,
             fitMode: "contain" as const,
           };
+
+          // Prevent overlapping: find a non-overlapping start time
+          let startTime = params.startTime;
+          let candidateStart = startTime;
+          const sortedClips = [...track.clips].sort(
+            (a: MutableClip, b: MutableClip) => a.startTime - b.startTime,
+          );
+          for (const clip of sortedClips) {
+            const clipEnd = clip.startTime + clip.duration;
+            if (candidateStart < clipEnd && candidateStart + clipDuration > clip.startTime) {
+              candidateStart = clipEnd;
+            }
+          }
+          startTime = candidateStart;
+
           const newClip = {
             id: crypto.randomUUID(),
             mediaId: params.mediaId,
             trackId: params.trackId,
-            startTime: params.startTime,
+            startTime: startTime,
             duration: clipDuration,
             inPoint: params.inPoint ?? 0,
             outPoint: params.outPoint ?? clipDuration,
