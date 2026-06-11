@@ -3,9 +3,9 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 import { cn } from "@openreel/ui";
 
 // Panel registry for lazy panel content loading
-const panelRegistry: Record<string, React.LazyExoticComponent<React.FC<any>>> = {};
+const panelRegistry: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {};
 
-export function registerPanel(id: string, component: React.LazyExoticComponent<React.FC<any>>) {
+export function registerPanel(id: string, component: React.LazyExoticComponent<React.ComponentType<any>>) {
   panelRegistry[id] = component;
 }
 

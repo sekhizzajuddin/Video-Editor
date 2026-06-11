@@ -53,6 +53,7 @@ import {
   formatTimecode,
   getTrackInfo,
 } from "./timeline/index";
+import { ProTrackHeader } from "../timeline/ProTrackHeader";
 import { extractWaveformPeaks } from "../../services/waveform-service";
 
 export const Timeline: React.FC = () => {
@@ -1156,6 +1157,10 @@ export const Timeline: React.FC = () => {
                       onDragOver={handleTrackDragOver}
                       onDrop={handleTrackDrop}
                       keyframeCount={keyframeCount}
+                    />
+                    <ProTrackHeader
+                      trackId={track.id}
+                      index={i}
                     />
                   </div>
                 );

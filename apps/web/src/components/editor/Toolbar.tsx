@@ -47,6 +47,7 @@ const ExportDialog = lazy(() =>
 import { ScreenRecorder } from "./ScreenRecorder";
 import { HistoryPanel } from "./inspector/HistoryPanel";
 import { ProjectSwitcher } from "./ProjectSwitcher";
+import { WorkspaceSwitcher } from "../workspace/WorkspaceSwitcher";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { toast } from "../../stores/notification-store";
 import { useSettingsStore } from "../../stores/settings-store";
@@ -663,6 +664,7 @@ export const Toolbar: React.FC = () => {
           className="bg-transparent border-0 text-center font-medium text-[12.5px] tracking-tight text-fg px-2 py-0.5 rounded min-w-[60px] focus:bg-bg-2 focus:outline-none"
         />
         <ProjectSwitcher />
+        <WorkspaceSwitcher />
       </div>
 
       {/* ─── Right: undo/redo, history, comments, pro, export ── */}

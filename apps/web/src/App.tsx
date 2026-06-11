@@ -11,12 +11,13 @@ import { useProjectStore } from "./stores/project-store";
 import { useRouter } from "./hooks/use-router";
 import { useProjectRecovery } from "./hooks/useProjectRecovery";
 import { useKieAIPoller } from "./hooks/useKieAIPoller";
+import { useWorkspaceKeybindings } from "./hooks/useWorkspaceKeybindings";
 import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@openreel/core";
 import { TooltipProvider } from "@openreel/ui";
 
-const EditorInterface = lazy(() =>
-  import("./components/editor/EditorInterface").then((m) => ({
-    default: m.EditorInterface,
+const WorkspaceEditor = lazy(() =>
+  import("./components/workspace/WorkspaceEditor").then((m) => ({
+    default: m.WorkspaceEditor,
   }))
 );
 
@@ -45,6 +46,7 @@ function App() {
   const hasHandledInitialRoute = useRef(false);
 
   useKieAIPoller();
+  useWorkspaceKeybindings();
 
   useEffect(() => {
     if (hasHandledInitialRoute.current) return;
@@ -151,7 +153,7 @@ function App() {
           <WelcomeScreen initialTab={initialTab} />
         ) : (
           <Suspense fallback={<LoadingSpinner message="Loading editor..." />}>
-            <EditorInterface />
+            <WorkspaceEditor />
           </Suspense>
         )}
         <ToastContainer />

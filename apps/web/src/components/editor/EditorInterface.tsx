@@ -18,6 +18,7 @@ import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useEngineStore } from "../../stores/engine-store";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
+import { useWorkspaceSync } from "../../hooks/useWorkspaceSync";
 import {
   initializePlaybackBridge,
   disposePlaybackBridge,
@@ -210,6 +211,7 @@ export const EditorInterface: React.FC = () => {
   const { showShortcutsOverlay, setShowShortcutsOverlay } =
     useKeyboardShortcuts();
   useAutoSave();
+  useWorkspaceSync();
 
   const bp = useBreakpoint();
   const isCompact = bp.isBelow("tablet");
