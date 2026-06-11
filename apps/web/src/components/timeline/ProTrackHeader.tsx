@@ -1,16 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect } from "react";
 import {
   Volume2,
   VolumeX,
-  Headphones,
   Lock,
   Unlock,
   Eye,
   EyeOff,
-  ChevronRight,
-  ChevronDown,
-  GripVertical,
-  Settings2,
 } from "lucide-react";
 import { useAdvancedTimelineStore } from "../../stores/advanced-timeline-store";
 import { useProjectStore } from "../../stores/project-store";
@@ -29,11 +24,9 @@ export const ProTrackHeader: React.FC<ProTrackHeaderProps> = ({ trackId, index }
     setTrackSolo,
     setTrackLocked,
     setTrackHidden,
-    setTrackExpanded,
-    setTrackMinimized,
-    setTrackColor,
     selectTrack,
     registerTrack,
+    selectedTrackIds,
   } = useAdvancedTimelineStore();
 
   const track = project.timeline.tracks.find((t) => t.id === trackId);
@@ -68,7 +61,7 @@ export const ProTrackHeader: React.FC<ProTrackHeaderProps> = ({ trackId, index }
     <div
       className={cn(
         "flex items-center gap-1 px-2 py-1.5 border-t border-border/50 select-none transition-colors",
-        control.selected ? "bg-accent-soft/30 border-l-2 border-l-accent" : "hover:bg-hover/50"
+        selectedTrackIds.includes(trackId) ? "bg-accent-soft/30 border-l-2 border-l-accent" : "hover:bg-hover/50"
       )}
       style={{ height: control.height || 76 }}
       onClick={() => selectTrack(trackId, false)}

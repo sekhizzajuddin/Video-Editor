@@ -1,4 +1,3 @@
-import React from "react";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 
@@ -209,6 +208,10 @@ export const useAdvancedTimelineStore = create<AdvancedTimelineState>()(
 
     setTrackPan: (trackId, pan) => {
       get().setTrackControl(trackId, { pan: Math.max(-1, Math.min(1, pan)) });
+    },
+
+    setTrackRouting: (trackId, output) => {
+      get().setTrackControl(trackId, { output });
     },
 
     setTrackHeightPreset: (preset) => {

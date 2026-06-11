@@ -5,15 +5,7 @@ import {
   Music,
   Wand2,
   Palette,
-  LayoutGrid,
-  Music2,
-  Star,
   ChevronDown,
-  GripVertical,
-  Maximize2,
-  Minimize2,
-  Pin,
-  MoreHorizontal,
 } from "lucide-react";
 import { useWorkspaceStore, type WorkspaceId } from "../../stores/workspace-store";
 import { cn } from "@openreel/ui";

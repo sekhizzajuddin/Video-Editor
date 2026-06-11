@@ -1,12 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Canvas } from "@react-three/fiber";
-import { useFrame } from "@react-three/fiber";
-
-interface FrameData {
-  r: number;
-  g: number;
-  b: number;
-}
+import React, { useCallback, useEffect, useRef } from "react";
 
 export class ScopeEngine {
   private canvas: HTMLCanvasElement;
@@ -124,7 +116,7 @@ export const WaveformMonitor: React.FC<{ engine: ScopeEngine; width: number; hei
       ctx.fillRect(0, 0, w, h);
 
       ctx.lineWidth = 0.5;
-      const drawChannel = (offset: number, color: string, index: number) => {
+      const drawChannel = (color: string, index: number) => {
         ctx.beginPath();
         ctx.strokeStyle = color;
         for (let x = 0; x < w && x * 3 < data.length; x++) {
@@ -135,9 +127,9 @@ export const WaveformMonitor: React.FC<{ engine: ScopeEngine; width: number; hei
         ctx.stroke();
       };
 
-      drawChannel(0, "#ff0000", 0);
-      drawChannel(0, "#00ff00", 1);
-      drawChannel(0, "#0000ff", 2);
+      drawChannel("#ff0000", 0);
+      drawChannel("#00ff00", 1);
+      drawChannel("#0000ff", 2);
     },
     [engine]
   );
@@ -209,7 +201,7 @@ export const HistogramMonitor: React.FC<{ engine: ScopeEngine; width: number; he
       const scale = (maxValue > 0 ? h / maxValue : 0) * 0.9;
       const barWidth = w / data.r.length;
 
-      const drawBars = (channelData: Float32Array, color: string, offset: number) => {
+      const drawBars = (channelData: Float32Array, color: string) => {
         ctx.fillStyle = color;
         for (let i = 0; i < channelData.length; i++) {
           const barHeight = Math.min(channelData[i] * scale, h - 2);
@@ -217,9 +209,9 @@ export const HistogramMonitor: React.FC<{ engine: ScopeEngine; width: number; he
         }
       };
 
-      drawBars(data.r, "rgba(255, 0, 0, 0.5)", 0);
-      drawBars(data.g, "rgba(0, 255, 0, 0.5)", 0);
-      drawBars(data.b, "rgba(0, 0, 255, 0Call TOOL with ACTUAL text.5)", 0);
+      drawBars(data.r, "rgba(255, 0, 0, 0.5)");
+      drawBars(data.g, "rgba(0, 255, 0, 0.5)");
+      drawBars(data.b, "rgba(0, 0, 255, 0.5)");
     },
     [engine]
   );

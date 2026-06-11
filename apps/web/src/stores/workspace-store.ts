@@ -343,7 +343,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     persist(
       (set, get) => ({
         currentWorkspace: "editing",
-        activePanel: ["mediaLibrary", "inspector", "timeline", "preview", "toolbar"],
+        activePanels: ["mediaLibrary", "inspector", "timeline", "preview", "toolbar"],
         panelConfigs: { ...defaultPanelConfigs },
         layouts: { ...defaultLayouts },
         isPanelDragging: false,
@@ -357,13 +357,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         setCurrentWorkspace: (workspace: WorkspaceId) => {
           const layouts = get().layouts;
           const layout = layouts[workspace] || layouts.editing;
-          const activePanel: PanelId[] = [];
+          const activePanels: PanelId[] = [];
 
           // Collect all visible panels from the layout
           const collectPanels = (group: PanelGroup | null) => {
             if (!group) return;
             group.panels.forEach((p) => {
-              if (p.visible) activePanel.push(p.id as PanelId);
+              if (p.visible) activePanels.push(p.id as PanelId);
             });
           };
 
@@ -373,14 +373,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           collectPanels(layout.bottomPanel);
           collectPanels(layout.centerPanel);
           layout.floatingPanels.forEach((p) => {
-            if (p.visible) activePanel.push(p.id as PanelId);
+            if (p.visible) activePanels.push(p.id as PanelId);
           });
 
-          set({ currentWorkspace: workspace, activePanel });
+          set({ currentWorkspace: workspace, activePanels });
         },
 
         togglePanel: (panelId: PanelId) => {
-          const { panelConfigs, activePanel } = get();
+          const { panelConfigs, activePanels } = get();
           const config = panelConfigs[panelId];
           if (!config) return;
 
@@ -390,18 +390,18 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             [panelId]: { ...config, visible: newVisible },
           };
 
-          let newActive = [...activePanel];
+          let newActive = [...activePanels];
           if (newVisible && !newActive.includes(panelId)) {
             newActive.push(panelId);
           } else if (!newVisible) {
             newActive = newActive.filter((id) => id !== panelId);
           }
 
-          set({ panelConfigs: newConfigs, activePanel: newActive });
+          set({ panelConfigs: newConfigs, activePanels: newActive });
         },
 
         setPanelVisible: (panelId: PanelId, visible: boolean) => {
-          const { panelConfigs, activePanel } = get();
+          const { panelConfigs, activePanels } = get();
           const config = panelConfigs[panelId];
           if (!config) return;
 
@@ -410,14 +410,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             [panelId]: { ...config, visible },
           };
 
-          let newActive = [...activePanel];
+          let newActive = [...activePanels];
           if (visible && !newActive.includes(panelId)) {
             newActive.push(panelId);
           } else if (!visible) {
             newActive = newActive.filter((id) => id !== panelId);
           }
 
-          set({ panelConfigs: newConfigs, activePanel: newActive });
+          set({ panelConfigs: newConfigs, activePanels: newActive });
         },
 
         setPanelCollapsed: (panelId: PanelId, collapsed: boolean) => {
@@ -499,11 +499,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           const layout = defaultLayouts[workspace];
           if (!layout) return;
 
-          const activePanel: PanelId[] = [];
+          const activePanels: PanelId[] = [];
           const collectPanels = (group: PanelGroup | null) => {
             if (!group) return;
             group.panels.forEach((p) => {
-              if (p.visible) activePanel.push(p.id as PanelId);
+              if (p.visible) activePanels.push(p.id as PanelId);
             });
           };
 
@@ -513,12 +513,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           collectPanels(layout.bottomPanel);
           collectPanels(layout.centerPanel);
           layout.floatingPanels.forEach((p) => {
-            if (p.visible) activePanel.push(p.id as PanelId);
+            if (p.visible) activePanels.push(p.id as PanelId);
           });
 
           set({
             layouts: { ...get().layouts, [workspace]: layout },
-            activePanel,
+            activePanels,
             panelConfigs: { ...defaultPanelConfigs },
           });
         },
@@ -544,7 +544,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         },
 
         isPanelActive: (panelId: PanelId) => {
-          return get().activePanel.includes(panelId);
+          return get().activePanels.includes(panelId);
         },
 
         getWorkspacePanels: (workspace: WorkspaceId) => {

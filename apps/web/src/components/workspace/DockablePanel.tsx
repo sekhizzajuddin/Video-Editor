@@ -1,17 +1,13 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   GripVertical,
-  Minus,
-  Plus,
   X,
   Pin,
   Maximize2,
   Minimize2,
-  Move,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { useWorkspaceStore } from "../../stores/workspace-store";
 import { cn } from "@openreel/ui";
 
 interface DockablePanelProps {
@@ -51,7 +47,6 @@ export const DockablePanel: React.FC<DockablePanelProps> = ({
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [height, setHeight] = useState(defaultHeight);
-  const [isDragging, setIsDragging] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
@@ -82,7 +77,6 @@ export const DockablePanel: React.FC<DockablePanelProps> = ({
       data-panel-id={id}
       className={cn(
         "flex flex-col border border-border bg-bg-1 rounded-lg overflow-hidden transition-all",
-        isDragging && "opacity-50 shadow-lg",
         isMaximized && "fixed inset-4 z-50",
         className
       )}
@@ -92,8 +86,7 @@ export const DockablePanel: React.FC<DockablePanelProps> = ({
       <div
         className={cn(
           "flex items-center gap-1.5 px-3 py-2 border-b border-border bg-bg-2 select-none",
-          isDragging && "cursor-grabbing",
-          draggable && !isDragging && "cursor-grab",
+          draggable && "cursor-grab",
           headerClassName
         )}
         onMouseDown={(e) => {

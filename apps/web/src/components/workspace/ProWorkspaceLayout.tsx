@@ -1,26 +1,6 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import { useWorkspaceStore, type WorkspaceId } from "../../stores/workspace-store";
-import { useAdvancedTimelineStore } from "../../stores/advanced-timeline-store";
-import { useCustomKeybindingsStore, type CommandId } from "../../stores/keybindings-store";
+import React, { useState, useCallback, useEffect } from "react";
+import { useWorkspaceStore } from "../../stores/workspace-store";
 import { cn } from "@openreel/ui";
-import {
-  Layers,
-  Music,
-  Palette,
-  Film,
-  Wand2,
-  Volume2,
-  Lock,
-  Eye,
-  EyeOff,
-  GripVertical,
-  ChevronRight,
-  ChevronDown,
-  X,
-  Maximize2,
-  Minimize2,
-  MoreHorizontal,
-} from "lucide-react";
 
 // Panel registry for lazy panel content loading
 const panelRegistry: Record<string, React.LazyExoticComponent<React.FC<any>>> = {};
@@ -34,20 +14,14 @@ export const ProWorkspaceLayout: React.FC = () => {
   const {
     currentWorkspace,
     layouts,
-    panelConfigs,
-    activePanels,
     sidebarVisible,
     sidebarWidth,
     bottomPanelHeight,
     rightPanelWidth,
-    toggleSidebar,
     setSidebarWidth,
     setBottomPanelHeight,
     setRightPanelWidth,
-    setPanelVisible,
   } = useWorkspaceStore();
-
-  const { magneticTimeline, toggleMagneticEnabled } = useAdvancedTimelineStore();
 
   const layout = layouts[currentWorkspace];
   const [isResizing, setIsResizing] = useState(false);
