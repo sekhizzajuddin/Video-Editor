@@ -29,6 +29,10 @@ const colorGradingPanel = lazyWrap(() =>
   import("./ColorGradingControls").then((m) => ({ default: m.ColorGradingControls }))
 );
 
+const scopePanel = lazyWrap(() =>
+  import("../scopes/RealScopeEngine").then((m) => ({ default: m.ScopePanel }))
+);
+
 // Panel ID mapping to component
 export function initializePanelRegistry(): void {
   registerPanel("preview", previewPanel);
@@ -38,4 +42,5 @@ export function initializePanelRegistry(): void {
   registerPanel("keyframes", keyframeEditorPanel);
   registerPanel("audioMixer", audioMixerPanel);
   registerPanel("colorGrading", colorGradingPanel);
+  registerPanel("scopes", scopePanel);
 }

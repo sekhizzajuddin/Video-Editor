@@ -200,8 +200,7 @@ const colorLayout: WorkspaceLayout = {
     id: "bottom",
     panels: [
       { id: "timeline", visible: true, size: 50 },
-      { id: "scopeWaveform", visible: true, size: 25 },
-      { id: "scopeVectorscope", visible: true, size: 25 },
+      { id: "scopes", visible: true, size: 50 },
     ],
     direction: "vertical",
   },
