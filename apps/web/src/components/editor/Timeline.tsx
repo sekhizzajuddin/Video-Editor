@@ -596,7 +596,8 @@ export const Timeline: React.FC = () => {
     [],
   );
 
-  const { moveClip } = useProjectStore();
+  const { moveClip, addTrack } = useProjectStore();
+
   const handleMoveClip = useCallback(
     async (clipId: string, newStartTime: number, targetTrackId?: string) => {
       const graphicClip = allShapeClips.find((sc) => sc.id === clipId);
@@ -611,11 +612,58 @@ export const Timeline: React.FC = () => {
         useProjectStore.setState((state) => ({
           project: { ...state.project, modifiedAt: Date.now() },
         }));
-      } else {
-        await moveClip(clipId, newStartTime, targetTrackId);
+        return;
       }
+
+      // --- Anti-overlap: clips on same track must not overlap ---
+      const allTracks = useProjectStore.getState().project.timeline.tracks;
+      const clip = allTracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
+      if (!clip) return;
+
+      const currentTrackId = targetTrackId ?? allTracks.find((t) => t.clips.some((c) => c.id === clipId))?.id;
+      const currentTrack = allTracks.find((t) => t.id === currentTrackId);
+      if (!currentTrack) {
+        await moveClip(clipId, newStartTime, targetTrackId);
+        return;
+      }
+
+      const wouldOverlap = currentTrack.clips.some(
+        (c) =>
+          c.id !== clipId &&
+          newStartTime < c.startTime + c.duration &&
+          newStartTime + clip.duration > c.startTime
+      );
+
+      if (wouldOverlap) {
+        // Find or create a track of the same type adjacent to the current track
+        const sameTypeTracks = allTracks.filter((t) => t.type === currentTrack.type);
+        let destTrack = sameTypeTracks.find((t) =>
+          t.clips.every(
+            (c) =>
+              newStartTime + clip.duration <= c.startTime ||
+              newStartTime >= c.startTime + c.duration
+          )
+        );
+
+        if (!destTrack) {
+          const newTrackResult = await addTrack(currentTrack.type);
+          if (newTrackResult.success && newTrackResult.track) {
+            destTrack = newTrackResult.track;
+          }
+        }
+
+        if (destTrack) {
+          await moveClip(clipId, newStartTime, destTrack.id);
+        } else {
+          // Fallback: block the move (do nothing)
+          toast.error("Cannot move clip", "All tracks of this type are full at this time.");
+        }
+        return;
+      }
+
+      await moveClip(clipId, newStartTime, targetTrackId);
     },
-    [moveClip, allShapeClips, graphicsEngine],
+    [moveClip, addTrack, allShapeClips, graphicsEngine],
   );
 
   const [snapIndicatorTime, setSnapIndicatorTime] = React.useState<
@@ -809,7 +857,7 @@ export const Timeline: React.FC = () => {
                     return { ...c, ...updates, keyframes: adjustedKeyframes };
                   }
                   // Magnetic ripple: shift all connected/subsequent clips
-                  if (c.startTime >= clip.startTime + oldDuration - 0.05) {
+                  if (isMagneticTimelineEnabled && c.startTime >= clip.startTime + oldDuration - 0.05) {
                     return { ...c, startTime: Math.max(0, c.startTime + durationDelta) };
                   }
                   return c;
@@ -821,7 +869,7 @@ export const Timeline: React.FC = () => {
         },
       }));
     },
-    [tracks],
+    [tracks, isMagneticTimelineEnabled],
   );
 
   const visualOrderTracks = useMemo(() => tracks, [tracks]);

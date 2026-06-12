@@ -253,6 +253,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   >(null);
 
   const isDynamicSpeedEnabled = useUIStore((s) => s.isDynamicSpeedEnabled);
+  const isMagneticTimelineEnabled = useUIStore((s) => s.isMagneticTimelineEnabled);
   const updateClipSpeed = useProjectStore((s) => s.updateClipSpeed);
 
   const left = clip.startTime * pixelsPerSecond;
@@ -519,6 +520,21 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       if (e.button !== 0) return;
       if (track.locked || !onTrimClip) return;
       e.stopPropagation();
+
+      if (!isMagneticTimelineEnabled) {
+        const sortedClips = [...track.clips].sort((a, b) => a.startTime - b.startTime);
+        const clipIndex = sortedClips.findIndex(c => c.id === clip.id);
+        if (edge === 'left' && clipIndex > 0) {
+          const prevClip = sortedClips[clipIndex - 1];
+          const gap = clip.startTime - (prevClip.startTime + prevClip.duration);
+          if (gap < 0.1) return;
+        } else if (edge === 'right' && clipIndex < sortedClips.length - 1) {
+          const nextClip = sortedClips[clipIndex + 1];
+          const gap = nextClip.startTime - (clip.startTime + clip.duration);
+          if (gap < 0.1) return;
+        }
+      }
+
       setIsTrimming(true);
       setTrimEdge(edge);
       trimStartRef.current = {
@@ -774,6 +790,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const deltaTime = deltaX / pixelsPerSecond;
 
       if (isDynamicSpeedEnabled) {
+        let rippleDurationDelta = 0;
         if (trimEdge === "left") {
           const newStartTime = Math.max(0, trimStartRef.current.startTime + deltaTime);
           const maxStartTime = trimStartRef.current.startTime + trimStartRef.current.duration - 0.1;
@@ -791,6 +808,10 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           const finalStartTime = (trimStartRef.current.startTime + trimStartRef.current.duration) - clampedDuration;
           
           updateClipSpeed(clip.id, newSpeed, clampedDuration, finalStartTime);
+
+          const oldEndTime = trimStartRef.current.startTime + trimStartRef.current.duration;
+          const newEndTime = finalStartTime + clampedDuration;
+          rippleDurationDelta = newEndTime - oldEndTime;
         } else {
           const newEndTime = trimStartRef.current.startTime + trimStartRef.current.duration + deltaTime;
           const minEndTime = trimStartRef.current.startTime + 0.1;
@@ -807,6 +828,34 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           const clampedDuration = rawMediaDuration / newSpeed;
 
           updateClipSpeed(clip.id, newSpeed, clampedDuration);
+
+          const oldEndTime = trimStartRef.current.startTime + trimStartRef.current.duration;
+          const newEndTime = trimStartRef.current.startTime + clampedDuration;
+          rippleDurationDelta = newEndTime - oldEndTime;
+        }
+
+        if (useUIStore.getState().isMagneticTimelineEnabled && rippleDurationDelta !== 0) {
+          const oldEndTime = trimStartRef.current.startTime + trimStartRef.current.duration;
+          useProjectStore.setState((state) => {
+            const newProject = { ...state.project };
+            const trackIndex = newProject.timeline.tracks.findIndex(t => t.clips.some(c => c.id === clip.id));
+            if (trackIndex !== -1) {
+              newProject.timeline.tracks = newProject.timeline.tracks.map((t, i) => {
+                if (i !== trackIndex) return t;
+                return {
+                  ...t,
+                  clips: t.clips.map(c => {
+                    if (c.id === clip.id) return c;
+                    if (c.startTime >= oldEndTime - 0.05) {
+                      return { ...c, startTime: Math.max(0, c.startTime + rippleDurationDelta) };
+                    }
+                    return c;
+                  }),
+                };
+              });
+            }
+            return { project: newProject, modifiedAt: Date.now() };
+          });
         }
         return;
       }
@@ -818,7 +867,18 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         );
         const maxStartTime =
           trimStartRef.current.startTime + trimStartRef.current.duration - 0.1;
-        const clampedStartTime = Math.min(newStartTime, maxStartTime);
+        let clampedStartTime = Math.min(newStartTime, maxStartTime);
+
+        if (isMagneticTimelineEnabled) {
+          const rawMediaDuration = mediaItem?.metadata?.duration;
+          if (rawMediaDuration) {
+            const originalSpeed = clip.speed ?? 1;
+            const maxAllowedDuration = (rawMediaDuration - clip.inPoint * originalSpeed) / originalSpeed;
+            const minAllowedStartTime = trimStartRef.current.startTime + trimStartRef.current.duration - maxAllowedDuration;
+            clampedStartTime = Math.max(clampedStartTime, minAllowedStartTime);
+          }
+        }
+        
         onTrimClip(clip.id, "left", clampedStartTime);
       } else {
         const newEndTime =
@@ -827,14 +887,16 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           deltaTime;
         const minEndTime = trimStartRef.current.startTime + 0.1;
         
-        // Ensure normal trim cannot exceed raw media duration
         let clampedEndTime = Math.max(newEndTime, minEndTime);
-        const originalSpeed = clip.speed ?? 1;
-        if (mediaItem?.metadata?.duration) {
-          const rawMediaDuration = mediaItem.metadata.duration;
-          const maxAllowedDuration = (rawMediaDuration - clip.inPoint * originalSpeed) / originalSpeed;
-          const maxAllowedEndTime = trimStartRef.current.startTime + maxAllowedDuration;
-          clampedEndTime = Math.min(clampedEndTime, maxAllowedEndTime);
+        
+        if (isMagneticTimelineEnabled) {
+          const originalSpeed = clip.speed ?? 1;
+          if (mediaItem?.metadata?.duration) {
+            const rawMediaDuration = mediaItem.metadata.duration;
+            const maxAllowedDuration = (rawMediaDuration - clip.inPoint * originalSpeed) / originalSpeed;
+            const maxAllowedEndTime = trimStartRef.current.startTime + maxAllowedDuration;
+            clampedEndTime = Math.min(clampedEndTime, maxAllowedEndTime);
+          }
         }
 
         onTrimClip(clip.id, "right", clampedEndTime);
