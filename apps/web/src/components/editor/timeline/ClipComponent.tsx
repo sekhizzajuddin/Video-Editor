@@ -832,17 +832,17 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           clampedDuration = rawMediaDuration / newSpeed;
 
           const oldEndTime = trimStartRef.current.startTime + trimStartRef.current.duration;
-          const newEndTime = trimStartRef.current.startTime + clampedDuration;
-          rippleDurationDelta = newEndTime - oldEndTime;
+          const finalEndTime = trimStartRef.current.startTime + clampedDuration;
+          rippleDurationDelta = finalEndTime - oldEndTime;
         }
 
         if (useUIStore.getState().isMagneticTimelineEnabled && rippleDurationDelta !== 0) {
           const oldEndTime = trimStartRef.current.startTime + trimStartRef.current.duration;
           useProjectStore.setState((state) => {
-            const newProject = { ...state.project };
-            const trackIndex = newProject.timeline.tracks.findIndex(t => t.clips.some(c => c.id === clip.id));
+            const newTimeline = { ...state.project.timeline };
+            const trackIndex = newTimeline.tracks.findIndex(t => t.clips.some(c => c.id === clip.id));
             if (trackIndex !== -1) {
-              newProject.timeline.tracks = newProject.timeline.tracks.map((t, i) => {
+              newTimeline.tracks = newTimeline.tracks.map((t, i) => {
                 if (i !== trackIndex) return t;
                 return {
                   ...t,
@@ -858,7 +858,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
                 };
               });
             }
-            return { project: newProject, modifiedAt: Date.now() };
+            return { project: { ...state.project, timeline: newTimeline }, modifiedAt: Date.now() };
           });
         } else {
           updateClipSpeed(clip.id, newSpeed, clampedDuration, finalStartTime);

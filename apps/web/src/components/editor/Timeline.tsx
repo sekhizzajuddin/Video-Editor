@@ -596,7 +596,7 @@ export const Timeline: React.FC = () => {
     [],
   );
 
-  const { moveClip, addTrack } = useProjectStore();
+  const { moveClip } = useProjectStore();
 
   const handleMoveClip = useCallback(
     async (clipId: string, newStartTime: number, targetTrackId?: string) => {
@@ -647,8 +647,9 @@ export const Timeline: React.FC = () => {
 
         if (!destTrack) {
           const newTrackResult = await addTrack(currentTrack.type);
-          if (newTrackResult.success && newTrackResult.track) {
-            destTrack = newTrackResult.track;
+          if (newTrackResult.success) {
+            const updatedTracks = useProjectStore.getState().project.timeline.tracks;
+            destTrack = updatedTracks.filter(t => t.type === currentTrack.type).pop();
           }
         }
 
