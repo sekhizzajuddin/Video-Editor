@@ -320,7 +320,7 @@ export interface ProjectState {
   getSubtitleStylePresets: () => Promise<string[]>;
 
   // Marker actions
-  addMarker: (time: number, label?: string, color?: string) => void;
+  addMarker: (time: number, label?: string, color?: string, category?: string) => void;
   removeMarker: (markerId: string) => void;
   updateMarker: (
     markerId: string,
@@ -4909,12 +4909,13 @@ export const useProjectStore = create<ProjectState>()(
 
       // Marker actions
 
-      addMarker: (time, label = "Marker", color = "#3b82f6") => {
+      addMarker: (time, label = "Marker", color = "#3b82f6", category) => {
         const newMarker: import("@openreel/core").Marker = {
           id: `marker-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
           time,
           label,
           color,
+          category,
         };
         set((state) => ({
           project: {

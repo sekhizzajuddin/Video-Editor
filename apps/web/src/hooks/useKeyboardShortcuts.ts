@@ -259,7 +259,7 @@ export function useKeyboardShortcuts() {
   const handleAddMarker = useCallback(() => {
     const currentTime = playheadPosition;
     const markerCount = project.timeline.markers.length;
-    addMarker(currentTime, `Marker ${markerCount + 1}`, "#3b82f6");
+    addMarker(currentTime, `Marker ${markerCount + 1}`, "#3b82f6", "General");
   }, [playheadPosition, project.timeline.markers.length, addMarker]);
 
   useEffect(() => {

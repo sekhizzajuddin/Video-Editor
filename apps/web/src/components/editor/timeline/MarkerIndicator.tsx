@@ -97,7 +97,7 @@ export const MarkerIndicator: React.FC<MarkerIndicatorProps> = ({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span>{marker.label}</span>
+          <span>{marker.label}{marker.category ? ` [${marker.category}]` : ''}</span>
         )}
         {isHovered && onRemove && (
           <button

@@ -100,7 +100,7 @@ export const SceneNavigatorPanel: React.FC<SceneNavigatorPanelProps> = ({
   const handleAddScene = useCallback(() => {
     const bridge = getPlaybackBridge();
     const currentTime = bridge.getCurrentTime();
-    addMarker(currentTime, `Scene ${markers.length + 1}`, "#10b981");
+    addMarker(currentTime, `Scene ${markers.length + 1}`, "#10b981", "Scene");
   }, [addMarker, markers.length]);
 
   const formatTime = (seconds: number): string => {

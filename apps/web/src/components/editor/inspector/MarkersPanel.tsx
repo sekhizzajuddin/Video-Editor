@@ -15,7 +15,7 @@ export const MarkersPanel: React.FC = () => {
   const handleAddMarker = () => {
     const bridge = getPlaybackBridge();
     const currentTime = bridge.getCurrentTime();
-    addMarker(currentTime, `Marker ${markers.length + 1}`, "#3b82f6");
+    addMarker(currentTime, `Marker ${markers.length + 1}`, "#3b82f6", "General");
   };
 
   const handleJumpTo = (marker: Marker) => {

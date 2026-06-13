@@ -185,6 +185,7 @@ export interface Marker {
   readonly time: number;
   readonly label: string;
   readonly color: string;
+  readonly category?: string;
 }
 
 export interface Transition {
