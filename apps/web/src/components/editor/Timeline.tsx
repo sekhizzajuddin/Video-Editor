@@ -24,6 +24,7 @@ import {
   ChevronDown as ChevronDownIcon,
   Magnet,
   Gauge,
+  Sparkles,
   Rows3,
   Rows2,
 } from "lucide-react";
@@ -114,8 +115,10 @@ export const Timeline: React.FC = () => {
   } = useUIStore();
   const isDynamicSpeedEnabled = useUIStore((s) => s.isDynamicSpeedEnabled);
   const isMagneticTimelineEnabled = useUIStore((s) => s.isMagneticTimelineEnabled);
+  const showTransitions = useUIStore((s) => s.showTransitions);
   const toggleMagneticTimeline = useUIStore((s) => s.toggleMagneticTimeline);
   const toggleDynamicSpeed = useUIStore((s) => s.toggleDynamicSpeed);
+  const toggleTransitions = useUIStore((s) => s.toggleTransitions);
   const timelineMaximized = useUIStore((s) => s.timelineMaximized);
   const toggleTimelineMaximized = useUIStore((s) => s.toggleTimelineMaximized);
   
@@ -841,7 +844,8 @@ export const Timeline: React.FC = () => {
         return kf;
       });
 
-      const durationDelta = newDuration - oldDuration;
+      const newStartTime = updates.startTime ?? clip.startTime;
+      const endTimeDelta = (newStartTime + newDuration) - (clip.startTime + oldDuration);
 
       useProjectStore.setState((state) => ({
         project: {
@@ -859,7 +863,7 @@ export const Timeline: React.FC = () => {
                   }
                   // Magnetic ripple: shift all connected/subsequent clips
                   if (isMagneticTimelineEnabled && c.startTime >= clip.startTime + oldDuration - 0.05) {
-                    return { ...c, startTime: Math.max(0, c.startTime + durationDelta) };
+                    return { ...c, startTime: Math.max(0, c.startTime + endTimeDelta) };
                   }
                   return c;
                 }),
@@ -956,6 +960,14 @@ export const Timeline: React.FC = () => {
           title="Magnetic Timeline: Deleting clips automatically closes the gap"
         >
           <Magnet size={14} />
+        </TLTool>
+
+        <TLTool
+          onClick={toggleTransitions}
+          active={showTransitions}
+          title="Toggle Transition Indicators"
+        >
+          <Sparkles size={14} />
         </TLTool>
 
         <div className="w-px h-4 bg-border mx-1.5" />

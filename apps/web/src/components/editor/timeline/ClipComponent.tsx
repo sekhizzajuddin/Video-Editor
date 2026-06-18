@@ -795,10 +795,15 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const deltaX = e.clientX - trimStartRef.current.mouseX;
       const deltaTime = deltaX / pixelsPerSecond;
 
+      const sortedClips = [...track.clips].sort((a, b) => a.startTime - b.startTime);
+      const clipIndex = sortedClips.findIndex(c => c.id === clip.id);
+      const prevClipEndTime = clipIndex > 0 ? sortedClips[clipIndex - 1].startTime + sortedClips[clipIndex - 1].duration : 0;
+      const nextClipStartTime = clipIndex < sortedClips.length - 1 ? sortedClips[clipIndex + 1].startTime : Infinity;
+
       if (isDynamicSpeedEnabled) {
         let newSpeed: number, clampedDuration: number, finalStartTime: number | undefined, rippleDurationDelta = 0;
         if (trimEdge === "left") {
-          const newStartTime = Math.max(0, trimStartRef.current.startTime + deltaTime);
+          const newStartTime = Math.max(prevClipEndTime, trimStartRef.current.startTime + deltaTime);
           const maxStartTime = trimStartRef.current.startTime + trimStartRef.current.duration - 0.1;
           const clampedStartTime = Math.min(newStartTime, maxStartTime);
 
@@ -817,7 +822,10 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           const newEndTime = finalStartTime + clampedDuration;
           rippleDurationDelta = newEndTime - oldEndTime;
         } else {
-          const newEndTime = trimStartRef.current.startTime + trimStartRef.current.duration + deltaTime;
+          let newEndTime = trimStartRef.current.startTime + trimStartRef.current.duration + deltaTime;
+          if (!useUIStore.getState().isMagneticTimelineEnabled) {
+            newEndTime = Math.min(newEndTime, nextClipStartTime);
+          }
           const minEndTime = trimStartRef.current.startTime + 0.1;
           const clampedEndTime = Math.max(newEndTime, minEndTime);
 
@@ -868,7 +876,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
       if (trimEdge === "left") {
         const newStartTime = Math.max(
-          0,
+          prevClipEndTime,
           trimStartRef.current.startTime + deltaTime,
         );
         const maxStartTime =
@@ -887,10 +895,13 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         
         onTrimClip(clip.id, "left", clampedStartTime);
       } else {
-        const newEndTime =
+        let newEndTime =
           trimStartRef.current.startTime +
           trimStartRef.current.duration +
           deltaTime;
+        if (!useUIStore.getState().isMagneticTimelineEnabled) {
+          newEndTime = Math.min(newEndTime, nextClipStartTime);
+        }
         const minEndTime = trimStartRef.current.startTime + 0.1;
         
         let clampedEndTime = Math.max(newEndTime, minEndTime);

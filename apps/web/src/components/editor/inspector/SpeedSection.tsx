@@ -3,6 +3,7 @@ import { RotateCcw, Sparkles } from "lucide-react";
 import type { Clip } from "@openreel/core";
 import { getSpeedEngine } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
+import { useUIStore } from "../../../stores/ui-store";
 import { Input, Switch, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@openreel/ui";
 
 interface SpeedSectionProps {
@@ -53,7 +54,9 @@ export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
 
   const updateClipDuration = (speed: number) => {
     const originalDuration = clip.outPoint - clip.inPoint;
-    const newDuration = originalDuration / speed;
+    const isMagnetic = useUIStore.getState().isMagneticTimelineEnabled;
+    let newDuration = originalDuration / speed;
+    let finalSpeed = speed;
 
     const tracks = project.timeline.tracks.map((track) => {
       const clipIndex = track.clips.findIndex((c) => c.id === clip.id);
@@ -64,27 +67,64 @@ export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
           );
           if (audioClipIndex !== -1) {
             const audioClip = track.clips[audioClipIndex];
+            
+            let finalAudioDuration = newDuration;
+            let finalAudioSpeed = speed;
+            if (!isMagnetic && audioClipIndex < track.clips.length - 1) {
+               const nextClip = track.clips[audioClipIndex + 1];
+               const maxDuration = nextClip.startTime - audioClip.startTime;
+               if (finalAudioDuration > maxDuration) {
+                 finalAudioDuration = maxDuration;
+                 finalAudioSpeed = originalDuration / finalAudioDuration;
+               }
+            }
+
+            const durationDelta = finalAudioDuration - audioClip.duration;
             const updatedAudioClip = {
               ...audioClip,
-              duration: newDuration,
-              speed,
+              duration: finalAudioDuration,
+              speed: finalAudioSpeed,
             };
-            const newClips = [...track.clips];
-            newClips[audioClipIndex] = updatedAudioClip;
-            speedEngine.setClipSpeed(audioClip.id, speed, audioClip.duration);
+            const newClips = track.clips.map((c, i) => {
+              if (i === audioClipIndex) return updatedAudioClip;
+              if (isMagnetic && c.startTime >= audioClip.startTime + audioClip.duration - 0.05) {
+                return { ...c, startTime: Math.max(0, c.startTime + durationDelta) };
+              }
+              return c;
+            });
+            speedEngine.setClipSpeed(audioClip.id, finalAudioSpeed, finalAudioDuration);
             return { ...track, clips: newClips };
           }
         }
         return track;
       }
 
+      let finalDuration = newDuration;
+      if (!isMagnetic && clipIndex < track.clips.length - 1) {
+         const nextClip = track.clips[clipIndex + 1];
+         const maxDuration = nextClip.startTime - clip.startTime;
+         if (finalDuration > maxDuration) {
+           finalDuration = maxDuration;
+           finalSpeed = originalDuration / finalDuration;
+         }
+      }
+
+      newDuration = finalDuration;
+      const durationDelta = finalDuration - track.clips[clipIndex].duration;
+
       const updatedClip = {
         ...track.clips[clipIndex],
-        duration: newDuration,
-        speed,
+        duration: finalDuration,
+        speed: finalSpeed,
       };
-      const newClips = [...track.clips];
-      newClips[clipIndex] = updatedClip;
+      
+      const newClips = track.clips.map((c, i) => {
+        if (i === clipIndex) return updatedClip;
+        if (isMagnetic && c.startTime >= track.clips[clipIndex].startTime + track.clips[clipIndex].duration - 0.05) {
+          return { ...c, startTime: Math.max(0, c.startTime + durationDelta) };
+        }
+        return c;
+      });
 
       return { ...track, clips: newClips };
     });
@@ -96,6 +136,9 @@ export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
         modifiedAt: Date.now(),
       },
     });
+
+    speedEngine.setClipSpeed(clip.id, finalSpeed, newDuration);
+    return finalSpeed;
   };
 
   const updateClipReverse = (reversed: boolean) => {
@@ -135,17 +178,15 @@ export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
   };
 
   const handleSpeedPreset = (speed: number) => {
-    speedEngine.setClipSpeed(clip.id, speed, clip.duration);
-    updateClipDuration(speed);
-    setCurrentSpeed(speed);
+    const finalSpeed = updateClipDuration(speed);
+    setCurrentSpeed(finalSpeed);
   };
 
   const handleCustomSpeed = () => {
     const speed = parseFloat(customSpeed);
     if (!isNaN(speed) && speed >= 0.1 && speed <= 100) {
-      speedEngine.setClipSpeed(clip.id, speed, clip.duration);
-      updateClipDuration(speed);
-      setCurrentSpeed(speed);
+      const finalSpeed = updateClipDuration(speed);
+      setCurrentSpeed(finalSpeed);
     }
   };
 

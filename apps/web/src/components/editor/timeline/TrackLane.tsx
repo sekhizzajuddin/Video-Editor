@@ -91,6 +91,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
   const { isTrackExpanded, playheadPosition } = useTimelineStore();
   const isExpanded = isTrackExpanded(track.id);
   const { snapSettings } = useUIStore();
+  const showTransitions = useUIStore((s) => s.showTransitions);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const laneRef = useRef<HTMLDivElement>(null);
@@ -314,7 +315,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
           </div>
         )}
         
-        {adjacentPairs.map((pair) => (
+        {showTransitions && adjacentPairs.map((pair) => (
           <TransitionIndicator
             key={`trans-${pair.clipA.id}-${pair.clipB.id}`}
             clipA={pair.clipA}

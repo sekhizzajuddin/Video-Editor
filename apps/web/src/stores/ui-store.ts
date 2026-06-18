@@ -69,6 +69,7 @@ export interface UIState {
   showWaveforms: boolean;
   showThumbnails: boolean;
   showKeyframes: boolean;
+  showTransitions: boolean;
   autoScroll: boolean;
   timelineMaximized: boolean;
   isDynamicSpeedEnabled: boolean;
@@ -117,6 +118,8 @@ export interface UIState {
   setShowWaveforms: (show: boolean) => void;
   setShowThumbnails: (show: boolean) => void;
   setShowKeyframes: (show: boolean) => void;
+  setShowTransitions: (show: boolean) => void;
+  toggleTransitions: () => void;
   setAutoScroll: (enabled: boolean) => void;
   toggleAutoScroll: () => void;
   setTimelineMaximized: (maximized: boolean) => void;
@@ -219,6 +222,7 @@ export const useUIStore = create<UIState>()(
         showWaveforms: true,
         showThumbnails: true,
         showKeyframes: true,
+        showTransitions: true,
         autoScroll: true,
         timelineMaximized: false,
         isDynamicSpeedEnabled: false,
@@ -482,6 +486,14 @@ export const useUIStore = create<UIState>()(
 
         setShowKeyframes: (show: boolean) => {
           set({ showKeyframes: show });
+        },
+
+        setShowTransitions: (show: boolean) => {
+          set({ showTransitions: show });
+        },
+
+        toggleTransitions: () => {
+          set((state) => ({ showTransitions: !state.showTransitions }));
         },
 
         setAutoScroll: (enabled: boolean) => {
