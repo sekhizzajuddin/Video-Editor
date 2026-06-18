@@ -1,4 +1,6 @@
 // Engine
+export * from "./transcription-engine";
+export * from "./audio-match-engine";
 export {
   MediaBunnyEngine,
   getMediaEngine,

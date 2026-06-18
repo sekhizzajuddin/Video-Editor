@@ -47,6 +47,7 @@ import {
 import { InspectorTabs } from "./inspector/shell/InspectorTabs";
 import { InspectorClipHeader } from "./inspector/shell/InspectorClipHeader";
 import { InspectorTabPanel } from "./inspector/shell/InspectorTabPanel";
+import { MultipleSelectionPanel } from "./inspector/MultipleSelectionPanel";
 import { InspectorTabErrorBoundary } from "./inspector/shell/InspectorTabErrorBoundary";
 import { InspectorSection } from "./inspector/shell/InspectorSection";
 import { ColorTab } from "./inspector/tabs/ColorTab";
@@ -1339,6 +1340,8 @@ export const InspectorPanel: React.FC = () => {
               </button>
             </div>
           </>
+        ) : selectedClipIds.length > 1 ? (
+          <MultipleSelectionPanel selectedClipIds={selectedClipIds} />
         ) : (
           <EmptyState />
         )}

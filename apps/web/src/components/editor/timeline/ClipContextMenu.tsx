@@ -10,7 +10,9 @@ import {
   Film,
   Image,
   ArrowLeftToLine,
+  Captions,
 } from "lucide-react";
+import { toast } from "../../../stores/notification-store";
 import type { Clip, Track } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
@@ -124,6 +126,60 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
     onClose?.();
   };
 
+  const handleGenerateCaptions = async () => {
+    const file = mediaItem?.blob || (await mediaItem?.fileHandle?.getFile());
+    if (!mediaItem || !file) {
+      toast.error("Media file not found");
+      return;
+    }
+    onClose?.();
+    toast.info("Loading Offline AI Whisper Model...");
+    
+    try {
+      const { transcriptionEngine } = await import("@openreel/core/media");
+      const { loadAudioBuffer } = await import("../../../utils/load-audio-buffer");
+      
+      await transcriptionEngine.initialize();
+      
+      toast.info("Extracting and resampling audio to 16kHz...");
+      
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContextClass({ sampleRate: 16000 });
+      const audioBuffer = await loadAudioBuffer(ctx, file, {
+        audioTrackIndex: clip.audioTrackIndex ?? 0
+      });
+      
+      if (!audioBuffer) throw new Error("Failed to extract audio");
+
+      toast.info("Transcribing (this may take a minute)...");
+      
+      const words = await transcriptionEngine.transcribe(audioBuffer);
+      
+      if (words.length === 0) {
+        toast.error("No speech detected");
+        return;
+      }
+
+      toast.info("Adding captions to timeline...");
+      
+      const { addSubtitle } = useProjectStore.getState();
+      
+      for (const word of words) {
+        await addSubtitle({
+          id: Math.random().toString(36).substring(7),
+          startTime: clip.startTime + word.start,
+          endTime: clip.startTime + word.end,
+          text: word.text
+        });
+      }
+      
+      toast.success(`Generated ${words.length} captions`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to generate captions");
+    }
+  };
+
   const getClipTypeLabel = () => {
     if (isVideo) return "Video Clip";
     if (isAudio) return "Audio Clip";
@@ -192,6 +248,10 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
       {isVideoWithAudio && (
         <>
           <ContextMenuSeparator />
+          <ContextMenuItem onClick={handleGenerateCaptions}>
+            <Captions className="mr-2 h-4 w-4" />
+            Generate Auto Captions
+          </ContextMenuItem>
           <ContextMenuItem onClick={handleSeparateAudio}>
             <Music className="mr-2 h-4 w-4" />
             Separate Audio
@@ -202,6 +262,10 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
       {isAudio && (
         <>
           <ContextMenuSeparator />
+          <ContextMenuItem onClick={handleGenerateCaptions}>
+            <Captions className="mr-2 h-4 w-4" />
+            Generate Auto Captions
+          </ContextMenuItem>
           <ContextMenuSub>
             <ContextMenuSubTrigger>
               <Volume2 className="mr-2 h-4 w-4" />
