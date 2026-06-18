@@ -223,6 +223,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     startTime: number;
     duration: number;
     speed: number;
+    initialClips?: Clip[];
   }>({
     mouseX: 0,
     startTime: clip.startTime,
@@ -548,6 +549,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         startTime: clip.startTime,
         duration: clip.duration,
         speed: clip.speed ?? 1,
+        initialClips: track.clips,
       };
       document.body.style.cursor = "ew-resize";
     };
@@ -858,8 +860,9 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
                     if (c.id === clip.id) {
                       return { ...c, speed: newSpeed, duration: clampedDuration, startTime: finalStartTime ?? c.startTime };
                     }
-                    if (c.startTime >= oldEndTime - 0.05) {
-                      return { ...c, startTime: Math.max(0, c.startTime + rippleDurationDelta) };
+                    const origClip = trimStartRef.current.initialClips?.find(orig => orig.id === c.id);
+                    if (origClip && origClip.startTime >= oldEndTime - 0.05) {
+                      return { ...c, startTime: Math.max(0, origClip.startTime + rippleDurationDelta) };
                     }
                     return c;
                   }),

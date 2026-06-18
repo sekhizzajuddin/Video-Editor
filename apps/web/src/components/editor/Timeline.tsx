@@ -630,11 +630,12 @@ export const Timeline: React.FC = () => {
         return;
       }
 
+      const EPSILON = 0.001; // 1ms tolerance for snapping math
       const wouldOverlap = currentTrack.clips.some(
         (c) =>
           c.id !== clipId &&
-          newStartTime < c.startTime + c.duration &&
-          newStartTime + clip.duration > c.startTime
+          newStartTime < c.startTime + c.duration - EPSILON &&
+          newStartTime + clip.duration > c.startTime + EPSILON
       );
 
       if (wouldOverlap) {
