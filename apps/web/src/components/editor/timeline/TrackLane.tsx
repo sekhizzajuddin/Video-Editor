@@ -294,6 +294,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
             onSelect={onSelectClip}
             onTrim={onTrimTextClip}
             onMoveClip={onMoveTextClip}
+            onSnapIndicator={onSnapIndicator}
           />
         ))}
         {shapeClips.map((shapeClip) => (
@@ -305,6 +306,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
             onSelect={onSelectClip}
             onTrim={onTrimShapeClip}
             onMoveClip={onMoveClip}
+            onSnapIndicator={onSnapIndicator}
           />
         ))}
         {isDragOver && (

@@ -4,6 +4,7 @@ import type { Clip, Track, TransitionType } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
+import { useEngineStore } from "../../../stores/engine-store";
 import { calculateSnap, generateWaveformPath, getClipStyle, getOrGenerateMockWaveformData } from "./utils";
 import { ClipContextMenu } from "./ClipContextMenu";
 import { ContextMenu, ContextMenuTrigger } from "@openreel/ui";
@@ -219,6 +220,11 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const multiDragSnapshotRef = useRef<
     Array<{ clipId: string; startTime: number; trackId: string }>
   >([]);
+  const lastSnapRef = useRef<{
+    snappedTime: number;
+    mouseSnapX: number;
+    snapPointTime: number;
+  } | null>(null);
   const trimStartRef = useRef<{
     mouseX: number;
     startTime: number;
@@ -322,6 +328,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     const clipRect = clipRef.current?.getBoundingClientRect();
     if (!rect || !clipRect) return;
 
+    lastSnapRef.current = null;
     wasSelectedBeforeMousedownRef.current = isSelected;
     if (!isSelected) {
       onSelect(clip.id, e.shiftKey || e.metaKey);
@@ -679,16 +686,54 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const x = e.clientX - rect.left - dragOffset;
       const rawTime = Math.max(0, x / pixelsPerSecond);
 
-      const dragSnapSettings = { ...snapSettings, snapToPlayhead: false };
-      const snapResult = calculateSnap(
-        rawTime,
-        clip.id,
-        allTracks,
-        playheadPosition,
-        dragSnapSettings,
-        pixelsPerSecond,
-        clip.duration,
-      );
+      let finalSnapTime = rawTime;
+      let isSnapped = false;
+      let snapPointTime: number | null = null;
+
+      const breakoutThreshold = 15; // 15 pixels threshold to break the snap
+
+      if (lastSnapRef.current) {
+        const mouseDeltaX = Math.abs(e.clientX - lastSnapRef.current.mouseSnapX);
+        if (mouseDeltaX < breakoutThreshold) {
+          finalSnapTime = lastSnapRef.current.snappedTime;
+          isSnapped = true;
+          snapPointTime = lastSnapRef.current.snapPointTime;
+        } else {
+          lastSnapRef.current = null;
+        }
+      }
+
+      if (!isSnapped) {
+        const dragSnapSettings = { ...snapSettings, snapToPlayhead: false };
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const allTextClips = titleEngine?.getAllTextClips() ?? [];
+        const allShapeClips = graphicsEngine?.getAllShapeClips() ?? [];
+
+        const snapResult = calculateSnap(
+          rawTime,
+          clip.id,
+          allTracks,
+          playheadPosition,
+          dragSnapSettings,
+          pixelsPerSecond,
+          clip.duration,
+          allTextClips,
+          allShapeClips,
+        );
+
+        finalSnapTime = snapResult.time;
+        isSnapped = snapResult.snapped;
+        if (isSnapped && snapResult.snapPoint) {
+          snapPointTime = snapResult.snapPoint.time;
+          lastSnapRef.current = {
+            snappedTime: snapResult.time,
+            mouseSnapX: e.clientX,
+            snapPointTime: snapResult.snapPoint.time,
+          };
+        }
+      }
+
       const currentScrollTop = timelineRef.current?.scrollTop || 0;
       const scrollDelta = currentScrollTop - dragStartRef.current.scrollTop;
       const yDelta = (e.clientY - dragStartRef.current.mouseY) + scrollDelta;
@@ -715,11 +760,11 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const isOverDifferentTrackType = hoveredTrackType !== undefined && hoveredTrackType !== track.type;
       setIsInvalidDrop(isOverDifferentTrackType);
 
-      pendingDropRef.current = { time: snapResult.time, targetTrackId };
+      pendingDropRef.current = { time: finalSnapTime, targetTrackId };
 
       // Instead of cloning the entire project store 60 frames per second,
       // we only write the visual delta to our transient UI store.
-      const moveTime = snapResult.time;
+      const moveTime = finalSnapTime;
       const baseStartTime = clip.startTime;
       
       pendingCommitRef.current = () => {
@@ -730,7 +775,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         moveCommitRafRef.current = requestAnimationFrame(flushPendingCommit);
       }
 
-      onSnapIndicator(snapResult.snapped && snapResult.snapPoint ? snapResult.snapPoint.time : null);
+      onSnapIndicator(isSnapped && snapPointTime !== null ? snapPointTime : null);
     };
 
     let groupClosed = false;
@@ -781,6 +826,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       setIsInvalidDrop(false);
       onSnapIndicator(null);
       multiDragSnapshotRef.current = [];
+      lastSnapRef.current = null;
       closeGroup();
     };
 

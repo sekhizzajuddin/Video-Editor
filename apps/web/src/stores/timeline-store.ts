@@ -70,6 +70,7 @@ export interface TimelineState {
   setClipKeyframesExpanded: (clipId: string, expanded: boolean) => void;
   isClipKeyframesExpanded: (clipId: string) => boolean;
   setKeyframeEditMode: (enabled: boolean) => void;
+  setClipDragDelta: (delta: number | null) => void;
 }
 
 export const useTimelineStore = create<TimelineState>()(

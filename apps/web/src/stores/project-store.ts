@@ -263,6 +263,7 @@ export interface ProjectState {
     text: string,
     duration?: number,
     style?: Partial<TextStyle>,
+    customId?: string,
   ) => TextClip | null;
   updateTextContent: (clipId: string, text: string) => TextClip | null;
   updateTextStyle: (
@@ -4501,6 +4502,7 @@ export const useProjectStore = create<ProjectState>()(
         text: string,
         duration: number = 5,
         style?: Partial<TextStyle>,
+        customId?: string,
       ) => {
         const titleEngine = useEngineStore.getState().titleEngine;
         if (!titleEngine) {
@@ -4516,6 +4518,7 @@ export const useProjectStore = create<ProjectState>()(
         }
 
         const textClip = titleEngine.createTextClip({
+          id: customId,
           trackId,
           startTime,
           text,
@@ -4778,7 +4781,7 @@ export const useProjectStore = create<ProjectState>()(
         const duration = subtitle.endTime - subtitle.startTime;
         const style = subtitle.style;
 
-        createTextClip(
+        const textClip = createTextClip(
           captionsTrack.id,
           subtitle.startTime,
           subtitle.text,
@@ -4788,14 +4791,38 @@ export const useProjectStore = create<ProjectState>()(
             fontSize: style.fontSize,
             color: style.color,
             backgroundColor: style.backgroundColor || undefined,
-          } : undefined
+          } : undefined,
+          subtitle.id
         );
+
+        if (textClip) {
+          const titleEngine = useEngineStore.getState().getTitleEngine();
+          if (titleEngine) {
+            titleEngine.updateTextClip(textClip.id, {
+              metadata: {
+                words: subtitle.words,
+                animationStyle: subtitle.animationStyle,
+              }
+            });
+            // Update project modified state to trigger rendering updates
+            set((state) => ({
+              project: {
+                ...state.project,
+                modifiedAt: Date.now(),
+              }
+            }));
+          }
+        }
       },
 
       /**
        * Remove a subtitle from the timeline
        */
       removeSubtitle: (subtitleId) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          titleEngine.deleteTextClip(subtitleId);
+        }
         set((state) => ({
           project: {
             ...state.project,
@@ -4804,6 +4831,7 @@ export const useProjectStore = create<ProjectState>()(
               subtitles: state.project.timeline.subtitles.filter(
                 (s) => s.id !== subtitleId,
               ),
+              modifiedAt: Date.now(),
             },
           },
         }));
@@ -4813,6 +4841,41 @@ export const useProjectStore = create<ProjectState>()(
        * Update a subtitle
        */
       updateSubtitle: (subtitleId, updates) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const clip = titleEngine.getTextClip(subtitleId);
+          if (clip) {
+            const updatedStyle = updates.style ? {
+              fontFamily: updates.style.fontFamily,
+              fontSize: updates.style.fontSize,
+              color: updates.style.color,
+              backgroundColor: updates.style.backgroundColor || undefined,
+            } : undefined;
+
+            const updatedDuration = (updates.endTime !== undefined && updates.startTime !== undefined)
+              ? (updates.endTime - updates.startTime)
+              : (updates.endTime !== undefined)
+              ? (updates.endTime - clip.startTime)
+              : (updates.startTime !== undefined)
+              ? (clip.startTime + clip.duration - updates.startTime)
+              : undefined;
+
+            const metadata = {
+              ...clip.metadata,
+              ...(updates.words !== undefined ? { words: updates.words } : {}),
+              ...(updates.animationStyle !== undefined ? { animationStyle: updates.animationStyle } : {}),
+            };
+
+            titleEngine.updateTextClip(subtitleId, {
+              text: updates.text,
+              startTime: updates.startTime,
+              duration: updatedDuration,
+              style: updatedStyle,
+              metadata,
+            });
+          }
+        }
+
         set((state) => ({
           project: {
             ...state.project,
@@ -4821,6 +4884,7 @@ export const useProjectStore = create<ProjectState>()(
               subtitles: state.project.timeline.subtitles.map((s) =>
                 s.id === subtitleId ? { ...s, ...updates } : s,
               ),
+              modifiedAt: Date.now(),
             },
           },
         }));
@@ -4830,9 +4894,31 @@ export const useProjectStore = create<ProjectState>()(
        * Get a subtitle by ID
        */
       getSubtitle: (subtitleId) => {
-        return get().project.timeline.subtitles.find(
-          (s) => s.id === subtitleId,
-        );
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) return undefined;
+        const clip = titleEngine.getTextClip(subtitleId);
+        if (!clip) {
+          // Fallback to legacy subtitles array
+          return get().project.timeline.subtitles.find(
+            (s) => s.id === subtitleId,
+          );
+        }
+
+        return {
+          id: clip.id,
+          text: clip.text,
+          startTime: clip.startTime,
+          endTime: clip.startTime + clip.duration,
+          style: clip.style ? {
+            fontFamily: clip.style.fontFamily,
+            fontSize: clip.style.fontSize,
+            color: clip.style.color,
+            backgroundColor: clip.style.backgroundColor || "",
+            position: "bottom",
+          } : undefined,
+          words: clip.metadata?.words as any,
+          animationStyle: clip.metadata?.animationStyle as any,
+        };
       },
 
       importSRT: async (srtContent: string) => {

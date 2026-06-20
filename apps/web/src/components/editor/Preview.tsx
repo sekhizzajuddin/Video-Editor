@@ -1591,10 +1591,7 @@ export const Preview: React.FC = () => {
 
       return new Promise<ImageBitmap | null>((resolve) => {
         decodeDebounceResolveRef.current = resolve;
-        decodeDebounceRef.current = setTimeout(async () => {
-          decodeDebounceRef.current = null;
-          decodeDebounceResolveRef.current = null;
-
+        (async () => {
           if (isStaleRequest()) {
             resolve(null);
             return;
@@ -1785,7 +1782,7 @@ export const Preview: React.FC = () => {
             scheduleScrubVideoRelease();
             resolve(null);
           }
-        }, 50);
+        })();
       });
     },
     [

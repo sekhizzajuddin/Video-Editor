@@ -7,6 +7,7 @@ import { calculateSnap } from "./utils";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
+import { useEngineStore } from "../../../stores/engine-store";
 
 type GraphicClipUnion = ShapeClip | SVGClip | StickerClip;
 
@@ -17,6 +18,7 @@ interface ShapeClipComponentProps {
   onSelect: (clipId: string, addToSelection: boolean) => void;
   onTrim: (clipId: string, edge: "left" | "right", newTime: number) => void;
   onMoveClip: (clipId: string, newStartTime: number) => void;
+  onSnapIndicator?: (time: number | null) => void;
 }
 
 export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
@@ -26,6 +28,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
   onSelect,
   onTrim,
   onMoveClip,
+  onSnapIndicator,
 }) => {
   const clipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -42,6 +45,11 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     startTime: shapeClip.startTime,
     duration: shapeClip.duration,
   });
+  const lastSnapRef = useRef<{
+    snappedTime: number;
+    mouseSnapX: number;
+    snapPointTime: number;
+  } | null>(null);
 
   const left = shapeClip.startTime * pixelsPerSecond;
   const width = shapeClip.duration * pixelsPerSecond;
@@ -54,6 +62,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     const rect = clipRef.current?.getBoundingClientRect();
     if (!rect) return;
 
+    lastSnapRef.current = null;
     const offsetX = e.clientX - rect.left;
     setDragOffset(offsetX);
     setIsDragging(true);
@@ -90,22 +99,68 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
       const rect = timelineElement.getBoundingClientRect();
       const x = e.clientX - rect.left - dragOffset;
       const rawTime = Math.max(0, x / pixelsPerSecond);
-      const allTracks = useProjectStore.getState().project.timeline.tracks;
-      const dragSnapSettings = { ...snapSettings, snapToPlayhead: false };
-      const snapResult = calculateSnap(
-        rawTime,
-        shapeClip.id,
-        allTracks,
-        playheadPosition,
-        dragSnapSettings,
-        pixelsPerSecond,
-        shapeClip.duration,
-      );
-      onMoveClip(shapeClip.id, snapResult.time);
+
+      let finalSnapTime = rawTime;
+      let isSnapped = false;
+      let snapPointTime: number | null = null;
+
+      const breakoutThreshold = 15; // 15 pixels threshold to break the snap
+
+      if (lastSnapRef.current) {
+        const mouseDeltaX = Math.abs(e.clientX - lastSnapRef.current.mouseSnapX);
+        if (mouseDeltaX < breakoutThreshold) {
+          finalSnapTime = lastSnapRef.current.snappedTime;
+          isSnapped = true;
+          snapPointTime = lastSnapRef.current.snapPointTime;
+        } else {
+          lastSnapRef.current = null;
+        }
+      }
+
+      if (!isSnapped) {
+        const allTracks = useProjectStore.getState().project.timeline.tracks;
+        const dragSnapSettings = { ...snapSettings, snapToPlayhead: false };
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const allTextClips = titleEngine?.getAllTextClips() ?? [];
+        const allShapeClips = graphicsEngine?.getAllShapeClips() ?? [];
+
+        const snapResult = calculateSnap(
+          rawTime,
+          shapeClip.id,
+          allTracks,
+          playheadPosition,
+          dragSnapSettings,
+          pixelsPerSecond,
+          shapeClip.duration,
+          allTextClips,
+          allShapeClips,
+        );
+
+        finalSnapTime = snapResult.time;
+        isSnapped = snapResult.snapped;
+        if (isSnapped && snapResult.snapPoint) {
+          snapPointTime = snapResult.snapPoint.time;
+          lastSnapRef.current = {
+            snappedTime: snapResult.time,
+            mouseSnapX: e.clientX,
+            snapPointTime: snapResult.snapPoint.time,
+          };
+        }
+      }
+
+      onMoveClip(shapeClip.id, finalSnapTime);
+      if (onSnapIndicator) {
+        onSnapIndicator(isSnapped && snapPointTime !== null ? snapPointTime : null);
+      }
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      if (onSnapIndicator) {
+        onSnapIndicator(null);
+      }
+      lastSnapRef.current = null;
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -115,7 +170,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, dragOffset, pixelsPerSecond, shapeClip.id, shapeClip.duration, onMoveClip, snapSettings, playheadPosition]);
+  }, [isDragging, dragOffset, pixelsPerSecond, shapeClip.id, shapeClip.duration, onMoveClip, snapSettings, playheadPosition, onSnapIndicator]);
 
   useEffect(() => {
     if (!isTrimming) return;

@@ -80,7 +80,7 @@ export class TranscriptionEngine {
     const processChunks = (chunks: any[]) => {
       return chunks.map((chunk: any) => ({
         // Transliterate Devanagari (Hindi script) to Latin (Hinglish)
-        text: Sanscript.t(chunk.text, 'devanagari', 'itrans'),
+        text: Sanscript.t(chunk.text, 'devanagari', 'itrans').toLowerCase(),
         start: chunk.timestamp[0],
         end: chunk.timestamp[1]
       }));

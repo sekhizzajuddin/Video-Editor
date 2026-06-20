@@ -17,6 +17,8 @@ export const calculateSnap = (
   snapSettings: SnapSettings,
   pixelsPerSecond: number,
   clipDuration?: number,
+  allTextClips: any[] = [],
+  allShapeClips: any[] = [],
 ): SnapResult => {
   if (!snapSettings.enabled) {
     return { time: rawTime, snapped: false };
@@ -35,6 +37,22 @@ export const calculateSnap = (
           type: "clip-end",
         });
       }
+    }
+    for (const clip of allTextClips) {
+      if (clip.id === clipId) continue;
+      snapPoints.push({ time: clip.startTime, type: "clip-start" });
+      snapPoints.push({
+        time: clip.startTime + clip.duration,
+        type: "clip-end",
+      });
+    }
+    for (const clip of allShapeClips) {
+      if (clip.id === clipId) continue;
+      snapPoints.push({ time: clip.startTime, type: "clip-start" });
+      snapPoints.push({
+        time: clip.startTime + clip.duration,
+        type: "clip-end",
+      });
     }
   }
 

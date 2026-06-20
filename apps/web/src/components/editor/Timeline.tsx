@@ -336,8 +336,10 @@ export const Timeline: React.FC = () => {
       const isTextClip = allTextClips.some((tc) => tc.id === clipId);
       if (isTextClip) {
         const textClip = allTextClips.find((tc) => tc.id === clipId);
+        const track = tracks.find((t) => t.id === textClip?.trackId);
+        const isSubtitle = track?.name === "Captions";
         select(
-          { type: "text-clip", id: clipId, trackId: textClip?.trackId },
+          { type: isSubtitle ? "subtitle" : "text-clip", id: clipId, trackId: textClip?.trackId },
           addToSelection,
         );
         return;
@@ -529,7 +531,7 @@ export const Timeline: React.FC = () => {
     const maxTime = maxX / pixelsPerSecond;
 
     let currentY = 0;
-    const selectedItems: { type: "clip"; id: string; trackId: string }[] = [];
+    const selectedItems: { type: "clip" | "text-clip" | "shape-clip" | "subtitle"; id: string; trackId: string }[] = [];
 
     // Iterate through tracks to find which are overlapped by selection box
     for (const track of tracks) {
@@ -544,19 +546,50 @@ export const Timeline: React.FC = () => {
       const trackOverlaps = minY < trackMaxY && maxY > trackMinY;
 
       if (trackOverlaps) {
-        for (const clip of track.clips) {
-          const clipStart = clip.startTime;
-          const clipEnd = clip.startTime + clip.duration;
+        if (track.type === "text") {
+          const textClips = allTextClips.filter((tc) => tc.trackId === track.id);
+          for (const clip of textClips) {
+            const clipStart = clip.startTime;
+            const clipEnd = clip.startTime + clip.duration;
+            const clipOverlaps = minTime < clipEnd && maxTime > clipStart;
+            if (clipOverlaps) {
+              const isSubtitle = track.name === "Captions";
+              selectedItems.push({
+                type: isSubtitle ? "subtitle" : "text-clip",
+                id: clip.id,
+                trackId: track.id,
+              });
+            }
+          }
+        } else if (track.type === "graphics") {
+          const shapeClips = allShapeClips.filter((sc) => sc.trackId === track.id);
+          for (const clip of shapeClips) {
+            const clipStart = clip.startTime;
+            const clipEnd = clip.startTime + clip.duration;
+            const clipOverlaps = minTime < clipEnd && maxTime > clipStart;
+            if (clipOverlaps) {
+              selectedItems.push({
+                type: "shape-clip",
+                id: clip.id,
+                trackId: track.id,
+              });
+            }
+          }
+        } else {
+          for (const clip of track.clips) {
+            const clipStart = clip.startTime;
+            const clipEnd = clip.startTime + clip.duration;
 
-          // Check if selection box time range overlaps clip time range
-          const clipOverlaps = minTime < clipEnd && maxTime > clipStart;
+            // Check if selection box time range overlaps clip time range
+            const clipOverlaps = minTime < clipEnd && maxTime > clipStart;
 
-          if (clipOverlaps) {
-            selectedItems.push({
-              type: "clip",
-              id: clip.id,
-              trackId: track.id,
-            });
+            if (clipOverlaps) {
+              selectedItems.push({
+                type: "clip",
+                id: clip.id,
+                trackId: track.id,
+              });
+            }
           }
         }
       }
