@@ -1,4 +1,5 @@
 import { pipeline, env, AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
+import Sanscript from '@indic-transliteration/sanscript';
 
 // Configure transformers to use the local WebGPU/WASM environment
 env.allowLocalModels = false;
@@ -30,9 +31,8 @@ export class TranscriptionEngine {
 
     this.initPromise = (async () => {
       try {
-        // Use a tiny, fast model that works well in browser WebGPU/WASM
-        // Xenova/whisper-tiny.en is specifically optimized for transformers.js
-        this.transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+        // Use the multilingual tiny model to support Hindi/Hinglish
+        this.transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny', {
           device: 'webgpu',
           progress_callback: (data: any) => {
             if (data.status === 'progress' && onProgress) {
@@ -43,7 +43,7 @@ export class TranscriptionEngine {
         });
       } catch (e) {
         console.warn("WebGPU not available or model failed to load, falling back to WebAssembly CPU:", e);
-        this.transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+        this.transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny', {
           device: 'wasm',
           progress_callback: (data: any) => {
             if (data.status === 'progress' && onProgress) {
@@ -77,18 +77,19 @@ export class TranscriptionEngine {
       return_timestamps: 'word'
     });
 
+    const processChunks = (chunks: any[]) => {
+      return chunks.map((chunk: any) => ({
+        // Transliterate Devanagari (Hindi script) to Latin (Hinglish)
+        text: Sanscript.t(chunk.text, 'devanagari', 'itrans'),
+        start: chunk.timestamp[0],
+        end: chunk.timestamp[1]
+      }));
+    };
+
     if (Array.isArray(result) && result.length > 0 && result[0].chunks) {
-       return result[0].chunks.map((chunk: any) => ({
-         text: chunk.text,
-         start: chunk.timestamp[0],
-         end: chunk.timestamp[1]
-       }));
+       return processChunks(result[0].chunks);
     } else if ((result as any).chunks) {
-       return (result as any).chunks.map((chunk: any) => ({
-         text: chunk.text,
-         start: chunk.timestamp[0],
-         end: chunk.timestamp[1]
-       }));
+       return processChunks((result as any).chunks);
     }
 
     return [];
