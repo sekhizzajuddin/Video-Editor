@@ -1,4 +1,5 @@
 import type { Subtitle, SubtitleStyle } from "../types/timeline";
+import Sanscript from "@indic-transliteration/sanscript";
 
 interface SpeechRecognitionResult {
   readonly isFinal: boolean;
@@ -190,8 +191,19 @@ export class SpeechToTextEngine {
       const result = event.results[event.results.length - 1];
       if (!result.isFinal) return;
 
-      const transcript = result[0].transcript.trim();
+      let transcript = result[0].transcript.trim();
       if (!transcript) return;
+
+      // Automatically Romanize Hindi transcripts into Hinglish
+      if (this.currentOptions.language === "hi-IN" && /[\u0900-\u097F]/.test(transcript)) {
+        try {
+          // 'itrans' outputs standard ASCII but can be rigid. 'hk' is Harvard-Kyoto. We'll use 'itrans'
+          // and convert to lowercase for a natural "Hinglish" chat style.
+          transcript = Sanscript.t(transcript, "devanagari", "itrans").toLowerCase();
+        } catch (err) {
+          console.warn("Transliteration to Hinglish failed", err);
+        }
+      }
 
       const currentTime = this.getCurrentTime();
       const segment: TranscriptionSegment = {

@@ -158,17 +158,24 @@ export function useKeyboardShortcuts() {
   }, [getSelectedClipIds, duplicateClip]);
 
   const handleDelete = useCallback(() => {
-    const selectedIds = getSelectedClipIds();
-    const isMagnetic = useUIStore.getState().isMagneticTimelineEnabled;
-    selectedIds.forEach((id) => {
-      if (isMagnetic) {
-        rippleDeleteClip(id);
-      } else {
-        removeClip(id);
+    const { selectedItems, isMagneticTimelineEnabled } = useUIStore.getState();
+    const { deleteTextClip, deleteShapeClip } = useProjectStore.getState();
+    
+    selectedItems.forEach((item) => {
+      if (item.type === "clip") {
+        if (isMagneticTimelineEnabled) {
+          rippleDeleteClip(item.id);
+        } else {
+          removeClip(item.id);
+        }
+      } else if (item.type === "text-clip" || item.type === "subtitle") {
+        deleteTextClip(item.id);
+      } else if (item.type === "shape-clip") {
+        deleteShapeClip(item.id);
       }
     });
     clearSelection();
-  }, [getSelectedClipIds, removeClip, rippleDeleteClip, clearSelection]);
+  }, [removeClip, rippleDeleteClip, clearSelection]);
 
   const handleRippleDelete = useCallback(() => {
     const selectedIds = getSelectedClipIds();

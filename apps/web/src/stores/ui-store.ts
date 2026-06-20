@@ -284,6 +284,11 @@ export const useUIStore = create<UIState>()(
                 selectedItems: [...selectedItems, item],
                 lastSelectedItem: item, // Track most recent selection for extended selections
               });
+            } else {
+              set({
+                selectedItems: selectedItems.filter((s) => s.id !== item.id),
+                lastSelectedItem: selectedItems.length > 1 ? selectedItems[selectedItems.length - 2] : null,
+              });
             }
           } else {
             // Single-select mode: clear previous selection and select only this item

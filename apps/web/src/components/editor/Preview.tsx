@@ -5666,6 +5666,7 @@ export const Preview: React.FC = () => {
             ) {
               lastStoreUpdateRef.current = now;
               updateTextTransform(interactionTargetIdRef.current, newTransform);
+              renderFrameDirectly(playheadPosition);
             }
             rafIdRef.current = null;
           });
@@ -5744,6 +5745,7 @@ export const Preview: React.FC = () => {
                 interactionTargetIdRef.current,
                 newTransform,
               );
+              renderFrameDirectly(playheadPosition);
             }
             rafIdRef.current = null;
           });
@@ -5887,6 +5889,7 @@ export const Preview: React.FC = () => {
               pendingTransformRef.current.clipId,
               pendingTransformRef.current.transform,
             );
+            renderFrameDirectly(playheadPosition);
           }
           rafIdRef.current = null;
         });
@@ -5906,6 +5909,9 @@ export const Preview: React.FC = () => {
       textClipBounds,
       activeTextClip,
       updateTextTransform,
+      updateShapeTransform,
+      renderFrameDirectly,
+      playheadPosition,
     ],
   );
 

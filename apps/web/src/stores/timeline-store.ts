@@ -29,6 +29,7 @@ export interface TimelineState {
   expandedTracks: Set<string>;
   expandedClipKeyframes: Set<string>;
   keyframeEditMode: boolean;
+  clipDragDelta: number | null;
   play: () => void;
   pause: () => void;
   stop: () => void;
@@ -97,6 +98,11 @@ export const useTimelineStore = create<TimelineState>()(
     expandedTracks: new Set<string>(),
     expandedClipKeyframes: new Set<string>(),
     keyframeEditMode: false,
+    clipDragDelta: null,
+
+    setClipDragDelta: (delta: number | null) => {
+      set({ clipDragDelta: delta });
+    },
 
     play: () => {
       if (get().playbackLockedReason) {

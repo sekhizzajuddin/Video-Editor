@@ -204,6 +204,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     (state) => state.effectApplicationLabel,
   );
   const { playheadPosition } = useTimelineStore();
+  const clipDragDelta = useTimelineStore((state) => state.clipDragDelta);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isPendingDrag, setIsPendingDrag] = useState(false);
@@ -245,6 +246,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const clipRef = useRef<HTMLDivElement>(null);
   const moveCommitRafRef = useRef<number | null>(null);
   const pendingCommitRef = useRef<(() => void) | null>(null);
+  const wasSelectedBeforeMousedownRef = useRef<boolean>(false);
 
   // Drag-drop highlight state: "effect" when an effect is hovered over
   // the clip body, "transition-left" / "transition-right" when a
@@ -257,9 +259,11 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const isMagneticTimelineEnabled = useUIStore((s) => s.isMagneticTimelineEnabled);
   const updateClipSpeed = useProjectStore((s) => s.updateClipSpeed);
 
-  const left = clip.startTime * pixelsPerSecond;
+  const left = (isSelected && clipDragDelta !== null) 
+    ? Math.max(0, clip.startTime + clipDragDelta) * pixelsPerSecond 
+    : clip.startTime * pixelsPerSecond;
   const width = clip.duration * pixelsPerSecond;
-
+  
   const isVideo = track.type === "video";
   const isAudio = track.type === "audio";
   const isImage = track.type === "image";
@@ -292,7 +296,21 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     if (e.button !== 0) return;
     if (isDragging || isPendingDrag) return;
     e.stopPropagation();
-    onSelect(clip.id, e.shiftKey || e.metaKey);
+    
+    const isMultiSelect = e.shiftKey || e.metaKey;
+
+    if (isMultiSelect) {
+      // If we shift-clicked an ALREADY selected item, and we didn't drag it, we toggle it OFF.
+      if (wasSelectedBeforeMousedownRef.current) {
+        onSelect(clip.id, true);
+      }
+    } else {
+      // If we clicked (no shift) a clip that was already selected and we didn't drag,
+      // it should become the ONLY selected item.
+      if (wasSelectedBeforeMousedownRef.current) {
+        onSelect(clip.id, false);
+      }
+    }
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -303,6 +321,11 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     const rect = clipRef.current?.parentElement?.getBoundingClientRect();
     const clipRect = clipRef.current?.getBoundingClientRect();
     if (!rect || !clipRect) return;
+
+    wasSelectedBeforeMousedownRef.current = isSelected;
+    if (!isSelected) {
+      onSelect(clip.id, e.shiftKey || e.metaKey);
+    }
 
     const clickX = e.clientX - rect.left;
     const clipStartX = clip.startTime * pixelsPerSecond;
@@ -694,28 +717,14 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
       pendingDropRef.current = { time: snapResult.time, targetTrackId };
 
-      // Coalesce store commits to one per animation frame. A fast mouse
-      // fires many mousemove events between frames; dispatching moveClip on
-      // each one deep-clones the project and re-renders the whole editor
-      // dozens of extra times per frame, which is what made sustained
-      // dragging lag and eventually exhaust memory. We keep the latest move
-      // in a ref and flush it once per frame.
+      // Instead of cloning the entire project store 60 frames per second,
+      // we only write the visual delta to our transient UI store.
       const moveTime = snapResult.time;
       const baseStartTime = clip.startTime;
-      const companions = multiDragSnapshotRef.current;
+      
       pendingCommitRef.current = () => {
-        onMoveClip(clip.id, moveTime, undefined);
-        // Move every companion clip in the multi-selection by the same
-        // delta. Cross-track moves of the primary don't take any
-        // companions along — that gets too lossy when they live on tracks
-        // of a different type — but same-track drags stay locked.
-        if (companions.length > 0) {
-          const deltaTime = moveTime - baseStartTime;
-          for (const snap of companions) {
-            const newStart = Math.max(0, snap.startTime + deltaTime);
-            onMoveClip(snap.clipId, newStart, undefined);
-          }
-        }
+        const delta = moveTime - baseStartTime;
+        useTimelineStore.getState().setClipDragDelta(delta);
       };
       if (moveCommitRafRef.current === null) {
         moveCommitRafRef.current = requestAnimationFrame(flushPendingCommit);
@@ -747,10 +756,26 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       pendingCommit?.();
 
       const { time, targetTrackId } = pendingDropRef.current;
+      
+      // Calculate final delta and execute the actual global state clone
+      // exactly once at the end of the drag.
+      const finalDelta = time - clip.startTime;
+      const companions = multiDragSnapshotRef.current;
+      
       if (targetTrackId) {
         onMoveClip(clip.id, time, targetTrackId);
+      } else {
+        onMoveClip(clip.id, time, undefined);
+      }
+      
+      if (companions.length > 0) {
+        for (const snap of companions) {
+          const newStart = Math.max(0, snap.startTime + finalDelta);
+          onMoveClip(snap.clipId, newStart, undefined);
+        }
       }
 
+      useTimelineStore.getState().setClipDragDelta(null);
       setIsDragging(false);
       setDragYOffset(0);
       setIsInvalidDrop(false);

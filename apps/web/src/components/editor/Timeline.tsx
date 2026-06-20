@@ -167,7 +167,7 @@ export const Timeline: React.FC = () => {
         if (end > maxEnd) maxEnd = end;
       }
     }
-    return Math.max(maxEnd, 60); // Minimum 60 seconds
+    return Math.max(maxEnd + 60, 120); // Add 60 seconds padding at the end
   }, [tracks]);
 
   const playheadSnapPoints = useMemo(() => {
@@ -1292,7 +1292,7 @@ export const Timeline: React.FC = () => {
           >
             <div
               style={{ width: `${timelineDuration * pixelsPerSecond}px` }}
-              className="min-w-full"
+              className="min-w-full relative"
             >
               {visualOrderTracks.map((track) => (
                 <TrackLane
